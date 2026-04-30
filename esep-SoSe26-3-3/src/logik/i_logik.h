@@ -5,9 +5,9 @@
 
 namespace logik {
 
-    class ILogik {
+    class i_Logik {
     public:
-        virtual ~ILogik() = default;
+        virtual ~i_Logik() = default;
 
         /**
          * @brief Nimmt ein Ereignis vom Dispatcher entgegen und triggert den Zustandsautomaten.

@@ -27,8 +27,8 @@
  * =======================================================================================
  */
 
-#ifndef SHARED_IPC_DEFINITIONS_HPP_
-#define SHARED_IPC_DEFINITIONS_HPP_
+#ifndef IPC_DEFINITIONS_HPP_
+#define IPC_DEFINITIONS_HPP_
 
 #include <stdint.h>
 #include <sys/iomsg.h> // Für _PULSE_CODE_MINAVAIL unter QNX
@@ -115,4 +115,4 @@ constexpr char DISPATCHER_NAME_SYSTEM_2[] = "Steuerungscomputer_2";
 
 } // namespace ipc
 
-#endif // SHARED_IPC_DEFINITIONS_HPP_
+#endif // IPC_DEFINITIONS_HPP_

@@ -1,3 +1,13 @@
+/**
+* @file LogikEvents.hpp
+ *
+ * @brief Definition aller logischen Systemereignisse (Events).
+ *
+ * Diese Datei definiert das Vokabular für den zustandsgesteuerten Ablauf der Anlage.
+ * Sie abstrahiert die rohen Hardware-Signale (Pulses) in fachliche Ereignisse,
+ * auf die der Zustandsautomat (SortierLogik) reagieren kann.
+ * Die Namensgebung (II_, IP_, IS_) spiegelt die physischen Sensoren/Aktoren der Festo-Anlage wider.
+ */
 #ifndef LOGIK_EVENTS_HPP
 #define LOGIK_EVENTS_HPP
 

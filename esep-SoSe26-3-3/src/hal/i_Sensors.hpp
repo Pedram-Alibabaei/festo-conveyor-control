@@ -1,5 +1,5 @@
 /**
- * @file FestoAccessSensors.hpp
+ * @file i_Sensors.hpp
  * @brief Abstraktions-Schnittstelle für die Sensorik der Festo-Sortieranlage.
  * * @details WICHTIGER ARCHITEKTUR-HINWEIS: 
  * Diese Klasse arbeitet ereignisgesteuert (Event-Driven) mittels QNX Pulses. 
@@ -10,14 +10,14 @@
  * * Das Bit-Packing der Pulse-Payload (ID + Zustand) ist in der IPC_definitions.hpp definiert.
  */
 
-#ifndef FESTO_ACCESS_SENSORS_HPP
-#define FESTO_ACCESS_SENSORS_HPP
+#ifndef I_SENSORS_HPP
+#define I_SENSORS_HPP
 
 #include <cstdint>
 
-class FestoAccessSensors {
+class i_Sensors {
 public:
-    virtual ~FestoAccessSensors() = default;
+    virtual ~i_Sensors() = default;
 
     // --- Interrupt-Steuerung (Digitale Sensoren & Taster) ---
 
@@ -60,4 +60,4 @@ public:
     virtual bool isEstopPressed() = 0;
 };
 
-#endif // FESTO_ACCESS_SENSORS_HPP
+#endif // I_SENSORS_HPP

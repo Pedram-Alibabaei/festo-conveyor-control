@@ -1,17 +1,17 @@
 /**
- * @file FestoAccessActuators.hpp
+ * @file i_Actuators.hpp
  * @brief Abstraktions-Schnittstelle für die Aktorik der Festo-Sortieranlage.
  * * Dieses Interface definiert alle verfügbaren Operationen zur Steuerung der Hardware-Aktoren
  * (Motoren, Weichen, Lampen und LEDs). Die tatsächliche Implementierung erfolgt im 
  * HAL-Modul unter Berücksichtigung der spezifischen GPIO-Register des Beaglebone Black.
  */
 
-#ifndef FESTO_ACCESS_ACTUATORS_HPP
-#define FESTO_ACCESS_ACTUATORS_HPP
+#ifndef I_ACTUATORS_HPP
+#define I_ACTUATORS_HPP
 
-class FestoAccessActuators {
+class i_Actuators {
 public:
-    virtual ~FestoAccessActuators() = default;
+    virtual ~i_Actuators() = default;
 
     // --- Motorsteuerung (GPIO 1) ---
     
@@ -124,4 +124,4 @@ public:
     virtual void turnAllOff() = 0;
 };
 
-#endif // FESTO_ACCESS_ACTUATORS_HPP
+#endif // I_ACTUATORS_HPP
