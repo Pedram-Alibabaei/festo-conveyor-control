@@ -1,13 +1,15 @@
 /**
  * @file i_Sensors.hpp
  * @brief Abstraktions-Schnittstelle für die Sensorik der Festo-Sortieranlage.
- * * @details WICHTIGER ARCHITEKTUR-HINWEIS: 
- * Diese Klasse arbeitet ereignisgesteuert (Event-Driven) mittels QNX Pulses. 
- * Anstatt Sensoren aktiv abzufragen (Polling), muss die Logik/der Dispatcher 
- * die Interrupts einmalig über initInterrupts() aktivieren. 
- * Danach sendet diese HAL-Klasse bei jeder Flankenänderung (Sensor blockiert/frei, 
- * Taste gedrückt/losgelassen) automatisch einen 40-Bit Pulse an den übergebenen Kanal.
- * * Das Bit-Packing der Pulse-Payload (ID + Zustand) ist in der IPC_definitions.hpp definiert.
+ *
+ * @details WICHTIGER ARCHITEKTUR-HINWEIS:
+ * Diese Klasse arbeitet vollständig ereignisgesteuert (Event-Driven) mittels QNX Pulses.
+ * Anstatt Sensoren aktiv abzufragen (Polling), muss die Logik/der Dispatcher
+ * die Interrupts einmalig über initInterrupts() und initAdcInterrupt() aktivieren.
+ * Danach sendet diese HAL-Klasse bei jeder Flankenänderung und nach jeder
+ * Werkstück-Profilanalyse automatisch einen Pulse an den übergebenen Kanal.
+ *
+ * Das Bit-Packing der Pulse-Payload (ID + Zustand) ist in der IPC_definitions.hpp definiert.
  */
 
 #ifndef I_SENSORS_HPP
@@ -19,42 +21,58 @@ class i_Sensors {
 public:
     virtual ~i_Sensors() = default;
 
-    // --- Interrupt-Steuerung (Digitale Sensoren & Taster) ---
+    // ========================================================================
+    // 1. Digitale Interrupt-Steuerung (GPIO)
+    // ========================================================================
 
     /**
      * @brief Aktiviert die Hardware-Interrupts für alle digitalen Eingänge (GPIO 0).
-     * * Sobald diese Methode aufgerufen wird, beginnt die HAL, bei Änderungen an den 
-     * Lichtschranken, dem Metallsensor oder dem Bedienpanel (Start, Stop, Reset, E-Stop) 
+     *
+     * Sobald diese Methode aufgerufen wird, beginnt die HAL, bei Änderungen an den
+     * Lichtschranken, dem Metallsensor oder dem Bedienpanel (Start, Stop, Reset, E-Stop)
      * Nachrichten (Pulses) zu generieren.
-     * * @param coid Die Connection-ID (Kanal) des Dispatchers, an den die Pulses gesendet werden.
+     *
+     * @param coid Die Connection-ID (Kanal) des Dispatchers, an den die Pulses gesendet werden.
      * @param pulseCode Der 8-Bit Identifier (z.B. PulseCode::HAL_INPUT), der den Pulsen angehängt wird.
      */
     virtual void initInterrupts(int coid, uint8_t pulseCode) = 0;
 
     /**
-     * @brief Deaktiviert alle Hardware-Interrupts und stoppt das Senden von Pulsen.
-     * * @note Sollte beim sauberen Herunterfahren der Anlage oder im Falle eines 
-     * kritischen Systemfehlers aufgerufen werden.
+     * @brief Deaktiviert alle digitalen Hardware-Interrupts.
      */
     virtual void stopInterrupts() = 0;
 
 
-    // --- Analoge Sensorik & Initiale Statusabfragen ---
+    // ========================================================================
+    // 2. Analoge Sensorik (Asynchrone Höhen-Profilanalyse)
+    // ========================================================================
 
     /**
-     * @brief Liest den aktuellen analogen Wert des Höhensensors aus.
-     * * Im Gegensatz zu den digitalen Lichtschranken wird dieser Wert synchron über 
-     * den ADC (Analog-to-Digital Converter) des Beaglebone Black ausgelesen.
-     * * @return uint16_t Der gemessene Rohwert oder umgerechnete Millimeter-Wert.
+     * @brief Überträgt die Kalibrierungsdaten an die ADC-Auswertelogik (ProfileAnalyzer).
+     *
+     * Muss aufgerufen werden, bevor Messungen stattfinden (z.B. nach dem Auslesen
+     * einer Konfigurationsdatei beim Systemstart).
      */
-    virtual uint16_t getHeight() = 0;
+    virtual void setAdcCalibration(uint32_t trigger,
+                                   uint32_t flatMin, uint32_t flatMax,
+                                   uint32_t tallMin, uint32_t tallMax,
+                                   uint32_t holeMin, uint32_t holeMax,
+                                   uint32_t emptyCountLimit) = 0;
+
+
+
+    // ========================================================================
+    // 3. Initiale Statusabfragen (Polling nur für Startup-Sicherheit)
+    // ========================================================================
 
     /**
      * @brief Synchrone Abfrage des E-Stop-Zustands (Sicherheitsfunktion).
-     * * Obwohl der E-Stop auch über Interrupts gemeldet wird, ist es für die 
-     * Hochfahr-Routine (Startup) der Anlage wichtig, den Zustand *vor* der 
+     *
+     * Obwohl der E-Stop auch über Interrupts gemeldet wird, ist es für die
+     * Hochfahr-Routine (Startup) der Anlage wichtig, den Zustand *vor* der
      * Aktivierung der Interrupts aktiv prüfen zu können.
-     * * @return true Wenn der Not-Halt-Taster physisch gedrückt ist.
+     *
+     * @return true Wenn der Not-Halt-Taster physisch gedrückt ist.
      * @return false Wenn der Not-Halt-Taster gelöst (betriebsbereit) ist.
      */
     virtual bool isEstopPressed() = 0;

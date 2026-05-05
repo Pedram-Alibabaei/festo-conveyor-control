@@ -49,26 +49,27 @@ enum PulseCode : int8_t {
 // ============================================================================
 // 2. HARDWARE SENSOR IDs (Für HAL_INPUT Pulses)
 // ============================================================================
-// Identifiziert, WELCHER Sensor gerade ausgelöst hat.
 enum SensorID : uint16_t {
-    // Tasten
-    II_START = 1,
-    II_STOP,
-    II_RESET,
-    II_ESTOP,
+        // Tasten
+        BTN_START = 1,
+        BTN_STOP,
+        BTN_RESET,
+        BTN_ESTOP,
 
-    // Lichtschranken / Sensoren
-    IP_ENTRY,
-    IP_HEIGHT,
-    IP_EJECTOR,
-    IP_END,
-    IP_CHUTE,
-    IP_METAL_SENSOR,
-    IP_EJECTOR_STATUS, // Zylinder eingefahren/ausgefahren
+        // Lichtschranken / Sensoren
+        LS_ENTRY,
+        LS_HEIGHT,      // Digitale Höhen-Lichtschranke
+        LS_EJECTOR,
+        LS_END,
+        LS_CHUTE,
+        SENSOR_METAL,
 
-    // Spezial: Analoger Höhenwert
-    HEIGHT_ADC
-};
+        IS_EJECTOR,     // Zylinder eingefahren/ausgefahren
+        IS_HEIGHT,
+
+        // Spezial: Analoger Höhenwert (Der fertige Werkstück-Typ)
+        HEIGHT_ADC
+    };
 
 // --- Bit-Masking Hilfsfunktionen für den HAL Payload (ID + State) ---
 // Packt die 16-Bit SensorID und den 16-Bit Zustand in EINEN 32-Bit QNX Payload.
