@@ -23,10 +23,10 @@ namespace output_driver {
         // JETZT erst abfragen (Die Assertion wird nun erfolgreich passieren!)
         if (pal::is::Ejector::is_data_set()) {
             m_type = SorterHardwareType::AUSWERFER;
-            std::cout << "[EjectorController] Auto-Detect: Sensor an IS_EJECTOR (High) -> AUSWERFER (Anlage 2)" << std::endl;
+            std::cout << "[EjectorController] Auto-Detect: Sensor an IS_EJECTOR (High) -> AUSWERFER " << std::endl;
         } else {
             m_type = SorterHardwareType::WEICHE;
-            std::cout << "[EjectorController] Auto-Detect: Kein Sensor (Low) -> WEICHE (Anlage 1)" << std::endl;
+            std::cout << "[EjectorController] Auto-Detect: Kein Sensor (Low) -> WEICHE " << std::endl;
         }
 
         // ========================================================================

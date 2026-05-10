@@ -12,67 +12,58 @@
 #include <sys/neutrino.h>
 #include <iostream>
 #include <cstdint>
+#include <string>
 
-// Eure eigenen Includes
+// Eigene Includes
 #include "shared/ipc_definitions.hpp"
 #include "hal/i_Actuators.hpp"
-// Forward Declaration für die Logik (damit wir den Header hier nicht einbinden müssen)
-// class SortierLogik;
+
+// Definition der Position im Gesamtsystem
+enum class AnlagenPosition {
+    VORN_ANLAGE_1,
+    HINTEN_ANLAGE_2
+};
 
 class Dispatcher {
 private:
     // ========================================================================
-    // 1. QNX Ressourcen
-    // ========================================================================
-    int m_chid; // Channel ID: Der "Briefkasten" dieses Dispatchers
+    // 1. QNX Ressourcen & Netzwerk
+    // =======================================================================
+    int m_chid;             // Channel ID: Der "Briefkasten" dieses Dispatchers
+    int partner_coid;       // Connection ID zum Partner (-1 wenn nicht verbunden)
+    std::string myName;
+    std::string partnerName;
+    AnlagenPosition m_position;
 
-
-    i_Actuators* m_actuators; // NEU: Zeiger auf die Aktorik
-    // ========================================================================
-    // 2. Abhängigkeiten (Das "Gehirn", dem wir die Daten geben)
-    // ========================================================================
-    // std::shared_ptr<SortierLogik> m_logik;
+    i_Actuators* m_actuators; // Zeiger auf die Aktorik
 
     // ========================================================================
-    // 3. Private Event-Handler (Verteiler-Methoden)
+    // 2. Private Event-Handler & Hilfsmethoden
     // ========================================================================
-    /**
-     * @brief Wird aufgerufen, wenn ein Pulse vom HAL (Sensor/ADC) ankommt.
-     * @param payload Die 32-Bit Daten (Sensor-ID + Wert), die im Pulse stecken.
-     */
     void handleHalPulse(uint32_t payload);
-
-    /**
-     * @brief Wird aufgerufen, wenn ein Timer abläuft (z.B. Werkstück verloren).
-     * @param timer_id Die ID des Timers, der abgelaufen ist.
-     */
+    void handleNetworkPulse(uint32_t payload);
     void handleTimerPulse(int timer_id);
 
-public:
-    /**
-     * @brief Konstruktor. Erstellt automatisch den QNX Channel.
-     */
-    Dispatcher(/* std::shared_ptr<SortierLogik> logik */);
+    void registingNameInGNS();
+    void setAnlagenPosition(bool pos);
+    void searchForNeighbor();
 
-    /**
-     * @brief Destruktor. Zerstört den Channel sauber.
-     */
+public:
+    // Konstruktor & Destruktor
+    Dispatcher(bool pos);
     ~Dispatcher();
 
-    /**
-     * @brief Gibt die Channel-ID zurück.
-     * Sehr wichtig, damit die main.cpp eine Connection (coid) für den HAL
-     * erstellen kann, damit der HAL weiß, wohin er die Pulses senden soll!
-     */
-    int getChannelId() const;
+    // Getter
+    int getMyChannelId() const { return m_chid; }
+    int getPartnerChannelId() const { return partner_coid; }
+    std::string getAnlagenPosition() { return myName; }
 
-    // NEU: Setter-Methode, um die Aktorik zu übergeben
+    // Setter
     void setActuators(i_Actuators* actuators) {
-    	m_actuators = actuators;
+        m_actuators = actuators;
     }
-    /**
-     * @brief Die Endlosschleife! Blockiert und wartet auf MsgReceivePulse().
-     */
+
+    // Die Endlosschleife!
     void run();
 };
 

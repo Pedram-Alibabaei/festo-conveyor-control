@@ -42,7 +42,8 @@ namespace ipc {
 // Werte oberhalb von _PULSE_CODE_MINAVAIL.
 enum PulseCode : int8_t {
     HAL_INPUT   = _PULSE_CODE_MINAVAIL + 1,  // Kommt von der eigenen Sensorik (HAL)
-    NETWORK_MSG = _PULSE_CODE_MINAVAIL + 2   // Kommt vom anderen Steuerungscomputer (Qnet)
+    NETWORK_MSG = _PULSE_CODE_MINAVAIL + 2,  // Kommt vom anderen Steuerungscomputer (Qnet)
+    TIMER_TICK =  _PULSE_CODE_MINAVAIL + 3   // fuer unsere Band-Uhr(Timer)
 };
 
 
@@ -64,8 +65,8 @@ enum SensorID : uint16_t {
         LS_CHUTE,
         SENSOR_METAL,
 
-        IS_EJECTOR,     // Zylinder eingefahren/ausgefahren
-        IS_HEIGHT,
+        EJECTOR,     // Zylinder eingefahren/ausgefahren
+        HEIGHT,
 
         // Spezial: Analoger Höhenwert (Der fertige Werkstück-Typ)
         HEIGHT_ADC

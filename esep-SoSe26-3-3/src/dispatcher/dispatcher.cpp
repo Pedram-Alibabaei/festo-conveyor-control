@@ -9,107 +9,170 @@
 #include <cerrno>
 #include <cstring>
 #include <sys/neutrino.h>
+#include <sys/dispatch.h>
 
-// Konstruktor: Erstellt den Briefkasten
-Dispatcher::Dispatcher(/* std::shared_ptr<SortierLogik> logik */)
-// : m_logik(logik) // (Später einkommentieren, wenn die Logik da ist)
-{
-    // 1. QNX Channel erstellen. Die '0' bedeutet Standard-Flags.
-    m_chid = ChannelCreate(0);
+// ============================================================================
+// KONSTRUKTOR & DESTRUKTOR
+// ============================================================================
+Dispatcher::Dispatcher(bool pos) : m_chid(-1), partner_coid(-1), m_actuators(nullptr) {
+    setAnlagenPosition(pos);
+    registingNameInGNS();
 
     if (m_chid == -1) {
         std::cerr << "KRITISCHER FEHLER: Dispatcher konnte QNX Channel nicht erstellen! "
                   << strerror(errno) << std::endl;
-        exit(EXIT_FAILURE); // Ohne Channel kann die Anlage nicht funktionieren!
+        exit(EXIT_FAILURE);
     }
-
     std::cout << "[Dispatcher] QNX Channel erfolgreich erstellt. CHID: " << m_chid << std::endl;
 }
 
-// Destruktor: Räumt hinter sich auf
 Dispatcher::~Dispatcher() {
     if (m_chid != -1) {
         ChannelDestroy(m_chid);
         std::cout << "[Dispatcher] QNX Channel zerstoert." << std::endl;
     }
+    if (partner_coid != -1) {
+        name_close(partner_coid);
+    }
 }
 
-int Dispatcher::getChannelId() const {
-    return m_chid;
+// ============================================================================
+// INITIALISIERUNG & NETZWERK
+// ============================================================================
+void Dispatcher::setAnlagenPosition(bool pos) {
+    if (pos) {
+        m_position = AnlagenPosition::VORN_ANLAGE_1;
+        myName = "Anlage_Vorn";
+        partnerName = "Anlage_Hinten";
+    } else {
+        m_position = AnlagenPosition::HINTEN_ANLAGE_2;
+        myName = "Anlage_Hinten";
+        partnerName = "Anlage_Vorn";
+    }
 }
 
-// Die Endlosschleife (Der Reaktor)
+void Dispatcher::registingNameInGNS() {
+    if (partner_coid != -1) {
+        return;
+    }
+
+    name_attach_t* attach = name_attach(NULL, myName.c_str(), NAME_FLAG_ATTACH_GLOBAL);
+
+    if (attach == NULL) {
+        std::cerr << "[" << myName << "] Fehler: Name konnte nicht registriert werden!" << std::endl;
+    } else {
+        std::cout << "[" << myName << "] Ich bin nun im Netzwerk erreichbar." << std::endl;
+        m_chid = attach->chid;
+    }
+}
+
+void Dispatcher::searchForNeighbor() {
+    if (partner_coid != -1) {
+        return;
+    }
+
+    std::cout << "[" << myName << "] Suche Partner: " << partnerName << "..." << std::endl;
+
+    std::string globalPath = "/dev/name/global/" + partnerName;
+    partner_coid = name_open(globalPath.c_str(), 0);
+
+    if (partner_coid == -1) {
+        std::cout << "[" << myName << "] Partner noch nicht online. Versuche es später erneut." << std::endl;
+    } else {
+        std::cout << "===========================================" << std::endl;
+        std::cout << ">>> [" << myName << "] NETZWERK-VERBINDUNG ZU " << partnerName << " HERGESTELLT! COID: " << partner_coid << " <<<" << std::endl;
+        std::cout << "===========================================\n" << std::endl;
+    }
+}
+
+// ============================================================================
+// DIE ENDLOSSCHLEIFE (REAKTOR)
+// ============================================================================
 void Dispatcher::run() {
-    std::cout << "[Dispatcher] Starte Event-Loop. Warte auf Hardware-Pulses..." << std::endl;
+    std::cout << "[Dispatcher] Starte Event-Loop. Warte auf Pulse und Nachrichten..." << std::endl;
 
-    struct _pulse pulse;
+    union {
+        struct _pulse pulse;
+        char buffer[256];
+    } msg;
 
     while (true) {
-        // 1. Blockieren und auf den nächsten Pulse warten
-        // Der Thread schläft hier, bis jemand MsgSendPulse() aufruft!
-        int rcvid = MsgReceivePulse(m_chid, &pulse, sizeof(pulse), nullptr);
+        int rcvid = MsgReceive(m_chid, &msg, sizeof(msg), nullptr);
 
         if (rcvid == -1) {
-            std::cerr << "[Dispatcher] Fehler beim Empfangen des Pulses: "
-                      << strerror(errno) << std::endl;
-            continue; // Versuche es bei einem Fehler einfach nochmal
+            std::cerr << "[Dispatcher] Fehler bei MsgReceive!" << std::endl;
+            continue;
         }
 
-        // 2. Pulse auswerten (Wer ist der Absender?)
-        switch (pulse.code) {
+        // FALL 1: ES IST EIN PULSE (rcvid ist 0)
+        if (rcvid == 0) {
+            switch (msg.pulse.code) {
+                case ipc::HAL_INPUT:
+                    handleHalPulse(msg.pulse.value.sival_int);
+                    break;
 
-            case ipc::HAL_INPUT:
-                // Ein Interrupt von der Hardware (ADC, Lichtschranke, Tasten) ist da!
-                // Die Nutzdaten (z.B. HEIGHT_ADC + WP_TALL) stecken in pulse.value.sival_int
-                handleHalPulse(pulse.value.sival_int);
-                break;
+                case ipc::NETWORK_MSG:
+                    std::cout << "\n>>> NETZWERK POST ERHALTEN <<<" << std::endl;
+                    handleNetworkPulse(msg.pulse.value.sival_int);
+                    break;
 
-            // Hier kommt später euer Timer-Event Code hin
-            // case ipc::TIMER_EVENT:
-            //     handleTimerPulse(pulse.value.sival_int);
-            //     break;
+                case _PULSE_CODE_DISCONNECT:
+                    std::cout << "[Dispatcher] Partner hat die Verbindung getrennt." << std::endl;
+                    partner_coid = -1;
+                    break;
 
-            case _PULSE_CODE_DISCONNECT:
-                // Ein QNX-interner Code: Jemand hat die Verbindung (coid) zu uns geschlossen
-                std::cout << "[Dispatcher] Ein Client hat die Verbindung getrennt." << std::endl;
-                break;
-
-            default:
-                std::cerr << "[Dispatcher] Unbekannter Pulse-Code empfangen: "
-                          << pulse.code << std::endl;
-                break;
+                default:
+                    break;
+            }
+        }
+        // FALL 2: ES IST EINE NACHRICHT (rcvid ist größer als 0)
+        else if (rcvid > 0) {
+            MsgReply(rcvid, EOK, nullptr, 0);
         }
     }
 }
 
-
+// ============================================================================
+// EVENT HANDLER LOKAL (HAL)
+// ============================================================================
 void Dispatcher::handleHalPulse(uint32_t payload) {
-    // 1. Auspacken
     uint16_t sensor_id = ipc::decodeSensorID(payload);
     uint16_t sensor_state = ipc::decodeSensorState(payload);
 
-    // Diese Konsolenausgabe hilft dir zu sehen, welche ID welche Taste hat
     std::cout << "[Dispatcher] Event -> Sensor: " << sensor_id << " | Zustand: " << sensor_state << std::endl;
 
-    // Sicherheitsabfrage: Wurde die Aktorik übergeben?
     if (!m_actuators) return;
 
-    // ========================================================================
-    // TASTE 1: START -> Grüne Ampel blinkt schnell
-    // ========================================================================
+    // TASTE 1: START
     if (sensor_id == ipc::BTN_START) {
         if (sensor_state == 1) {
             std::cout << ">>> TEST: Start gedrueckt! Gruen blinkt! <<<" << std::endl;
             m_actuators->lightGreenBlinkFast();
+
+            searchForNeighbor();
+
+            if (partner_coid != -1) {
+                MsgSendPulse(partner_coid, -1, ipc::NETWORK_MSG, payload);
+                std::cout << "[" << myName << "] Info an " << partnerName << " gesendet!" << std::endl;
+            } else {
+                std::cout << "[" << myName << "] Konnte Info nicht senden. " << partnerName << " ist noch offline." << std::endl;
+            }
         }
         else {
             std::cout << ">>> TEST: Start losgelassen! Gruen aus! <<<" << std::endl;
             m_actuators->lightGreenOff();
+
+            searchForNeighbor(); // Auch beim Loslassen sicherheitshalber prüfen
+
+            if (partner_coid != -1) {
+                MsgSendPulse(partner_coid, -1, ipc::NETWORK_MSG, payload);
+                std::cout << "[" << myName << "] Info an " << partnerName << " gesendet!" << std::endl;
+            } else {
+                std::cout << "[" << myName << "] Konnte Info nicht senden. " << partnerName << " ist noch offline." << std::endl;
+            }
         }
     }
-    // ========================================================================
-    // TASTE 2: RESET -> Gelbe Ampel blinkt schnell
-    // ========================================================================
+    // TASTE 2: RESET
     else if (sensor_id == ipc::BTN_RESET) {
         if (sensor_state == 1) {
             std::cout << ">>> TEST: Reset gedrueckt! Gelb blinkt! <<<" << std::endl;
@@ -120,14 +183,9 @@ void Dispatcher::handleHalPulse(uint32_t payload) {
             m_actuators->lightYellowOff();
         }
     }
-    // ========================================================================
-    // TASTE 3: STOP -> Rote Ampel blinkt schnell
-    // ========================================================================
+    // TASTE 3: STOP
     else if (sensor_id == ipc::BTN_STOP) {
         if (sensor_state == 0) {
-            // ACHTUNG: Der Stop-Taster an der Festo-Anlage ist oft "Active Low" (Öffner)!
-            // Wenn 0 = "gedrückt" bedeutet, musst du das hier anpassen.
-            // Falls dein System 1 für "gedrückt" schickt, mach aus der 0 eine 1.
             std::cout << ">>> TEST: Stop gedrueckt! Rot blinkt! <<<" << std::endl;
             m_actuators->lightRedBlinkSlow();
         }
@@ -136,22 +194,15 @@ void Dispatcher::handleHalPulse(uint32_t payload) {
             m_actuators->lightRedOff();
         }
     }
-
-    // ========================================================================
     // LICHTSCHRANKE 1: Einlauf (Entry)
-    // ========================================================================
-    else if (sensor_id == ipc::LS_ENTRY) { // Namen evtl. an deine ipc_definitions.hpp anpassen!
-        // Zustand 0 = Lichtschranke wurde durch ein Werkstück unterbrochen
+    else if (sensor_id == ipc::LS_ENTRY) {
         if (sensor_state == 0) {
             std::cout << ">>> TEST: Werkstueck am Einlauf erkannt! Motor faehrt RECHTS! <<<" << std::endl;
             m_actuators->driveRight();
-            m_actuators->lightGreenBlinkSlow(); // Ein bisschen Show dazu machen
+            m_actuators->lightGreenBlinkSlow();
         }
     }
-
-    // ========================================================================
     // LICHTSCHRANKEN 2 & 3: Auslauf (End) oder Rutsche (Chute)
-    // ========================================================================
     else if (sensor_id == ipc::LS_END) {
         if (sensor_state == 0) {
             std::cout << ">>> TEST: Werkstueck am Ende angekommen! Motor STOPP! <<<" << std::endl;
@@ -168,11 +219,28 @@ void Dispatcher::handleHalPulse(uint32_t payload) {
     }
 }
 
+// ============================================================================
+// EVENT HANDLER NETZWERK
+// ============================================================================
+void Dispatcher::handleNetworkPulse(uint32_t payload) {
+    uint16_t sensor_id = ipc::decodeSensorID(payload);
+    uint16_t sensor_state = ipc::decodeSensorState(payload);
 
+    if (sensor_id == ipc::BTN_START) {
+        if (sensor_state == 1) {
+            std::cout << ">>> TEST (VON PARTNER): Start gedrueckt! Gruen blinkt! <<<" << std::endl;
+            if (m_actuators) m_actuators->lightGreenBlinkFast();
+        }
+        else {
+            std::cout << ">>> TEST (VON PARTNER): Start losgelassen! Gruen aus! <<<" << std::endl;
+            if (m_actuators) m_actuators->lightGreenOff();
+        }
+    }
+}
 
-
-// Private Verteiler-Methode für Timer-Events (Vorbereitet für später)
+// ============================================================================
+// EVENT HANDLER TIMER
+// ============================================================================
 void Dispatcher::handleTimerPulse(int timer_id) {
     std::cout << "[Dispatcher] TIMER abgelaufen! ID: " << timer_id << std::endl;
-    // m_logik->verarbeiteTimeout(timer_id);
 }

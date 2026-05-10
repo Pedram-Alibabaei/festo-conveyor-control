@@ -24,8 +24,6 @@ using UInt64 = std::uint64_t;
 using Size = std::size_t;
 using UIntPtr = std::uintptr_t;
 
-
-
 // Alle bekannten Werkstücktypen der Anlage
 enum class WpType {
  UNKNOWN,             // Startzustand, noch nicht vermessen

@@ -1,12 +1,5 @@
 /**
 * @file LogikEvents.hpp
- *
- * @brief Definition aller logischen Systemereignisse (Events).
- *
- * Diese Datei definiert das Vokabular für den zustandsgesteuerten Ablauf der Anlage.
- * Sie abstrahiert die rohen Hardware-Signale (Pulses) in fachliche Ereignisse,
- * auf die der Zustandsautomat (SortierLogik) reagieren kann.
- * Die Namensgebung (II_, IP_, IS_) spiegelt die physischen Sensoren/Aktoren der Festo-Anlage wider.
  */
 #ifndef LOGIK_EVENTS_HPP
 #define LOGIK_EVENTS_HPP
@@ -15,49 +8,54 @@
 
 namespace logik {
 
-    // Alle Ereignisse, auf die der Zustandsautomat reagieren muss
-    // All events the state machine must react to
     enum class Event {
-        // --- Buttons (ii-...) ---
-        II_START_PRESSED,
-        II_START_RELEASED,   // Oft wichtig, falls man auf ein langes Drücken reagieren will
-        II_STOP_PRESSED,
-        II_STOP_RELEASED,
-        II_RESET_PRESSED,
-        II_RESET_RELEASED,
-        II_ESTOP_PRESSED,
-        II_ESTOP_RELEASED,
 
-        // --- Light Barriers / Photoelectric Sensors (ip-...) ---
-        IP_ENTRY_BLOCKED,     // ip-entry: Werkstück im Einlauf
-        IP_ENTRY_CLEARED,
+        TICK,
 
-        IP_HEIGHT_BLOCKED,    // ip-height: Lichtschranke am Höhensensor
-        IP_HEIGHT_CLEARED,
+        ENTRY_BLOCKED,
+        ENTRY_CLEARED,
 
-        IP_EJECTOR_BLOCKED,   // ip-ejector: Lichtschranke an der Weiche/Auswerfer
-        IP_EJECTOR_CLEARED,
+        HEIGHT_BLOCKED,
+        HEIGHT_CLEARED,
 
-        IP_END_BLOCKED,       // ip-end: Lichtschranke am Auslauf (Bandende)
-        IP_END_CLEARED,
+        EJECTOR_BLOCKED,
+        EJECTOR_CLEARED,
 
-        IP_CHUTE_BLOCKED,     // ip-chute: Lichtschranke in der Rutsche (Voll/Werkstück rutscht)
-        IP_CHUTE_CLEARED,
+        METAL_DETECTED,
+        METAL_CLEARED,
 
-        IP_METAL_DETECTED,       // ip-metal: Metallsensor schlägt an
-        IP_METAL_CLEARED,
+        END_BLOCKED,
+        END_CLEARED,
 
-        // --- Status / Specific Sensors (is-...) ---
-        IS_EJECTOR_EXTENDED,     // is-ejector: Zylinder ist ausgefahren
-        IS_EJECTOR_RETRACTED,    // is-ejector: Zylinder ist eingefahren
+        CHUTE_BLOCKED,
+        CHUTE_CLEARED,
 
-        IS_HEIGHT_VALUE_UPDATED, // is-height: Analoger Höhenwert wurde gemessen (Payload benötigt)
 
-        // --- Network Events  ---
+        HEIGHT_VALUE_UPDATED, // is-height: Analoger Höhenwert wurde gemessen (Payload benötigt)
+
+        // Buttons
+        START_PRESSED,
+        START_RELEASED,
+        STOP_PRESSED,
+        STOP_RELEASED,
+        RESET_PRESSED,
+        RESET_RELEASED,
+        ESTOP_PRESSED,
+        ESTOP_RELEASED,
+
+        // Network Events
+        NET_START_PRESSED,
+        NET_START_RELEASED,
+
+        NET_STOP_PRESSED,
+        NET_STOP_RELEASED,
+
+        NET_RESET_PRESSED,
+        NET_RESET_RELEASED,
+
         NET_ESTOP_PRESSED,
         NET_ESTOP_RELEASED,
-        NET_II_RESET_PRESSED,
-        NET_II_RESET_RELEASED,
+
         NET_HANDOVER_READY
     };
 
