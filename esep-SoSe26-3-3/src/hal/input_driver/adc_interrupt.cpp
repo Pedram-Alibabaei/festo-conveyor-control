@@ -106,6 +106,8 @@ void AdcInterrupt::handle_interrupt() const noexcept
     using pal::ip::Height;
 
     // 1. Rohwert aus dem Hardware-Register lesen
+    Height::clear_interrupt_event();
+    InterruptUnmask(intr_adc, m_interrupt_id);
     UInt32 current_adc_value = Height::analog_value();
 
     // 2. Den Wert in den Analyzer füttern
@@ -139,6 +141,5 @@ void AdcInterrupt::handle_interrupt() const noexcept
     }
 
     // 6. Hardware-Interrupt löschen und für die nächste Messung scharfschalten
-    Height::clear_interrupt_event();
-    InterruptUnmask(intr_adc, m_interrupt_id);
+
 }

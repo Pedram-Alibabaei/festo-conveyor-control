@@ -41,6 +41,7 @@ private:
     bool     m_hole_detected;       // Wurde zwischendurch ein signifikantes Tal erkannt?
     uint32_t m_empty_belt_counter;  // Zählt, wie lange das Band am Stück leer ist (Hysterese)
     bool     m_is_measuring;        // Status-Flag: Befindet sich aktuell ein Teil unter dem Sensor?
+    bool   m_binary;
 
     // ========================================================================
     // 3. Kalibrierungsdaten (Werden beim Systemstart aus einer Datei geladen)
@@ -56,6 +57,9 @@ private:
 
     uint32_t m_hole_min;
     uint32_t m_hole_max;
+
+    uint32_t m_binary_min;
+    uint32_t m_binary_max;
 
     uint32_t m_empty_count_limit;   // Wie viele "Leer"-Messungen bedeuten das Ende der Messung?
 

@@ -144,6 +144,9 @@ void ProfileAnalyzer::processSample(uint32_t raw_adc_value) {
             if (smoothed_value >= m_hole_min && smoothed_value <= m_hole_max) {
                 m_hole_detected = true;
             }
+            if (smoothed_value >= m_binary_min&& smoothed_value <= m_binary_max){
+                m_binary = true;
+            }
         }
 
         // 3. Abriss-Erkennung (Fährt das Teil gerade aus dem Lichtschrankenbereich?)

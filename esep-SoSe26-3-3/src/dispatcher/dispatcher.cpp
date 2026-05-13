@@ -14,123 +14,142 @@
 // ============================================================================
 // KONSTRUKTOR & DESTRUKTOR
 // ============================================================================
-Dispatcher::Dispatcher(bool pos) : m_chid(-1), partner_coid(-1), m_actuators(nullptr) {
-    setAnlagenPosition(pos);
-    registingNameInGNS();
-
-    if (m_chid == -1) {
-        std::cerr << "KRITISCHER FEHLER: Dispatcher konnte QNX Channel nicht erstellen! "
-                  << strerror(errno) << std::endl;
-        exit(EXIT_FAILURE);
-    }
-    std::cout << "[Dispatcher] QNX Channel erfolgreich erstellt. CHID: " << m_chid << std::endl;
+Dispatcher::Dispatcher()
+    : m_chid(-1),
+      m_localCoid(-1),
+      m_partnerCoid(-1),
+      m_running(false),
+      m_actuators(nullptr),
+      m_connection(nullptr) {
 }
 
 Dispatcher::~Dispatcher() {
-    if (m_chid != -1) {
-        ChannelDestroy(m_chid);
-        std::cout << "[Dispatcher] QNX Channel zerstoert." << std::endl;
-    }
-    if (partner_coid != -1) {
-        name_close(partner_coid);
-    }
+    stop();
+
+    // Ressourcen sauber freigeben
+    if (m_localCoid != -1) ConnectDetach(m_localCoid);
+    if (m_partnerCoid != -1) ConnectDetach(m_partnerCoid);
+    if (m_chid != -1) ChannelDestroy(m_chid);
 }
 
 // ============================================================================
-// INITIALISIERUNG & NETZWERK
+// Initialisierung
 // ============================================================================
-void Dispatcher::setAnlagenPosition(bool pos) {
-    if (pos) {
-        m_position = AnlagenPosition::VORN_ANLAGE_1;
-        myName = "Anlage_Vorn";
-        partnerName = "Anlage_Hinten";
-    } else {
-        m_position = AnlagenPosition::HINTEN_ANLAGE_2;
-        myName = "Anlage_Hinten";
-        partnerName = "Anlage_Vorn";
-    }
-}
 
-void Dispatcher::registingNameInGNS() {
-    if (partner_coid != -1) {
+void Dispatcher::init(ipc::AnlagenPosition pos) {
+    m_position = pos;
+
+    // 1. Kanal erstellen (Das "Ohr" des Dispatchers)
+    m_chid = ChannelCreate(0);
+    if (m_chid == -1) {
+        std::cerr << "[Dispatcher] Fehler: ChannelCreate fehlgeschlagen!" << std::endl;
         return;
     }
 
-    name_attach_t* attach = name_attach(NULL, myName.c_str(), NAME_FLAG_ATTACH_GLOBAL);
-
-    if (attach == NULL) {
-        std::cerr << "[" << myName << "] Fehler: Name konnte nicht registriert werden!" << std::endl;
-    } else {
-        std::cout << "[" << myName << "] Ich bin nun im Netzwerk erreichbar." << std::endl;
-        m_chid = attach->chid;
-    }
-}
-
-void Dispatcher::searchForNeighbor() {
-    if (partner_coid != -1) {
+    // 2. Verbindung zu sich selbst aufbauen (Die eigene "Telefonnummer")
+    m_localCoid = ConnectAttach(0, 0, m_chid, _NTO_SIDE_CHANNEL, 0);
+    if (m_localCoid == -1) {
+        std::cerr << "[Dispatcher] Fehler: ConnectAttach zu sich selbst fehlgeschlagen!" << std::endl;
         return;
     }
 
-    std::cout << "[" << myName << "] Suche Partner: " << partnerName << "..." << std::endl;
-
-    std::string globalPath = "/dev/name/global/" + partnerName;
-    partner_coid = name_open(globalPath.c_str(), 0);
-
-    if (partner_coid == -1) {
-        std::cout << "[" << myName << "] Partner noch nicht online. Versuche es später erneut." << std::endl;
-    } else {
-        std::cout << "===========================================" << std::endl;
-        std::cout << ">>> [" << myName << "] NETZWERK-VERBINDUNG ZU " << partnerName << " HERGESTELLT! COID: " << partner_coid << " <<<" << std::endl;
-        std::cout << "===========================================\n" << std::endl;
-    }
+    std::cout << "[Dispatcher] Bereit auf Kanal " << m_chid
+              << " (Lokale COID: " << m_localCoid << ")" << std::endl;
 }
 
 // ============================================================================
-// DIE ENDLOSSCHLEIFE (REAKTOR)
+// Hauptschleife (Der Reaktor)
 // ============================================================================
+
 void Dispatcher::run() {
-    std::cout << "[Dispatcher] Starte Event-Loop. Warte auf Pulse und Nachrichten..." << std::endl;
+    struct _pulse pulse;
+    m_running = true;
 
-    union {
-        struct _pulse pulse;
-        char buffer[256];
-    } msg;
+    std::cout << "[Dispatcher] Reaktor-Schleife gestartet..." << std::endl;
 
-    while (true) {
-        int rcvid = MsgReceive(m_chid, &msg, sizeof(msg), nullptr);
+    while (m_running) {
+        // BLOCKIERT, bis ein Puls eintrifft
+        int rcvid = MsgReceivePulse(m_chid, &pulse, sizeof(pulse), NULL);
 
-        if (rcvid == -1) {
-            std::cerr << "[Dispatcher] Fehler bei MsgReceive!" << std::endl;
-            continue;
-        }
-
-        // FALL 1: ES IST EIN PULSE (rcvid ist 0)
-        if (rcvid == 0) {
-            switch (msg.pulse.code) {
-                case ipc::HAL_INPUT:
-                    handleHalPulse(msg.pulse.value.sival_int);
-                    break;
-
-                case ipc::NETWORK_MSG:
-                    std::cout << "\n>>> NETZWERK POST ERHALTEN <<<" << std::endl;
-                    handleNetworkPulse(msg.pulse.value.sival_int);
-                    break;
-
-                case _PULSE_CODE_DISCONNECT:
-                    std::cout << "[Dispatcher] Partner hat die Verbindung getrennt." << std::endl;
-                    partner_coid = -1;
-                    break;
-
-                default:
-                    break;
-            }
-        }
-        // FALL 2: ES IST EINE NACHRICHT (rcvid ist größer als 0)
-        else if (rcvid > 0) {
-            MsgReply(rcvid, EOK, nullptr, 0);
+        if (rcvid == 0) { // Wir haben einen Puls empfangen
+            handlePulse(pulse);
+        } else if (rcvid == -1) {
+            if (errno == EINTR) continue; // Unterbrochen durch Systemsignal
+            std::cerr << "[Dispatcher] Fehler bei MsgReceivePulse!" << std::endl;
+            break;
         }
     }
 }
+
+// ============================================================================
+// Zentraler Event-Verteiler
+// ============================================================================
+
+void Dispatcher::handlePulse(const struct _pulse& pulse) {
+    switch (pulse.code) {
+
+        case ipc::HAL_INPUT:
+            handleHalPulse(pulse.value.sival_int);
+            break;
+
+        case ipc::NETWORK_MSG:
+            // Der Partner hat uns etwas geschickt (Ping oder Daten)
+            if (m_connection) {
+                m_connection->partnerAlive(); // Watchdog zuruecksetzen
+            }
+            handleNetworkPulse(pulse.value.sival_int);
+            break;
+
+        case ipc::TIMER_TICK:
+            handleTimerPulse(pulse.value.sival_int);
+            break;
+
+        case ipc::HEARTBEATTACKT:
+            // Der 50ms-Timer sagt: Deadline pruefen!
+            if (m_connection) {
+                m_connection->heartbeatTackt();
+
+                // Falls verbunden: Heartbeat an den Partner senden
+                if (m_connection->isConnected()) {
+                    MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::NETWORK_MSG, 0);
+                }
+            }
+            break;
+
+        case ipc::CONNECTION_MSG:
+            // ConnectionManager hat den Partner gefunden
+            handleConnectionPulse(pulse.value.sival_int);
+            break;
+
+        case ipc::DISCONNECT:
+            // KRITISCH: Verbindung verloren oder Not-Halt
+            std::cerr << "[Dispatcher] ACHTUNG: Verbindung unterbrochen! Not-Halt." << std::endl;
+            if (m_actuators) m_actuators->driveStop();
+            // Hier spaeter: m_logik->geheInFehlerzustand();
+            break;
+
+        case ipc::ANLAGE_2_CIID:
+           m_partnerCoid =pulse.value.sival_int;
+           break;
+
+        default:
+            std::cout << "[Dispatcher] Unbekannter Puls-Code: " << (int)pulse.code << std::endl;
+            break;
+    }
+}
+
+
+void Dispatcher::handleConnectionPulse(uint32_t payload) {
+    m_partnerCoid = payload; // Die COID vom ConnectionManager speichern
+    std::cout << "[Dispatcher] Partner-Verbindung aktiv (COID: " << m_partnerCoid << ")" << std::endl;
+
+    // Asymmetrischer Start: Anlage 2 sagt Anlage 1 "Hallo"
+    if (m_position == ipc::HINTEN_ANLAGE_2) {
+        std::cout << "[Dispatcher] Sende Initial-Handshake an Anlage 1..." << std::endl;
+        MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::ANLAGE_2_CIID, m_chid);
+    }
+}
+
 
 // ============================================================================
 // EVENT HANDLER LOKAL (HAL)
@@ -149,26 +168,24 @@ void Dispatcher::handleHalPulse(uint32_t payload) {
             std::cout << ">>> TEST: Start gedrueckt! Gruen blinkt! <<<" << std::endl;
             m_actuators->lightGreenBlinkFast();
 
-            searchForNeighbor();
-
-            if (partner_coid != -1) {
-                MsgSendPulse(partner_coid, -1, ipc::NETWORK_MSG, payload);
-                std::cout << "[" << myName << "] Info an " << partnerName << " gesendet!" << std::endl;
+            // Nachricht an Partner senden, falls verbunden
+            if (m_partnerCoid != -1) {
+                MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::NETWORK_MSG, payload);
+                std::cout << "[" << getAnlagenPositionName() << "] Info an Partner gesendet!" << std::endl;
             } else {
-                std::cout << "[" << myName << "] Konnte Info nicht senden. " << partnerName << " ist noch offline." << std::endl;
+                std::cout << "[" << getAnlagenPositionName() << "] Konnte Info nicht senden. Partner ist noch offline." << std::endl;
             }
         }
         else {
             std::cout << ">>> TEST: Start losgelassen! Gruen aus! <<<" << std::endl;
             m_actuators->lightGreenOff();
 
-            searchForNeighbor(); // Auch beim Loslassen sicherheitshalber prüfen
-
-            if (partner_coid != -1) {
-                MsgSendPulse(partner_coid, -1, ipc::NETWORK_MSG, payload);
-                std::cout << "[" << myName << "] Info an " << partnerName << " gesendet!" << std::endl;
+            // Nachricht an Partner senden, falls verbunden
+            if (m_partnerCoid != -1) {
+                MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::NETWORK_MSG, payload);
+                std::cout << "[" << getAnlagenPositionName() << "] Info an Partner gesendet!" << std::endl;
             } else {
-                std::cout << "[" << myName << "] Konnte Info nicht senden. " << partnerName << " ist noch offline." << std::endl;
+                std::cout << "[" << getAnlagenPositionName() << "] Konnte Info nicht senden. Partner ist noch offline." << std::endl;
             }
         }
     }

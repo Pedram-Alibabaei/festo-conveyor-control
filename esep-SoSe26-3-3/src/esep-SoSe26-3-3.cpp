@@ -19,15 +19,15 @@ int main(int argc, char *argv[]) {
     std::cout << "===========================================" << std::endl;
 
 
-    bool isdevice_1 = false; // Anlage 1
+    ipc::AnlagenPosition pos; // Anlage 1
 
     // Wir starten bei i=1, da argv[0] immer der Pfad zum Programm selbst ist
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-s") {
-            isdevice_1 = true;
+            pos = ipc::VORN_ANLAGE_1;
         } else if (arg == "-c") {
-            isdevice_1 = false;
+            pos = ipc::HINTEN_ANLAGE_2;
         }
     }
 
@@ -39,22 +39,11 @@ int main(int argc, char *argv[]) {
 
     try {
         // DISPATCHER STARTEN
-        Dispatcher dispatcher(isdevice_1);
-        int chid = dispatcher.getMyChannelId();
-        int coid = ConnectAttach(0, 0, chid, _NTO_SIDE_CHANNEL, 0);
-
-        if (coid == -1) {
-            std::cerr << "FEHLER: Konnte QNX-Verbindung nicht herstellen!" << std::endl;
-            return EXIT_FAILURE;
-        }
+        Dispatcher dispatcher;
+        dispatcher.init(pos);
+        int dis_coid = dispatcher.getMyChannelId();
 
 
-        // Position im Dispatcher setzen
-        if (isdevice_1) {
-            std::cout << "[Konfiguration] Ich bin vorne (Anlage 1)" << std::endl;
-        } else {
-            std::cout << "[Konfiguration] Ich bin hinten (Anlage 2)" << std::endl;
-        }
 
         // 3. HARDWARE BAUEN
         // A) Sensoren bauen und E-Stop prüfen
@@ -74,7 +63,7 @@ int main(int argc, char *argv[]) {
 
         // 5. SENSOREN SCHARFSCHALTEN (Startet die Interrupts)
         sensors.setAdcCalibration(1000, 2000, 2200, 3000, 3200, 2400, 2600, 20);
-        sensors.initInterrupts(coid, ipc::HAL_INPUT);
+        sensors.initInterrupts(dis_coid, ipc::HAL_INPUT);
 
         std::cout << "[Main] Anlage ist nun BEREIT! Druecke die START-Taste..." << std::endl;
         std::cout << "===========================================\n" << std::endl;

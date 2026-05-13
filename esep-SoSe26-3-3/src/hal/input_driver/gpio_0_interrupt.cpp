@@ -7,8 +7,6 @@
 #include <hal/pal.hpp>
 #include <hal/pal/gpio.hpp>
 #include <shared/types.hpp>
-
-// NEU: Wichtig für die Definitionen von ipc::encodeHalPayload etc.
 #include <shared/ipc_definitions.hpp>
 
 #include <thread>
@@ -191,19 +189,19 @@ void Gpio0Interrupt::handle_interrupt() const noexcept
     // ACHTUNG: Bitte passe die ipc:: Werte an die Namen an,
     // die du in deiner ipc_definitions.hpp vergeben hast!
     PinInfo pins[] = {
-        { ipc::BTN_ESTOP,    "ii-estop",   ii::Estop::is_data_set(),   ii::pin_mask_estop },
-        { ipc::BTN_RESET,    "ii-reset",   ii::Reset::is_data_set(),   ii::pin_mask_reset },
-        { ipc::BTN_START,    "ii-start",   ii::Start::is_data_set(),   ii::pin_mask_start },
-        { ipc::BTN_STOP,     "ii-stop",    ii::Stop::is_data_set(),    ii::pin_mask_stop },
-        { ipc::LS_CHUTE,     "ip-chute",   ip::Chute::is_data_set(),   ip::pin_mask_chute },
-        { ipc::LS_EJECTOR,   "ip-ejector", ip::Ejector::is_data_set(), ip::pin_mask_ejector },
-        { ipc::LS_ENTRY,     "ip-entry",   ip::Entry::is_data_set(),   ip::pin_mask_entry },
-        { ipc::LS_END,       "ip-end",     ip::End::is_data_set(),     ip::pin_mask_end },
-        { ipc::SENSOR_METAL, "ip-metal",   ip::Metal::is_data_set(),   ip::pin_mask_metal },
+        { ipc::BTN_ESTOP,    "estop",   ii::Estop::is_data_set(),   ii::pin_mask_estop },
+        { ipc::BTN_RESET,    "reset",   ii::Reset::is_data_set(),   ii::pin_mask_reset },
+        { ipc::BTN_START,    "start",   ii::Start::is_data_set(),   ii::pin_mask_start },
+        { ipc::BTN_STOP,     "stop",    ii::Stop::is_data_set(),    ii::pin_mask_stop },
+        { ipc::LS_CHUTE,     "chute",   ip::Chute::is_data_set(),   ip::pin_mask_chute },
+        { ipc::LS_EJECTOR,   "ejector", ip::Ejector::is_data_set(), ip::pin_mask_ejector },
+        { ipc::LS_ENTRY,     "entry",   ip::Entry::is_data_set(),   ip::pin_mask_entry },
+        { ipc::LS_END,       "end",     ip::End::is_data_set(),     ip::pin_mask_end },
+        { ipc::SENSOR_METAL, "metal",   ip::Metal::is_data_set(),   ip::pin_mask_metal },
         // is-ejector und is-height sind vermutlich Aktoren-Rückmeldungen oder doppelt,
         // passe hier die IDs ebenfalls an deine Definitionen an.
-        { ipc::IS_EJECTOR,   "is-ejector", is::Ejector::is_data_set(), is::pin_mask_ejector },
-        { ipc::IS_HEIGHT,    "is-height",  is::Height::is_data_set(),  is::pin_mask_height },
+        { ipc::EJECTOR,   "ejector", is::Ejector::is_data_set(), is::pin_mask_ejector },
+        { ipc::HEIGHT,    "height",  is::Height::is_data_set(),  is::pin_mask_height },
     };
 
     for (const auto &pin : pins)

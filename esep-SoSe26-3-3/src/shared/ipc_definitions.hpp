@@ -35,22 +35,28 @@
 
 namespace ipc {
 
-// ============================================================================
-// 1. PULSE CODES (Das 8-Bit Feld "code" im QNX Pulse)
-// ============================================================================
-// Unterscheidet, woher der Pulse kommt. QNX verlangt für eigene Pulses
-// Werte oberhalb von _PULSE_CODE_MINAVAIL.
-enum PulseCode : int8_t {
-    HAL_INPUT   = _PULSE_CODE_MINAVAIL + 1,  // Kommt von der eigenen Sensorik (HAL)
-    NETWORK_MSG = _PULSE_CODE_MINAVAIL + 2,  // Kommt vom anderen Steuerungscomputer (Qnet)
-    TIMER_TICK =  _PULSE_CODE_MINAVAIL + 3   // fuer unsere Band-Uhr(Timer)
-};
 
 
-// ============================================================================
-// 2. HARDWARE SENSOR IDs (Für HAL_INPUT Pulses)
-// ============================================================================
-enum SensorID : uint16_t {
+    // ============================================================================
+    // 1. PULSE CODES (Das 8-Bit Feld "code" im QNX Pulse)
+    // ============================================================================
+    // Unterscheidet, woher der Pulse kommt. QNX verlangt für eigene Pulses
+    // Werte oberhalb von _PULSE_CODE_MINAVAIL.
+    enum PulseCode : int8_t {
+        HAL_INPUT      = _PULSE_CODE_MINAVAIL + 1,  // Kommt von der eigenen Sensorik (HAL)
+        NETWORK_MSG    = _PULSE_CODE_MINAVAIL + 2,  // Kommt vom anderen Steuerungscomputer (Qnet)
+        TIMER_TICK     = _PULSE_CODE_MINAVAIL + 3,  // fuer unsere Band-Uhr(Timer)
+        HEARTBEATTACKT = _PULSE_CODE_MINAVAIL + 4,
+        CONNECTION_MSG = _PULSE_CODE_MINAVAIL + 5,
+        DISCONNECT     = _PULSE_CODE_MINAVAIL + 6,
+        ANLAGE_2_CIID  = _PULSE_CODE_MINAVAIL + 7
+
+    };
+
+    // ============================================================================
+    // 2. HARDWARE SENSOR IDs (Für HAL_INPUT Pulses)
+    // ============================================================================
+    enum SensorID : uint16_t {
         // Tasten
         BTN_START = 1,
         BTN_STOP,
@@ -72,48 +78,45 @@ enum SensorID : uint16_t {
         HEIGHT_ADC
     };
 
-// --- Bit-Masking Hilfsfunktionen für den HAL Payload (ID + State) ---
-// Packt die 16-Bit SensorID und den 16-Bit Zustand in EINEN 32-Bit QNX Payload.
+    // --- Bit-Masking Hilfsfunktionen für den HAL Payload (ID + State) ---
+    // Packt die 16-Bit SensorID und den 16-Bit Zustand in EINEN 32-Bit QNX Payload.
 
-/** @brief Wird vom HAL genutzt, um den Pulse zu bauen */
-inline uint32_t encodeHalPayload(uint16_t sensorId, uint16_t state) {
-    return (static_cast<uint32_t>(sensorId) << 16) | state;
-}
+    /** @brief Wird vom HAL genutzt, um den Pulse zu bauen */
+    inline uint32_t encodeHalPayload(uint16_t sensorId, uint16_t state) {
+        return (static_cast<uint32_t>(sensorId) << 16) | state;
+    }
 
-/** @brief Wird vom Dispatcher genutzt, um die Sensor-ID herauszulesen */
-inline uint16_t decodeSensorID(uint32_t payload) {
-    return static_cast<uint16_t>(payload >> 16);
-}
+    /** @brief Wird vom Dispatcher genutzt, um die Sensor-ID herauszulesen */
+    inline uint16_t decodeSensorID(uint32_t payload) {
+        return static_cast<uint16_t>(payload >> 16);
+    }
 
-/** @brief Wird vom Dispatcher genutzt, um den Zustand (z.B. 1=High, 0=Low) zu lesen */
-inline uint16_t decodeSensorState(uint32_t payload) {
-    return static_cast<uint16_t>(payload & 0xFFFF);
-}
+    /** @brief Wird vom Dispatcher genutzt, um den Zustand (z.B. 1=High, 0=Low) zu lesen */
+    inline uint16_t decodeSensorState(uint32_t payload) {
+        return static_cast<uint16_t>(payload & 0xFFFF);
+    }
 
+    // ============================================================================
+    // 3. NETZWERK NACHRICHTEN (Für NETWORK_MSG Pulses)
+    // ============================================================================
+    // Die globalen Events, die zwischen den beiden Dispatchern verschickt werden.
+    enum NetworkMessage : uint32_t {
+        GLOBAL_ESTOP_PRESSED = 100,
+        GLOBAL_ESTOP_RELEASED,
 
-// ============================================================================
-// 3. NETZWERK NACHRICHTEN (Für NETWORK_MSG Pulses)
-// ============================================================================
-// Die globalen Events, die zwischen den beiden Dispatchern verschickt werden.
-enum NetworkMessage : uint32_t {
-    GLOBAL_ESTOP_PRESSED = 100,
-    GLOBAL_ESTOP_RELEASED,
+        // Handover-Protokoll (Übergabe des Werkstücks)
+        HANDOVER_READY_TO_GIVE,      // Anlage 1: "Ich habe ein Werkstück am Ende"
+        HANDOVER_READY_TO_RECEIVE,   // Anlage 2: "Alles klar, mein Einlauf ist frei"
+        HANDOVER_SUCCESSFUL,         // Anlage 2: "Habe es erhalten, du kannst stoppen"
 
-    // Handover-Protokoll (Übergabe des Werkstücks)
-    HANDOVER_READY_TO_GIVE,      // Anlage 1: "Ich habe ein Werkstück am Ende"
-    HANDOVER_READY_TO_RECEIVE,   // Anlage 2: "Alles klar, mein Einlauf ist frei"
-    HANDOVER_SUCCESSFUL,         // Anlage 2: "Habe es erhalten, du kannst stoppen"
+        GLOBAL_SYSTEM_RESET
+    };
 
-    GLOBAL_SYSTEM_RESET
-};
-
-
-// ============================================================================
-// 4. QNET NAMEN (Für name_attach und name_open)
-// ============================================================================
-// Diese Namen müssen im Netzwerk eindeutig sein, damit sich die Dispatcher finden.
-constexpr char DISPATCHER_NAME_SYSTEM_1[] = "Steuerungscomputer_1";
-constexpr char DISPATCHER_NAME_SYSTEM_2[] = "Steuerungscomputer_2";
+    // Definition der Position im Gesamtsystem
+    enum AnlagenPosition {
+        VORN_ANLAGE_1,
+        HINTEN_ANLAGE_2
+    };
 
 } // namespace ipc
 
