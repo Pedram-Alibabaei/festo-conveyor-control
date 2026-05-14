@@ -1,0 +1,171 @@
+/**
+ * @file ConnectionManager.cpp
+ * @brief Implementierung des QNX-Verbindungsmanagements und der Kontaktueberwachung.
+ */
+
+#include "ConnectionManager.hpp"
+#include <iostream>
+#include <chrono>
+#include <sys/neutrino.h>
+#include <sys/netmgr.h>
+#include <string>
+
+// ============================================================================
+// Konstruktor & Destruktor
+// ============================================================================
+
+ConnectionManager::ConnectionManager()
+    : m_localCoid(-1),
+      m_partnerCoid(-1),
+      m_attachHandle(nullptr),
+      m_isConnected(false),
+      m_partner_Alive(false),
+      m_isSearching(false) {
+}
+
+ConnectionManager::~ConnectionManager() {
+    // 1. Hintergrund-Thread sauber beenden
+    m_isSearching = false;
+    if (m_connectThread.joinable()) {
+        m_connectThread.join();
+    }
+
+    // 2. QNX GNS-Registrierung aufloesen
+    if (m_attachHandle != nullptr) {
+        name_detach(m_attachHandle, 0);
+    }
+
+    // 3. Verbindung zum Partner schliessen
+    if (m_partnerCoid != -1) {
+        ConnectDetach(m_partnerCoid);
+    }
+}
+
+// ============================================================================
+// Initialisierung (Control Plane)
+// ============================================================================
+
+void ConnectionManager::initConnection(int localCoid, ipc::AnlagenPosition pos) {
+    m_localCoid = localCoid;
+    m_pos = pos;
+
+    std::cout << "[ConnMgr] Initialisiere als Anlage "
+              << (m_pos == ipc::VORN_ANLAGE_1 ? "1" : "2") << std::endl;
+
+    // 1. Eigenen Namen zusammenbauen und bei QNX GNS anmelden
+    std::string myName = (m_pos == ipc::VORN_ANLAGE_1) ? "Anlage_1" : "Anlage_2";
+
+    // NAME_FLAG_ATTACH_GLOBAL ist extrem wichtig fuer Qnet!
+    m_attachHandle = name_attach(NULL, myName.c_str(), NAME_FLAG_ATTACH_GLOBAL);
+
+    if (m_attachHandle == nullptr) {
+        std::cerr << "[ConnMgr] FEHLER: Konnte GNS-Namen " << myName << " nicht registrieren!" << std::endl;
+        return; // Abbruch bei Fehler
+    }
+    std::cout << "[ConnMgr] Erfolgreich als '" << myName << "' registriert." << std::endl;
+
+    // ========================================================================
+    // 2. DEINE ASYMMETRISCHE START-LOGIK
+    // ========================================================================
+    if (m_pos == ipc::HINTEN_ANLAGE_2) {
+        std::cout << "[ConnMgr] Ich bin Anlage 2. Starte sofort die aktive Suche..." << std::endl;
+        connectToPartner(); // Startet den Thread
+    } else {
+        std::cout << "[ConnMgr] Ich bin Anlage 1. Warte passiv im Hintergrund." << std::endl;
+        // Ende der Methode. Thread wird nicht gestartet!
+    }
+}
+
+
+void ConnectionManager::connectToPartner() {
+    // Sicherheits-Check: Nur starten, wenn wir nicht schon suchen oder verbunden sind
+    if (!m_isSearching && !m_isConnected) {
+        m_isSearching = true;
+        m_connectThread = std::thread(&ConnectionManager::connectionTask, this);
+    }
+}
+
+// ============================================================================
+// Der Hintergrund-Thread (Lazy Loading)
+// ============================================================================
+
+void ConnectionManager::connectionTask() {
+    // Wen suchen wir? Genau den anderen!
+    std::string targetName = (m_pos == ipc::VORN_ANLAGE_1) ? "Anlage_2" : "Anlage_1";
+    std::cout << "[ConnMgr] Beginne Suche nach Partner '" << targetName << "' im Hintergrund..." << std::endl;
+
+    while (m_isSearching) {
+        // name_open sucht global nach dem anderen Briefkasten
+        int coid = name_open(targetName.c_str(), NAME_FLAG_ATTACH_GLOBAL);
+
+        if (coid != -1) {
+            // PARTNER GEFUNDEN!
+            m_partnerCoid = coid;
+            m_partner_Alive = true;
+            m_isConnected = true;
+
+            std::cout << "[ConnMgr] PARTNER GEFUNDEN! Verbindung steht. (Partner-COID: " << coid << ")" << std::endl;
+
+            // ====================================================================
+            // NEU: Lokalen Dispatcher aufwecken und die Partner-COID übergeben!
+            // ====================================================================
+            // Wir nutzen einen Puls (z.B. ipc::CONNECTION_ESTABLISHED).
+            // Die 'coid' packen wir als Integer-Wert in die Payload des Pulses.
+            if (m_localCoid != -1) {
+                MsgSendPulse(m_localCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::CONNECTION_MSG, coid);
+            }
+
+            m_isSearching = false; // Suche beenden
+            break;
+        }
+
+        // Falls er noch nicht da ist: 500ms warten, um die CPU nicht zu verbrennen.
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+}
+
+// ============================================================================
+// Hard-Realtime Kontaktueberwachung (Watchdog)
+// ============================================================================
+
+void ConnectionManager::heartbeatTackt() {
+    // Wenn gar keine Verbindung besteht, muessen wir auch nichts ueberwachen.
+    if (!m_isConnected) {
+        return;
+    }
+
+    // DIE DEADLINE-PRUEFUNG: Hat der Partner seit dem letzten Takt geantwortet?
+    if (m_partner_Alive == false) {
+        // DEADLINE VERPASST!
+        std::cerr << "[ConnMgr] KRITISCHER FEHLER: Heartbeat-Deadline verpasst! Loese Not-Halt aus." << std::endl;
+
+        m_isConnected = false; // System als getrennt markieren
+
+        // Not-Halt Puls an den lokalen Dispatcher abfeuern
+        if (m_localCoid != -1) {
+            MsgSendPulse(m_localCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::CONNECTION_MSG, 0);
+        }
+    } else {
+        // Er hat rechtzeitig geantwortet.
+        // Wir setzen die Falle wieder scharf fuer das naechste 50ms-Fenster!
+        m_partner_Alive = false;
+    }
+}
+
+void ConnectionManager::partnerAlive() {
+    // Der Dispatcher ruft dies auf, weil er gerade einen Puls (Ping oder Daten) vom Partner empfangen hat.
+    // Wir markieren den Partner als lebendig, um dem naechsten heartbeatTackt() zu entkommen.
+    m_partner_Alive = true;
+}
+
+// ============================================================================
+// Getter fuer den Dispatcher
+// ============================================================================
+
+bool ConnectionManager::isConnected() const {
+    return m_isConnected;
+}
+
+int ConnectionManager::getPartnerCoid() const {
+    return m_partnerCoid;
+}
