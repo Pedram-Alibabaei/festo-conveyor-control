@@ -24,31 +24,31 @@
 
 #include <vector>
 #include "Workpiece.hpp" // Enthält euer WPType Enum
-
+#include <shared/types.hpp>
 class targetSequence { // <-- Korrigiert: Großes 'T' für C++ Klassen!
 private:
-    std::vector<WPType> m_sequence;
+    std::vector<WpType> m_sequence;
     size_t m_currentIndex;
 
 public:
     // Konstruktor: Baut die geforderte Reihenfolge auf
     targetSequence() {
         m_sequence = {
-            WPType::TALL_DRILLED,       // 1. Nicht-metallisch mit Bohrung
-            WPType::TALL_METAL,         // 2. Metallisch ohne Bohrung
-            WPType::FLAT,               // 3. Flaches Werkstück
-            WPType::TALL_DRILLED_METAL  // 4. Metallisch mit Bohrung
+            WpType::TALL_DRILLED,       // 1. Nicht-metallisch mit Bohrung
+            WpType::TALL_METAL,         // 2. Metallisch ohne Bohrung
+            WpType::FLAT,               // 3. Flaches Werkstück
+            WpType::TALL_DRILLED_METAL  // 4. Metallisch mit Bohrung
         };
         m_currentIndex = 0;
     }
 
     // Welches Werkstück wird JETZT gerade erwartet?
-    WPType getExpectedType() const {
+    WpType getExpectedType() const {
         return m_sequence[m_currentIndex];
     }
 
     // Prüft, ob das aktuell auf dem Band liegende Werkstück das richtige ist
-    bool isCorrectType(WPType currentType) const {
+    bool isCorrectType(WpType currentType) const {
         return currentType == m_sequence[m_currentIndex];
     }
 

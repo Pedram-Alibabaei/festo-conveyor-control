@@ -41,7 +41,7 @@ int main(int argc, char *argv[]) {
         // DISPATCHER STARTEN
         Dispatcher dispatcher;
         dispatcher.init(pos);
-        int dis_coid = dispatcher.getMyChannelId();
+        int dis_coid = dispatcher.getMyLocalCoid();
 
 
 

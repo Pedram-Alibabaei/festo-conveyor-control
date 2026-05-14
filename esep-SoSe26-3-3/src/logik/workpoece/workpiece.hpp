@@ -23,17 +23,7 @@
 
 #ifndef WORKPIECE_HPP
 #define WORKPIECE_HPP
-
-// Alle bekannten Werkstücktypen der Anlage
-enum class WPType {
-    UNKNOWN,             // Startzustand, noch nicht vermessen
-    FLAT,                // Flaches Werkstück
-    TALL,                // Hohes Werkstück ohne Bohrung
-    TALL_DRILLED,        // Hohes Werkstück mit Bohrung
-    TALL_DRILLED_METAL,  // Hohes Werkstück mit Bohrung und metallisch
-    TALL_METAL           // Hohes Werkstück metallisch
-};
-
+#include <shared/types.hpp>
 // Alle physischen Zonen/Abschnitte auf dem Förderband
 enum class WpLocation {
     AT_ENTRY,             // Gerade am Einlauf (Lichtschranke blockiert)
@@ -52,7 +42,7 @@ private:
 
     // --- Private Member-Variablen (sicher gekapselt) ---
     int m_id;
-    WPType m_type;
+    WpType m_type;
     bool m_canPass;
     WpLocation m_location;
 

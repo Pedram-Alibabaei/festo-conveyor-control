@@ -14,7 +14,21 @@ namespace logik {
          * @param e Das aufgetretene Ereignis.
          * @param payload Optionaler Wert (z.B. der gemessene ADC-Wert der Höhe, Standard: 0).
          */
-        virtual void processEvent(Event e, int32_t payload = 0) = 0;
+        virtual void init(ipc::AnlagenPosition pos) = 0;
+
+        virtual void processEvent(Event e ) = 0;
+
+        virtual void workpieceInfo(int id, WpType type) = 0;
+
+        virtual void RequestToGiveWp() = 0;
+
+        virtual void readyToReceiveWp() = 0;
+
+        virtual void updateWpListe(wpType Type) = 0;
+
+        virtual void tackt() = 0;
+
+
 
     };
 

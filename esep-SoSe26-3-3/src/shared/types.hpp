@@ -33,4 +33,5 @@ enum class WpType {
  TALL_DRILLED_METAL,  // Hohes Werkstück mit Bohrung und metallisch
  TALL_METAL           // Hohes Werkstück metallisch
 };
+
 #endif // TYPES_HPP_

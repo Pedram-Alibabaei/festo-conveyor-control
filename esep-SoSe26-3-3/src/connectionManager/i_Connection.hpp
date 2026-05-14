@@ -18,8 +18,6 @@ public:
     // 1. Initialisiert den Briefkasten zum lokalen Dispatcher (pulseCode entfernt!)
     virtual void initConnection(int coid, ipc::AnlagenPosition pos) = 0;
 
-
-
     // 3. Startet den Verbindungsaufbau (name_open)
     virtual void connectToPartner() = 0;
 
