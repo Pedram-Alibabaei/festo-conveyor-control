@@ -13,6 +13,7 @@
 
 #include <iostream>
 #include <thread>
+#include "shared/types.hpp"
 
 extern "C"
 {
@@ -31,8 +32,8 @@ using namespace hal::input_driver;
 // ============================================================================
 AdcInterrupt::AdcInterrupt() :
                 Interrupt(),
-                m_coid(-1),
-                m_pulseCode(0)
+                m_coid(-1)
+
 {
     // Absichtlich leer! Der Thread und die Hardware-Registrierung
     // passieren jetzt erst kontrolliert in initAdcInterrupt().
@@ -41,10 +42,10 @@ AdcInterrupt::AdcInterrupt() :
 // ============================================================================
 // 2. Initialisierung (Von außen durch main.cpp aufgerufen)
 // ============================================================================
-void AdcInterrupt::initAdcInterrupt(int coid, uint8_t pulseCode)
+void AdcInterrupt::initAdcInterrupt(int coid)
 {
     m_coid = coid;
-    m_pulseCode = pulseCode;
+
 
     // 1. Hardware-Interrupt beim OS registrieren
     m_interrupt_id = setup_interrupt(pulse_intr, intr_adc);
@@ -129,10 +130,10 @@ void AdcInterrupt::handle_interrupt() const noexcept
             // ================================================================
             if (m_coid != -1) {
                 // Wir packen die ID (HEIGHT_ADC) und den Typ (z.B. TALL) in ein 32-Bit Paket
-                uint32_t payload = ipc::encodeHalPayload(ipc::HEIGHT_ADC, static_cast<uint16_t>(detected_type));
+                uint32_t payload = ipc::encodeHalPayload(ipc::HEIGHT, static_cast<uint16_t>(detected_type));
 
                 // Pulse abfeuern (Priorität 10, Code z.B. HAL_INPUT, Daten = payload)
-                MsgSendPulse(m_coid, 10, m_pulseCode, payload);
+                MsgSendPulse(m_coid, 10, ipc::HEIGHT, payload);
             }
         }
 

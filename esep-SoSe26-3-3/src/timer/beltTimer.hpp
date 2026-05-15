@@ -10,7 +10,7 @@
 #include <time.h>
 #include <sys/siginfo.h>
 
-class BeltTimer : public I_Timer {
+class BeltTimer : public i_Timer {
 private:
     timer_t m_timerId;        // Die ID des Timers vom Betriebssystem
     struct sigevent m_event;  // Beschreibt, WAS passieren soll, wenn der Timer ablaeuft

@@ -10,13 +10,14 @@
 
 #include <cstdint>
 #include <shared/ipc_definitions.hpp>
+#include "shared/types.hpp"
 
-class I_Connection {
+class i_Connection {
 public:
-    virtual ~I_Connection() = default;
+    virtual ~i_Connection() = default;
 
     // 1. Initialisiert den Briefkasten zum lokalen Dispatcher (pulseCode entfernt!)
-    virtual void initConnection(int coid, ipc::AnlagenPosition pos) = 0;
+    virtual void init(int coid, AnlagenPosition pos) = 0;
 
     // 3. Startet den Verbindungsaufbau (name_open)
     virtual void connectToPartner() = 0;

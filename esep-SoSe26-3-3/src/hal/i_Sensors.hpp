@@ -35,7 +35,7 @@ public:
      * @param coid Die Connection-ID (Kanal) des Dispatchers, an den die Pulses gesendet werden.
      * @param pulseCode Der 8-Bit Identifier (z.B. PulseCode::HAL_INPUT), der den Pulsen angehängt wird.
      */
-    virtual void initInterrupts(int coid, uint8_t pulseCode) = 0;
+    virtual void init(int coid) = 0;
 
     /**
      * @brief Deaktiviert alle digitalen Hardware-Interrupts.
@@ -53,6 +53,8 @@ public:
      * Muss aufgerufen werden, bevor Messungen stattfinden (z.B. nach dem Auslesen
      * einer Konfigurationsdatei beim Systemstart).
      */
+    virtual void setAdcCalibrationStats()=0;
+
     virtual void setAdcCalibration(uint32_t trigger,
                                    uint32_t flatMin, uint32_t flatMax,
                                    uint32_t tallMin, uint32_t tallMax,

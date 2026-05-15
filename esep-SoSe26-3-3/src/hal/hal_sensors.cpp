@@ -16,10 +16,10 @@ namespace hal {
 
     }
 
-    void HalSensors::initInterrupts(int coid, uint8_t pulseCode) {
+    void HalSensors::init(int coid) {
         // Weiterleiten an den GPIO Treiber
-        m_gpio_interrupt.initInterrupts(coid, pulseCode);
-        m_adc_interrupt.initAdcInterrupt(coid, pulseCode);
+        m_gpio_interrupt.initInterrupts(coid);
+        m_adc_interrupt.initAdcInterrupt(coid);
     }
 
     void HalSensors::stopInterrupts() {
@@ -27,6 +27,10 @@ namespace hal {
         m_adc_interrupt.stopAdcInterrupt();
     }
 
+     void HalSensors::setAdcCalibrationStats(){
+ //TODO
+
+     }
 
     void HalSensors::setAdcCalibration(uint32_t trigger,
                                        uint32_t flatMin, uint32_t flatMax,

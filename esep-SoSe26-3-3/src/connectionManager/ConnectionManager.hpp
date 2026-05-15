@@ -13,8 +13,9 @@
 #include <atomic>
 #include <thread>
 #include <shared/ipc_definitions.hpp>
+#include "shared/types.hpp"
 
-class ConnectionManager : public I_Connection {
+class ConnectionManager : public i_Connection {
 private:
     // Kommunikation zum LOKALEN Dispatcher (für Not-Halt/Fehler)
     int m_localCoid;
@@ -22,7 +23,7 @@ private:
     // Die Adresse des PARTNERS (wird vom Dispatcher abgefragt)
     std::atomic<int> m_partnerCoid;
 
-    ipc::AnlagenPosition m_pos;
+    AnlagenPosition m_pos;
     name_attach_t* m_attachHandle;
 
     // Die zentrale Status-Variable
@@ -39,7 +40,7 @@ public:
     virtual ~ConnectionManager();
 
     // Initialisierung
-    void initConnection(int localCoid, ipc::AnlagenPosition pos) override;
+    void init(int localCoid, AnlagenPosition pos) override;
 
 
     void connectToPartner() override;

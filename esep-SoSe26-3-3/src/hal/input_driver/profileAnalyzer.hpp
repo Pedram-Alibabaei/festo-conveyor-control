@@ -73,6 +73,8 @@ public:
      * @brief Setzt die System-Kalibrierung (Schwellenwerte und Zonen).
      * Wird idealerweise beim Systemstart vom main-Thread aufgerufen.
      */
+    void setCalibrationStats();
+
     void setCalibration(uint32_t trigger,
                         uint32_t flatMin, uint32_t flatMax,
                         uint32_t tallMin, uint32_t tallMax,

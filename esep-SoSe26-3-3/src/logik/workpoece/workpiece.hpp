@@ -43,7 +43,7 @@ private:
     // --- Private Member-Variablen (sicher gekapselt) ---
     int m_id;
     WpType m_type;
-    bool m_canPass;
+
     WpLocation m_location;
 
 public:
@@ -53,8 +53,7 @@ public:
      */
     Workpiece() :
         m_id(s_next_id++),
-        m_type(WPType::UNKNOWN),
-        m_canPass(false),
+        m_type(WpType::UNKNOWN),
         m_location(WpLocation::AT_ENTRY)
     {}
 

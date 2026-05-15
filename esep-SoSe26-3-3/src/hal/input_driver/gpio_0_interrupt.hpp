@@ -33,7 +33,7 @@ public:
      * @param coid Die Connection-ID (Kanal) des Dispatchers.
      * @param pulseCode Der 8-Bit Identifier (z.B. ipc::HAL_INPUT).
      */
-    void initInterrupts(int coid, uint8_t pulseCode);
+    void initInterrupts(int coid);
 
     /**
      * @brief Deaktiviert die Hardware-Interrupts.
@@ -57,7 +57,6 @@ private:
     // NEU: Member-Variablen für die QNX Kommunikation
     // ========================================================================
     int m_coid;
-    uint8_t m_pulseCode;
 };
 
 } // namespace input_driver
