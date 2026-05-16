@@ -11,6 +11,9 @@
 #include "shared/ipc_definitions.hpp"
 #include "hal/hal_sensors.hpp"
 #include "hal/hal_actuators.hpp"
+#include "shared/types.hpp"
+#include "connectionManager/ConnectionManager.hpp"
+#include "timer/timer.hpp"
 
 
 int main(int argc, char *argv[]) {
@@ -18,58 +21,53 @@ int main(int argc, char *argv[]) {
     std::cout << "    Festo Anlage - Systemstart           " << std::endl;
     std::cout << "===========================================" << std::endl;
 
-
-    ipc::AnlagenPosition pos; // Anlage 1
-
-    // Wir starten bei i=1, da argv[0] immer der Pfad zum Programm selbst ist
+    AnlagenPosition pos = AnlagenPosition::VORN_ANLAGE_1;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-s") {
-            pos = ipc::VORN_ANLAGE_1;
+            pos = VORN_ANLAGE_1;
         } else if (arg == "-c") {
-            pos = ipc::HINTEN_ANLAGE_2;
+            pos = HINTEN_ANLAGE_2;
         }
     }
 
-    // Hardware-Rechte anfordern
     if (ThreadCtl(_NTO_TCTL_IO, 0) == -1) {
         std::cerr << "FEHLER: Konnte keine Hardware-Rechte anfordern (root?)." << std::endl;
         return EXIT_FAILURE;
     }
 
     try {
-        // DISPATCHER STARTEN
+
         Dispatcher dispatcher;
         dispatcher.init(pos);
         int dis_coid = dispatcher.getMyLocalCoid();
 
+        ConnectionManager c_manager;
+        c_manager.init(dis_coid, pos);
 
-
-        // 3. HARDWARE BAUEN
-        // A) Sensoren bauen und E-Stop prüfen
         hal::HalSensors sensors;
+        hal::HalActuators actuators;
+        sensors.init(dis_coid);
+
         if (sensors.isEstopPressed()) {
             std::cerr << "ACHTUNG: E-Stop ist gedrueckt! Bitte entriegeln." << std::endl;
             return EXIT_FAILURE;
         }
 
-        // B) Aktoren bauen (mit Auto-Detect im Hintergrund!)
-        hal::HalActuators actuators;
+        Timer timer;
+        timer.init(dis_coid);
+        timer.startHeartbeatTimer(2000); // Alle 2000ms ein Heartbeat-Check
+        timer.startBeltTimer(1000);
 
-        // 4. VERKABELN (Die Magie)
-        // Dem Dispatcher die Aktorik übergeben, damit er steuern kann
         dispatcher.setActuators(&actuators);
+        dispatcher.setConnectionManager(&c_manager);
+        dispatcher.setSensor(&sensors);
+        dispatcher.setTimer(&timer);
 
-
-        // 5. SENSOREN SCHARFSCHALTEN (Startet die Interrupts)
-        sensors.setAdcCalibration(1000, 2000, 2200, 3000, 3200, 2400, 2600, 20);
-        sensors.initInterrupts(dis_coid, ipc::HAL_INPUT);
-
-        std::cout << "[Main] Anlage ist nun BEREIT! Druecke die START-Taste..." << std::endl;
-        std::cout << "===========================================\n" << std::endl;
-
-        // 6. ENDLOSSCHLEIFE
         dispatcher.run();
+
+        std::cout << "Anlage ist nun BEREIT!" << std::endl;
+        std::cout << "=====================\n" << std::endl;
 
     } catch (const std::exception& e) {
         std::cerr << "KRITISCHER SYSTEMFEHLER: " << e.what() << std::endl;

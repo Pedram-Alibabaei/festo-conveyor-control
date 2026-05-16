@@ -31,11 +31,9 @@
 #define IPC_DEFINITIONS_HPP_
 
 #include <stdint.h>
-#include <sys/iomsg.h> // Für _PULSE_CODE_MINAVAIL unter QNX
+#include <sys/iomsg.h>
 
 namespace ipc {
-
-
 
     // ============================================================================
     // 1. PULSE CODES (Das 8-Bit Feld "code" im QNX Pulse)
@@ -43,14 +41,33 @@ namespace ipc {
     // Unterscheidet, woher der Pulse kommt. QNX verlangt für eigene Pulses
     // Werte oberhalb von _PULSE_CODE_MINAVAIL.
     enum PulseCode : int8_t {
-        HAL_INPUT      = _PULSE_CODE_MINAVAIL + 1,  // Kommt von der eigenen Sensorik (HAL)
-        NETWORK_MSG    = _PULSE_CODE_MINAVAIL + 2,  // Kommt vom anderen Steuerungscomputer (Qnet)
-        TIMER_TICK     = _PULSE_CODE_MINAVAIL + 3,  // fuer unsere Band-Uhr(Timer)
-        HEARTBEATTACKT = _PULSE_CODE_MINAVAIL + 4,
-        CONNECTION_MSG = _PULSE_CODE_MINAVAIL + 5,
-        DISCONNECT     = _PULSE_CODE_MINAVAIL + 6,
-        ANLAGE_2_CIID  = _PULSE_CODE_MINAVAIL + 7
+        // ====================================================================
+        // LOKALE HARDWARE & SYSTEM (1 - 9)
+        // ====================================================================
+        HAL_INPUT         = _PULSE_CODE_MINAVAIL + 1,  // Kommt von der eigenen Sensorik (HAL)
+        CONNECTION_MSG    = _PULSE_CODE_MINAVAIL + 2,  // Interner Handshake (ConnectionManager gefunden)
+        DISCONNECT        = _PULSE_CODE_MINAVAIL + 3,  // Not-Halt oder Verbindungsabbruch
 
+        // ====================================================================
+        // TIMER EVENTS (10 - 19)
+        // ====================================================================
+        BELT_TICK         = _PULSE_CODE_MINAVAIL + 10, // Band-Uhr für Werkstückverfolgung
+        HEARTBEATTACKT    = _PULSE_CODE_MINAVAIL + 11, // Watchdog-Timer für Netzwerk
+        SORTER_TIMER_TICK = _PULSE_CODE_MINAVAIL + 12, // One-Shot Timer für die Weiche/Auswerfer
+
+        // ====================================================================
+        // NETZWERK BASIS (20 - 29)
+        // ====================================================================
+        NETWORK_MSG       = _PULSE_CODE_MINAVAIL + 20, // Generische Nachricht vom Partner
+        ANLAGE_2_CIID     = _PULSE_CODE_MINAVAIL + 21, // Initialer Handshake über Qnet
+        HEARTBEAT         = _PULSE_CODE_MINAVAIL + 22,
+        // ====================================================================
+        // NETZWERK WERKSTÜCK-ÜBERGABE (30 - 39)
+        // ====================================================================
+        WP_INFO       = _PULSE_CODE_MINAVAIL + 30, // Ersetzt dein WP_INFO (ID & Typ)
+        REQ_RECEIVE   = _PULSE_CODE_MINAVAIL + 31, // Darf ich übergeben?
+        READY_RECEIVE = _PULSE_CODE_MINAVAIL + 32, // Ja, ich bin bereit!
+        UPDATE_LIST   = _PULSE_CODE_MINAVAIL + 33  // Liste beim Partner updaten
     };
 
     // ============================================================================
@@ -58,24 +75,21 @@ namespace ipc {
     // ============================================================================
     enum SensorID : uint16_t {
         // Tasten
-        BTN_START = 1,
+        BTN_START     = _PULSE_CODE_MINAVAIL + 1,
         BTN_STOP,
         BTN_RESET,
         BTN_ESTOP,
 
-        // Lichtschranken / Sensoren
         LS_ENTRY,
-        LS_HEIGHT,      // Digitale Höhen-Lichtschranke
-        LS_EJECTOR,
+        LS_HEIGHT,// nicht nutzen
+        LS_SWITCH,
         LS_END,
         LS_CHUTE,
         SENSOR_METAL,
 
-        EJECTOR,     // Zylinder eingefahren/ausgefahren
-        HEIGHT,
+        EJECTOR,
+        HEIGHT
 
-        // Spezial: Analoger Höhenwert (Der fertige Werkstück-Typ)
-        HEIGHT_ADC
     };
 
     // --- Bit-Masking Hilfsfunktionen für den HAL Payload (ID + State) ---
@@ -101,22 +115,30 @@ namespace ipc {
     // ============================================================================
     // Die globalen Events, die zwischen den beiden Dispatchern verschickt werden.
     enum NetworkMessage : uint32_t {
-        GLOBAL_ESTOP_PRESSED = 100,
+        GLOBAL_ESTOP_PRESSED = _PULSE_CODE_MINAVAIL + 1,
         GLOBAL_ESTOP_RELEASED,
+        GLOBAL_START_PRESSED,
+        GLOBAL_START_RELEASED,
+        GLOBAL_RESET_PRESSED,
+        GLOBAL_RESET_RELEASED,
+        GLOBAL_STOP_PRESSED,
+        GLOBAL_STOP_RELEASED,
 
         // Handover-Protokoll (Übergabe des Werkstücks)
-        HANDOVER_READY_TO_GIVE,      // Anlage 1: "Ich habe ein Werkstück am Ende"
-        HANDOVER_READY_TO_RECEIVE,   // Anlage 2: "Alles klar, mein Einlauf ist frei"
-        HANDOVER_SUCCESSFUL,         // Anlage 2: "Habe es erhalten, du kannst stoppen"
-
-        GLOBAL_SYSTEM_RESET
+        MSG_REQ_RECEIVE,      // Anlage 1: "Ich habe ein Werkstück am Ende"
+        MSG_READY_RECEIVE,   // Anlage 2: "Alles klar, mein Einlauf ist frei"
+        HANDOVER_SUCCESSFUL,          // Anlage 2: "Habe es erhalten, du kannst stoppen"
+        MSG_UPDATE_LIST
     };
 
-    // Definition der Position im Gesamtsystem
-    enum AnlagenPosition {
-        VORN_ANLAGE_1,
-        HINTEN_ANLAGE_2
+    enum HeightADC:uint16_t{
+        BLOCKED = _PULSE_CODE_MINAVAIL + 1,
+        CLEARED,
+        HIGH_ERROR
+
     };
+
+
 
 } // namespace ipc
 

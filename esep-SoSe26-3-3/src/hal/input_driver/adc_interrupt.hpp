@@ -33,12 +33,14 @@ public:
      * @param coid Die Connection-ID (Kanal) des Dispatchers.
      * @param pulseCode Der 8-Bit Identifier (z.B. ipc::HAL_INPUT).
      */
-    void initAdcInterrupt(int coid, uint8_t pulseCode);
+    void initAdcInterrupt(int coid);
 
      /**************************************************************************
      * @brief Überträgt die Kalibrierungsdaten an den internen ProfileAnalyzer.
      * Muss zwingend vor initAdcInterrupt() aufgerufen werden!
      */
+    void setCalibrationStats();
+
     void setAdcCalibration(uint32_t trigger,
                            uint32_t flatMin, uint32_t flatMax,
                            uint32_t tallMin, uint32_t tallMax,
@@ -68,7 +70,6 @@ private:
     // Member-Variablen für QNX Kommunikation und Auswertung
     // ========================================================================
     int m_coid;                         // Die Ziel-Adresse für unsere Pulses
-    uint8_t m_pulseCode;                // Der 8-Bit QNX Pulse-Code (z.B. HAL_INPUT)
     mutable ProfileAnalyzer m_analyzer; // 'mutable', damit es in der const Methode nutzbar bleibt
 };
 

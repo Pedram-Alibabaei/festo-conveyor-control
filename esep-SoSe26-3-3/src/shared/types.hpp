@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <sys/iomsg.h>
 
 // signed int
 using SInt8 = std::int8_t;
@@ -25,8 +26,8 @@ using Size = std::size_t;
 using UIntPtr = std::uintptr_t;
 
 // Alle bekannten Werkstücktypen der Anlage
-enum class WpType {
- UNKNOWN,             // Startzustand, noch nicht vermessen
+enum WpType :uint32_t{
+ UNKNOWN = _PULSE_CODE_MINAVAIL + 1,             // Startzustand, noch nicht vermessen
  FLAT,                // Flaches Werkstück
  TALL,                // Hohes Werkstück ohne Bohrung
  TALL_DRILLED,        // Hohes Werkstück mit Bohrung
@@ -34,4 +35,9 @@ enum class WpType {
  TALL_METAL           // Hohes Werkstück metallisch
 };
 
+// Definition der Position im Gesamtsystem
+enum AnlagenPosition {
+ VORN_ANLAGE_1    = _PULSE_CODE_MINAVAIL + 1,
+ HINTEN_ANLAGE_2  = _PULSE_CODE_MINAVAIL + 2,
+};
 #endif // TYPES_HPP_

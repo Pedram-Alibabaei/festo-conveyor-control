@@ -9,6 +9,7 @@
 #include <sys/neutrino.h>
 #include <sys/netmgr.h>
 #include <string>
+#include <unistd.h>
 
 // ============================================================================
 // Konstruktor & Destruktor
@@ -45,15 +46,15 @@ ConnectionManager::~ConnectionManager() {
 // Initialisierung (Control Plane)
 // ============================================================================
 
-void ConnectionManager::initConnection(int localCoid, ipc::AnlagenPosition pos) {
+void ConnectionManager::init(int localCoid,AnlagenPosition pos) {
     m_localCoid = localCoid;
     m_pos = pos;
 
     std::cout << "[ConnMgr] Initialisiere als Anlage "
-              << (m_pos == ipc::VORN_ANLAGE_1 ? "1" : "2") << std::endl;
+              << (m_pos == VORN_ANLAGE_1 ? "1" : "2") << std::endl;
 
     // 1. Eigenen Namen zusammenbauen und bei QNX GNS anmelden
-    std::string myName = (m_pos == ipc::VORN_ANLAGE_1) ? "Anlage_1" : "Anlage_2";
+    std::string myName = (m_pos == VORN_ANLAGE_1) ? "Anlage_1" : "Anlage_2";
 
     // NAME_FLAG_ATTACH_GLOBAL ist extrem wichtig fuer Qnet!
     m_attachHandle = name_attach(NULL, myName.c_str(), NAME_FLAG_ATTACH_GLOBAL);
@@ -67,7 +68,7 @@ void ConnectionManager::initConnection(int localCoid, ipc::AnlagenPosition pos) 
     // ========================================================================
     // 2. DEINE ASYMMETRISCHE START-LOGIK
     // ========================================================================
-    if (m_pos == ipc::HINTEN_ANLAGE_2) {
+    if (m_pos == HINTEN_ANLAGE_2) {
         std::cout << "[ConnMgr] Ich bin Anlage 2. Starte sofort die aktive Suche..." << std::endl;
         connectToPartner(); // Startet den Thread
     } else {
@@ -90,36 +91,48 @@ void ConnectionManager::connectToPartner() {
 // ============================================================================
 
 void ConnectionManager::connectionTask() {
-    // Wen suchen wir? Genau den anderen!
-    std::string targetName = (m_pos == ipc::VORN_ANLAGE_1) ? "Anlage_2" : "Anlage_1";
+    // Wen suchen wir?
+    std::string targetName = (m_pos == VORN_ANLAGE_1) ? "Anlage_2" : "Anlage_1";
+
+    // NEU: Wir bauen den echten QNX-Pfad zusammen
+    std::string fullPath = "/dev/name/global/" + targetName;
+
     std::cout << "[ConnMgr] Beginne Suche nach Partner '" << targetName << "' im Hintergrund..." << std::endl;
 
     while (m_isSearching) {
-        // name_open sucht global nach dem anderen Briefkasten
-        int coid = name_open(targetName.c_str(), NAME_FLAG_ATTACH_GLOBAL);
 
-        if (coid != -1) {
-            // PARTNER GEFUNDEN!
-            m_partnerCoid = coid;
-            m_partner_Alive = true;
-            m_isConnected = true;
+        // ====================================================================
+        // PROFI-TRICK: Checken, ob der Briefkasten ueberhaupt existiert!
+        // F_OK prueft, ob die Datei im Netzwerk vorhanden ist.
+        // ====================================================================
+        if (access(fullPath.c_str(), F_OK) != -1) {
+            std::cout << "........................" << std::flush;
+            // Datei ist da! Jetzt ist name_open zu 100% sicher und friert nicht ein.
+            int coid = name_open(targetName.c_str(), NAME_FLAG_ATTACH_GLOBAL);
 
-            std::cout << "[ConnMgr] PARTNER GEFUNDEN! Verbindung steht. (Partner-COID: " << coid << ")" << std::endl;
+            if (coid != -1) {
+                // PARTNER GEFUNDEN!
+                m_partnerCoid = coid;
+                m_partner_Alive = true;
+                m_isConnected = true;
 
-            // ====================================================================
-            // NEU: Lokalen Dispatcher aufwecken und die Partner-COID übergeben!
-            // ====================================================================
-            // Wir nutzen einen Puls (z.B. ipc::CONNECTION_ESTABLISHED).
-            // Die 'coid' packen wir als Integer-Wert in die Payload des Pulses.
-            if (m_localCoid != -1) {
-                MsgSendPulse(m_localCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::CONNECTION_MSG, coid);
+                std::cout << "\n[ConnMgr] PARTNER GEFUNDEN! Verbindung steht. (Partner-COID: " << coid << ")" << std::endl;
+
+                // Dispatcher benachrichtigen
+                if (m_localCoid != -1) {
+                    MsgSendPulse(m_localCoid, 1, ipc::CONNECTION_MSG, coid);
+                }
+
+                m_isSearching = false; // Suche beenden
+                break;
             }
-
-            m_isSearching = false; // Suche beenden
-            break;
+        } else {
+            // Die Datei gibt es noch nicht. Anlage 1 ist also noch aus.
+            // Wir drucken einen Punkt und warten.
+            std::cout << "." << std::flush;
         }
 
-        // Falls er noch nicht da ist: 500ms warten, um die CPU nicht zu verbrennen.
+        // 500ms warten, um die CPU nicht zu verbrennen.
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 }
@@ -143,7 +156,7 @@ void ConnectionManager::heartbeatTackt() {
 
         // Not-Halt Puls an den lokalen Dispatcher abfeuern
         if (m_localCoid != -1) {
-            MsgSendPulse(m_localCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::CONNECTION_MSG, 0);
+            MsgSendPulse(m_localCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::DISCONNECT, 0);
         }
     } else {
         // Er hat rechtzeitig geantwortet.

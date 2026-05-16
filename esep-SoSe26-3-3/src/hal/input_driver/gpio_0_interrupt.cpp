@@ -29,8 +29,8 @@ using namespace hal::input_driver;
 // ============================================================================
 Gpio0Interrupt::Gpio0Interrupt() :
                 Interrupt(),
-                m_coid(-1),
-                m_pulseCode(0)
+                m_coid(-1)
+
 {
     // Absichtlich leer! Der Thread und die Hardware-Registrierung
     // passieren jetzt erst kontrolliert in initInterrupts().
@@ -39,10 +39,9 @@ Gpio0Interrupt::Gpio0Interrupt() :
 // ============================================================================
 // 2. Initialisierung (Von außen durch main.cpp aufgerufen)
 // ============================================================================
-void Gpio0Interrupt::initInterrupts(int coid, uint8_t pulseCode)
+void Gpio0Interrupt::initInterrupts(int coid)
 {
     m_coid = coid;
-    m_pulseCode = pulseCode;
 
     // 1. Hardware-Interrupt beim OS registrieren
     m_interrupt_id = setup_interrupt(pulse_intr, intr_gpio_port_0);
@@ -194,7 +193,7 @@ void Gpio0Interrupt::handle_interrupt() const noexcept
         { ipc::BTN_START,    "start",   ii::Start::is_data_set(),   ii::pin_mask_start },
         { ipc::BTN_STOP,     "stop",    ii::Stop::is_data_set(),    ii::pin_mask_stop },
         { ipc::LS_CHUTE,     "chute",   ip::Chute::is_data_set(),   ip::pin_mask_chute },
-        { ipc::LS_EJECTOR,   "ejector", ip::Ejector::is_data_set(), ip::pin_mask_ejector },
+        { ipc::LS_SWITCH,   "ejector", ip::Ejector::is_data_set(), ip::pin_mask_ejector },
         { ipc::LS_ENTRY,     "entry",   ip::Entry::is_data_set(),   ip::pin_mask_entry },
         { ipc::LS_END,       "end",     ip::End::is_data_set(),     ip::pin_mask_end },
         { ipc::SENSOR_METAL, "metal",   ip::Metal::is_data_set(),   ip::pin_mask_metal },
@@ -209,15 +208,13 @@ void Gpio0Interrupt::handle_interrupt() const noexcept
         // Hat sich dieser Pin verändert?
         if (status & pin.mask)
         {
-            // Optional: Fürs Debugging in der Konsole lassen
-            std::cout << "[GPIO HAL] Flanke an " << pin.name << " -> Neu: " << pin.active << "\n";
 
             // 1. QNX Payload bauen (Sensor ID + Zustand 1 oder 0)
             uint32_t payload = ipc::encodeHalPayload(pin.sensor_id, pin.active ? 1 : 0);
 
             // 2. Pulse an den Dispatcher feuern!
             if (m_coid != -1) {
-                MsgSendPulse(m_coid, 10, m_pulseCode, payload);
+                MsgSendPulse(m_coid, 10, ipc::HAL_INPUT, payload);
             }
         }
     }

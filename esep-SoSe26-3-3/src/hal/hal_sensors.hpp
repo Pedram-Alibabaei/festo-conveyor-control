@@ -27,9 +27,10 @@ namespace hal {
         // ========================================================================
         // Implementierung des i_Sensors Vertrages (override)
         // ========================================================================
-        void initInterrupts(int coid, uint8_t pulseCode) override;
+        void init(int coid ) override;
         void stopInterrupts() override;
 
+        void setAdcCalibrationStats()override;
         void setAdcCalibration(uint32_t trigger,
                                uint32_t flatMin, uint32_t flatMax,
                                uint32_t tallMin, uint32_t tallMax,
