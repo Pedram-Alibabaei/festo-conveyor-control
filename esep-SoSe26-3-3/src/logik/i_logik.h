@@ -28,7 +28,7 @@ namespace logik {
 
         virtual void updateWpListe(wpType Type) = 0;
 
-        virtual void tackt() = 0;
+        virtual void ta ckt() = 0;
 
 
 

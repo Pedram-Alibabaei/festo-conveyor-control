@@ -8,12 +8,12 @@
 #include <sys/neutrino.h>
 
 #include "dispatcher/dispatcher.hpp"
-#include "dispatcher/i_Dispatcher.hpp"
 #include "shared/ipc_definitions.hpp"
 #include "hal/hal_sensors.hpp"
 #include "hal/hal_actuators.hpp"
 #include "shared/types.hpp"
 #include "connectionManager/ConnectionManager.hpp"
+#include "timer/timer.hpp"
 
 
 int main(int argc, char *argv[]) {
@@ -54,13 +54,20 @@ int main(int argc, char *argv[]) {
             return EXIT_FAILURE;
         }
 
-        std::cout << "Anlage ist nun BEREIT!" << std::endl;
-        std::cout << "=====================\n" << std::endl;
+        Timer timer;
+        timer.init(dis_coid);
+        timer.startHeartbeatTimer(2000); // Alle 2000ms ein Heartbeat-Check
+        timer.startBeltTimer(1000);
 
         dispatcher.setActuators(&actuators);
         dispatcher.setConnectionManager(&c_manager);
         dispatcher.setSensor(&sensors);
+        dispatcher.setTimer(&timer);
+
         dispatcher.run();
+
+        std::cout << "Anlage ist nun BEREIT!" << std::endl;
+        std::cout << "=====================\n" << std::endl;
 
     } catch (const std::exception& e) {
         std::cerr << "KRITISCHER SYSTEMFEHLER: " << e.what() << std::endl;

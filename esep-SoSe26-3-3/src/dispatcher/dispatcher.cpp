@@ -114,32 +114,11 @@ void Dispatcher::run() {
 void Dispatcher::handlePulse(const struct _pulse& pulse) {
     switch (pulse.code) {
 
+        // ====================================================================
+        // LOKALE HARDWARE & SYSTEM
+        // ====================================================================
         case ipc::HAL_INPUT:
             handleHalPulse(pulse.value.sival_int);
-            break;
-
-        case ipc::NETWORK_MSG:
-            // Der Partner hat uns etwas geschickt (Ping oder Daten)
-            if (m_connection) {
-                m_connection->partnerAlive(); // Watchdog zuruecksetzen
-            }
-            handleNetworkPulse(pulse.value.sival_int);
-            break;
-
-        case ipc::TIMER_TICK:
-            handleTimerPulse(pulse.value.sival_int);
-            break;
-
-        case ipc::HEARTBEATTACKT:
-            // Der 50ms-Timer sagt: Deadline pruefen!
-            if (m_connection) {
-                m_connection->heartbeatTackt();
-
-                // Falls verbunden: Heartbeat an den Partner senden
-                if (m_connection->isConnected()) {
-                    MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::NETWORK_MSG, 0);
-                }
-            }
             break;
 
         case ipc::CONNECTION_MSG:
@@ -151,7 +130,78 @@ void Dispatcher::handlePulse(const struct _pulse& pulse) {
             // KRITISCH: Verbindung verloren oder Not-Halt
             std::cerr << "[Dispatcher] ACHTUNG: Verbindung unterbrochen! Not-Halt." << std::endl;
             if (m_actuators) m_actuators->driveStop();
-            // Hier spaeter: m_logik->geheInFehlerzustand();
+            // Hier spaeter: if (m_logik) m_logik->geheInFehlerzustand();
+            break;
+
+            // ====================================================================
+                    // TIMER EVENTS
+                    // ====================================================================
+                    case ipc::BELT_TICK: {
+                        // TEST: Gruene Ampel bei jedem Takt umschalten (Toggle)
+                        static bool toggleGreen = false;
+                        toggleGreen = !toggleGreen;
+                        if (m_actuators) {
+                            if (toggleGreen) m_actuators->lightGreenOn();
+                            else m_actuators->lightGreenOff();
+                        }
+
+                        handleTimerPulse(pulse.value.sival_int);
+                        break;
+                    }
+
+                    case ipc::HEARTBEATTACKT: {
+                        // TEST: Gelbe Ampel bei jedem Takt umschalten
+                        static bool toggleYellow = false;
+                        toggleYellow = !toggleYellow;
+                        if (m_actuators) {
+                            if (toggleYellow) m_actuators->lightYellowOn();
+                            else m_actuators->lightYellowOff();
+                        }
+
+                        // Der Watchdog-Timer sagt: Deadline pruefen!
+                        if (m_connection) {
+                            m_connection->heartbeatTackt();
+
+                            // Falls verbunden: Heartbeat an den Partner senden
+                            if (m_connection->isConnected()) {
+                                MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::HEARTBEAT, 0);
+                            }
+                        }
+                        break;
+                    }
+
+                    // ====================================================================
+                    // NETZWERK
+                    // ====================================================================
+                    case ipc::HEARTBEAT: {
+                        // TEST: Rote Ampel bei jeder empfangenen Nachricht umschalten
+                        static bool toggleRed = false;
+                        toggleRed = !toggleRed;
+                        if (m_actuators) {
+                            if (toggleRed) m_actuators->lightRedOn();
+                            else m_actuators->lightRedOff();
+                        }
+
+                        if (m_connection && m_connection->isConnected()){
+                            m_connection->partnerAlive();
+                        }
+                        break;
+                    }
+
+
+        case ipc::SORTER_TIMER_TICK:
+            // Der One-Shot-Timer der Weiche ist abgelaufen!
+            std::cout << "[Dispatcher] Sorter-Zeit abgelaufen! Schliesse/Fahre automatisch ein." << std::endl;
+            if (m_actuators) m_actuators->closeJunction();
+            break;
+
+        // ====================================================================
+        // NETZWERK BASIS
+        // ====================================================================
+        case ipc::NETWORK_MSG:
+            // Der Partner hat uns etwas geschickt (Ping oder Daten)
+            if (m_connection) m_connection->partnerAlive(); // Watchdog zuruecksetzen
+            handleNetworkPulse(pulse.value.sival_int);
             break;
 
         case ipc::ANLAGE_2_CIID:
@@ -161,9 +211,41 @@ void Dispatcher::handlePulse(const struct _pulse& pulse) {
                 m_connection->connectToPartner(); // Anlage 1 macht jetzt name_open
             }
             break;
-        case ipc::WP_INFO:
 
+        // ====================================================================
+        // NETZWERK WERKSTÜCK-ÜBERGABE
+        // ====================================================================
+        case ipc::WP_INFO: {
+            // WICHTIG: Die {} Klammern sind noetig, weil wir hier Variablen deklarieren!
+            // Entpacken: ID in den oberen 16 Bit, Typ in den unteren 16 Bit
+            int id = (pulse.value.sival_int >> 16) & 0xFFFF;
+            WpType type = static_cast<WpType>(pulse.value.sival_int & 0xFFFF);
+
+            std::cout << "[Dispatcher] Netz-Nachricht: Werkstueck (ID: " << id << ", Typ: " << type << ") im Anflug!" << std::endl;
+            // Hier spaeter: if (m_logik) m_logik->empfangeWpInfo(id, type);
             break;
+        }
+
+        case ipc::REQ_RECEIVE:
+            std::cout << "[Dispatcher] Netz-Nachricht: Partner fragt an -> Darf ich uebergeben?" << std::endl;
+            // Hier spaeter: if (m_logik) m_logik->pruefeObUebergabeMoeglich();
+            break;
+
+        case ipc::READY_RECEIVE:
+            std::cout << "[Dispatcher] Netz-Nachricht: Partner meldet -> Bin bereit, lass kommen!" << std::endl;
+            // Hier spaeter: if (m_logik) m_logik->uebergabeStarten();
+            break;
+
+        case ipc::UPDATE_LIST: {
+            WpType type = static_cast<WpType>(pulse.value.sival_int);
+            std::cout << "[Dispatcher] Netz-Nachricht: Partner bittet um Update der Liste (Typ: " << type << ")." << std::endl;
+            // Hier spaeter: if (m_logik) m_logik->updateWpListe(type);
+            break;
+        }
+
+        // ====================================================================
+        // FALLBACK
+        // ====================================================================
         default:
             std::cout << "[Dispatcher] Unbekannter Puls-Code: " << (int)pulse.code << std::endl;
             break;

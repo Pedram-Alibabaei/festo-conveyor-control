@@ -41,15 +41,33 @@ namespace ipc {
     // Unterscheidet, woher der Pulse kommt. QNX verlangt für eigene Pulses
     // Werte oberhalb von _PULSE_CODE_MINAVAIL.
     enum PulseCode : int8_t {
-        HAL_INPUT      = _PULSE_CODE_MINAVAIL + 1,  // Kommt von der eigenen Sensorik (HAL)
-        NETWORK_MSG    = _PULSE_CODE_MINAVAIL + 2,  // Kommt vom anderen Steuerungscomputer (Qnet)
-        TIMER_TICK     = _PULSE_CODE_MINAVAIL + 3,  // fuer unsere Band-Uhr(Timer)
-        HEARTBEATTACKT = _PULSE_CODE_MINAVAIL + 4,
-        CONNECTION_MSG = _PULSE_CODE_MINAVAIL + 5,
-        DISCONNECT     = _PULSE_CODE_MINAVAIL + 6,
-        ANLAGE_2_CIID  = _PULSE_CODE_MINAVAIL + 7,
-        WP_INFO        = _PULSE_CODE_MINAVAIL + 8
+        // ====================================================================
+        // LOKALE HARDWARE & SYSTEM (1 - 9)
+        // ====================================================================
+        HAL_INPUT         = _PULSE_CODE_MINAVAIL + 1,  // Kommt von der eigenen Sensorik (HAL)
+        CONNECTION_MSG    = _PULSE_CODE_MINAVAIL + 2,  // Interner Handshake (ConnectionManager gefunden)
+        DISCONNECT        = _PULSE_CODE_MINAVAIL + 3,  // Not-Halt oder Verbindungsabbruch
 
+        // ====================================================================
+        // TIMER EVENTS (10 - 19)
+        // ====================================================================
+        BELT_TICK         = _PULSE_CODE_MINAVAIL + 10, // Band-Uhr für Werkstückverfolgung
+        HEARTBEATTACKT    = _PULSE_CODE_MINAVAIL + 11, // Watchdog-Timer für Netzwerk
+        SORTER_TIMER_TICK = _PULSE_CODE_MINAVAIL + 12, // One-Shot Timer für die Weiche/Auswerfer
+
+        // ====================================================================
+        // NETZWERK BASIS (20 - 29)
+        // ====================================================================
+        NETWORK_MSG       = _PULSE_CODE_MINAVAIL + 20, // Generische Nachricht vom Partner
+        ANLAGE_2_CIID     = _PULSE_CODE_MINAVAIL + 21, // Initialer Handshake über Qnet
+        HEARTBEAT         = _PULSE_CODE_MINAVAIL + 22,
+        // ====================================================================
+        // NETZWERK WERKSTÜCK-ÜBERGABE (30 - 39)
+        // ====================================================================
+        WP_INFO       = _PULSE_CODE_MINAVAIL + 30, // Ersetzt dein WP_INFO (ID & Typ)
+        REQ_RECEIVE   = _PULSE_CODE_MINAVAIL + 31, // Darf ich übergeben?
+        READY_RECEIVE = _PULSE_CODE_MINAVAIL + 32, // Ja, ich bin bereit!
+        UPDATE_LIST   = _PULSE_CODE_MINAVAIL + 33  // Liste beim Partner updaten
     };
 
     // ============================================================================
