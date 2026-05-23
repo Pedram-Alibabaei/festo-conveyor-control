@@ -7,16 +7,22 @@
 
 namespace logik {
 
-    class Logik : public i_Logik {
-    private:
-        ipc::AnlagenPosition m_position;
-        I_Dispatcher* m_dispatcher;
+class BaseState; // Forward declare BaseState
 
-    public:
-        Logik();
-        virtual ~Logik();
+class Logik : public i_Logik {
+private:
+    ipc::AnlagenPosition m_position;
+    I_Dispatcher* m_dispatcher;
+    BaseState* m_currentState;
 
-        void setDispatcher(I_Dispatcher* dispatcher);
+public:
+    Logik();
+    virtual ~Logik();
+
+    void setDispatcher(I_Dispatcher* dispatcher);
+    I_Dispatcher* getDispatcher() const { return m_dispatcher; }
+
+    void transitionTo(BaseState* state);
 
         // i_Logik Interface
         virtual void init(ipc::AnlagenPosition pos) override;

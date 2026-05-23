@@ -196,6 +196,21 @@ void Dispatcher::handleHalPulse(uint32_t payload) {
             m_logik->processEvent(logik::Event::STOP_RELEASED);
         }
     }
+    // TASTE 4: E-STOP (REQ_33, REQ_37)
+    else if (sensor_id == ipc::BTN_ESTOP) {
+        if (sensor_state == 0) { // Active Low
+            m_logik->processEvent(logik::Event::ESTOP_PRESSED);
+            if (m_partnerCoid != -1) {
+                MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::NETWORK_MSG, payload);
+            }
+        }
+        else {
+            m_logik->processEvent(logik::Event::ESTOP_RELEASED);
+            if (m_partnerCoid != -1) {
+                MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::NETWORK_MSG, payload);
+            }
+        }
+    }
     // LICHTSCHRANKE 1: Einlauf (Entry)
     else if (sensor_id == ipc::LS_ENTRY) {
         if (sensor_state == 0) {
@@ -236,6 +251,14 @@ void Dispatcher::handleNetworkPulse(uint32_t payload) {
         }
         else {
             m_logik->processEvent(logik::Event::NET_START_RELEASED);
+        }
+    }
+    else if (sensor_id == ipc::BTN_ESTOP) {
+        if (sensor_state == 0) { // Active Low
+            m_logik->processEvent(logik::Event::NET_ESTOP_PRESSED);
+        }
+        else {
+            m_logik->processEvent(logik::Event::NET_ESTOP_RELEASED);
         }
     }
 }

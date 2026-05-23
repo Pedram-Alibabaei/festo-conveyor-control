@@ -61,6 +61,34 @@ TEST_F(DispatcherTest, StartBtnReleasedSendsEventToLogik) {
     dispatcher->handleHalPulse(payload);
 }
 
+// Test: TASTE RESET gedrueckt (1) -> Logik erhaelt Event::RESET_PRESSED
+TEST_F(DispatcherTest, ResetBtnPressedSendsEventToLogik) {
+    uint32_t payload = ipc::encodeSensorData(ipc::BTN_RESET, 1);
+    EXPECT_CALL(*mockLogik, processEvent(logik::Event::RESET_PRESSED)).Times(Exactly(1));
+    dispatcher->handleHalPulse(payload);
+}
+
+// Test: TASTE STOP gedrueckt (0 -> Active Low) -> Logik erhaelt Event::STOP_PRESSED
+TEST_F(DispatcherTest, StopBtnPressedSendsEventToLogik) {
+    uint32_t payload = ipc::encodeSensorData(ipc::BTN_STOP, 0);
+    EXPECT_CALL(*mockLogik, processEvent(logik::Event::STOP_PRESSED)).Times(Exactly(1));
+    dispatcher->handleHalPulse(payload);
+}
+
+// Test: TASTE ESTOP gedrueckt (0 -> Active Low) -> Logik erhaelt Event::ESTOP_PRESSED
+TEST_F(DispatcherTest, EstopBtnPressedSendsEventToLogik) {
+    uint32_t payload = ipc::encodeSensorData(ipc::BTN_ESTOP, 0);
+    EXPECT_CALL(*mockLogik, processEvent(logik::Event::ESTOP_PRESSED)).Times(Exactly(1));
+    dispatcher->handleHalPulse(payload);
+}
+
+// Test: TASTE ESTOP ueber Netzwerk empfangen (0 -> Active Low) -> Logik erhaelt Event::NET_ESTOP_PRESSED
+TEST_F(DispatcherTest, NetEstopBtnPressedSendsEventToLogik) {
+    uint32_t payload = ipc::encodeSensorData(ipc::BTN_ESTOP, 0);
+    EXPECT_CALL(*mockLogik, processEvent(logik::Event::NET_ESTOP_PRESSED)).Times(Exactly(1));
+    dispatcher->handleNetworkPulse(payload);
+}
+
 // Test: LS_ENTRY unterbrochen (0 -> Active Low) -> Logik erhaelt Event::ENTRY_BLOCKED
 TEST_F(DispatcherTest, LSEntryBlockedSendsEventToLogik) {
     uint32_t payload = ipc::encodeSensorData(ipc::LS_ENTRY, 0); // 0 = Unterbrochen (Active low)

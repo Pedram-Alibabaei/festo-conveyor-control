@@ -1,13 +1,31 @@
 #include "logik.hpp"
+#include "states/BaseState.hpp"
+#include "states/IdleState.hpp"
 
 namespace logik {
 
-    Logik::Logik() : m_position(ipc::VORN_ANLAGE_1), m_dispatcher(nullptr) {}
+    Logik::Logik() : m_position(ipc::VORN_ANLAGE_1), m_dispatcher(nullptr), m_currentState(nullptr) {
+        transitionTo(new IdleState());
+    }
 
-    Logik::~Logik() {}
+    Logik::~Logik() {
+        if (m_currentState) delete m_currentState;
+    }
 
     void Logik::setDispatcher(I_Dispatcher* dispatcher) {
         m_dispatcher = dispatcher;
+    }
+
+    void Logik::transitionTo(BaseState* state) {
+        if (m_currentState != nullptr) {
+            m_currentState->onExit();
+            delete m_currentState;
+        }
+        m_currentState = state;
+        if (m_currentState != nullptr) {
+            m_currentState->setContext(this);
+            m_currentState->onEnter();
+        }
     }
 
     void Logik::init(ipc::AnlagenPosition pos) {
@@ -16,51 +34,8 @@ namespace logik {
     }
 
     void Logik::processEvent(Event e) {
-        if (!m_dispatcher) return;
-
-        switch(e) {
-            case Event::START_PRESSED:
-                std::cout << "[Logik] START_PRESSED -> Gruen blinkt!" << std::endl;
-                m_dispatcher->lightGreenBlinkFast();
-                break;
-            case Event::START_RELEASED:
-                std::cout << "[Logik] START_RELEASED -> Gruen aus!" << std::endl;
-                m_dispatcher->lightGreenOff();
-                break;
-            case Event::RESET_PRESSED:
-                std::cout << "[Logik] RESET_PRESSED -> Gelb blinkt!" << std::endl;
-                m_dispatcher->lightYellowBlinkFast();
-                break;
-            case Event::RESET_RELEASED:
-                std::cout << "[Logik] RESET_RELEASED -> Gelb aus!" << std::endl;
-                m_dispatcher->lightYellowOff();
-                break;
-            case Event::STOP_PRESSED:
-                std::cout << "[Logik] STOP_PRESSED -> Rot blinkt!" << std::endl;
-                m_dispatcher->lightRedBlinkSlow();
-                break;
-            case Event::STOP_RELEASED:
-                std::cout << "[Logik] STOP_RELEASED -> Rot aus!" << std::endl;
-                m_dispatcher->lightRedOff();
-                break;
-            case Event::ENTRY_BLOCKED:
-                std::cout << "[Logik] ENTRY_BLOCKED -> Motor faehrt RECHTS!" << std::endl;
-                m_dispatcher->driveRight();
-                m_dispatcher->lightGreenBlinkSlow();
-                break;
-            case Event::END_BLOCKED:
-                std::cout << "[Logik] END_BLOCKED -> Motor STOPP!" << std::endl;
-                m_dispatcher->driveStop();
-                m_dispatcher->lightGreenOff();
-                break;
-            case Event::CHUTE_BLOCKED:
-                std::cout << "[Logik] CHUTE_BLOCKED -> Motor STOPP!" << std::endl;
-                m_dispatcher->driveStop();
-                m_dispatcher->lightGreenOff();
-                break;
-            default:
-                break;
-        }
+        if (!m_dispatcher || !m_currentState) return;
+        m_currentState->handle(e);
     }
 
     void Logik::workpieceInfo(int id, WpType type) {}
