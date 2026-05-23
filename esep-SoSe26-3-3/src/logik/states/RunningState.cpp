@@ -29,20 +29,29 @@ void RunningState::handle(Event e) {
             break;
         case Event::ENTRY_BLOCKED:
             std::cout << "[RunningState] ENTRY_BLOCKED -> Motor faehrt RECHTS!" << std::endl;
+            m_context->addWorkpiece(); // REQ_01 und REQ_02: Registrierung und ID Vergabe
             m_context->getDispatcher()->driveRight();
             m_context->getDispatcher()->lightGreenBlinkSlow();
             break;
-        case Event::END_BLOCKED:
-            std::cout << "[RunningState] END_BLOCKED -> Motor STOPP!" << std::endl;
-            m_context->getDispatcher()->driveStop();
-            m_context->getDispatcher()->lightGreenOff();
-            break;
-        case Event::CHUTE_BLOCKED:
-            std::cout << "[RunningState] CHUTE_BLOCKED -> Motor STOPP!" << std::endl;
-            m_context->getDispatcher()->driveStop();
-            m_context->getDispatcher()->lightGreenOff();
-            break;
+
         default:
+            // Check if it's a sensor event that needs to be consumed by a WP
+            if (e == Event::ENTRY_CLEARED || e == Event::HEIGHT_BLOCKED || e == Event::HEIGHT_CLEARED || 
+                e == Event::EJECTOR_BLOCKED || e == Event::EJECTOR_CLEARED || e == Event::END_BLOCKED || 
+                e == Event::END_CLEARED || e == Event::CHUTE_BLOCKED) {
+                
+                if (!m_context->dispatchSensorEventToWorkpiece(e)) {
+                    std::cout << "[RunningState] FEHLER: Unplausibles Sensor-Event! Keines der Werkstücke hat es erwartet." << std::endl;
+                    // TODO: m_context->transitionTo(new ErrorState());
+                } else {
+                    // Falls das Event erwartet wurde, spezifische Reaktionen des Systems:
+                    if (e == Event::END_BLOCKED || e == Event::CHUTE_BLOCKED) {
+                        std::cout << "[RunningState] WP am Ende oder in Rutsche -> Motor STOPP!" << std::endl;
+                        m_context->getDispatcher()->driveStop();
+                        m_context->getDispatcher()->lightGreenOff();
+                    }
+                }
+            }
             break;
     }
 }
