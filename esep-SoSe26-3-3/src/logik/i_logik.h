@@ -1,7 +1,9 @@
 #ifndef I_LOGIK_HPP
 #define I_LOGIK_HPP
 
-#include "shared/logikEvents.hpp"
+#include "shared/logikEvent.hpp"
+#include "shared/ipc_definitions.hpp"
+#include "shared/types.hpp"
 
 namespace logik {
 
@@ -18,19 +20,15 @@ namespace logik {
 
         virtual void processEvent(Event e ) = 0;
 
-        virtual void workpieceTypeFromHS(WpType type) = 0;
-
         virtual void workpieceInfo(int id, WpType type) = 0;
 
         virtual void RequestToGiveWp() = 0;
 
         virtual void readyToReceiveWp() = 0;
 
-        virtual void updateWpListe(wpType Type) = 0;
+        virtual void updateWpListe(WpType Type) = 0;
 
-        virtual void ta ckt() = 0;
-
-
+        virtual void tackt() = 0;
 
     };
 

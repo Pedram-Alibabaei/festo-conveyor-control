@@ -13,48 +13,30 @@
 #include <iostream>
 #include <cstdint>
 #include <string>
-#include <atomic>
 
 // Eigene Includes
 #include "shared/ipc_definitions.hpp"
-#include "shared/types.hpp"
 #include "hal/i_Actuators.hpp"
-#include "hal/i_Sensors.hpp"
 #include "connectionManager/I_Connection.hpp"
-#include "timer/i_Timer.hpp"
-//#include "logik/i_Logik.hpp" // Sobald die Datei existiert, einkommentieren!
+#include "logik/i_logik.h"
+#include "i_Dispatcher.hpp"
 
-// NEU: Das Interface inkludieren!
-#include "I_Dispatcher.hpp"
 
-#include <sys/iomsg.h>
-#include <sys/dispatch.h>
-
-// Vorwärtsdeklaration für Logik, falls der Include noch auskommentiert ist
-class i_Logik;
-
-// ============================================================================
-// VERERBUNG: Dispatcher implementiert nun I_Dispatcher
-// ============================================================================
 class Dispatcher : public I_Dispatcher {
 private:
     // ========================================================================
     // 1. QNX Ressourcen & Netzwerk
     // =======================================================================
     int m_chid;             // Channel ID: Der "Briefkasten" dieses Dispatchers
-    int m_localCoid;        // Connection ID zu SICH SELBST
+    int m_localCoid;        // Connection ID zu SICH SELBST (fuer den ConnectionManager)
     int m_partnerCoid;      // Connection ID zum Partner (-1 wenn nicht verbunden)
-    name_attach_t* m_attachHandle;
 
-    AnlagenPosition m_position;
-    std::atomic<bool> m_running;
+    ipc::AnlagenPosition m_position;
+    std::atomic<bool> m_running; // Flag zum sauberen Beenden der run()-Schleife
 
-    // Komponenten-Pointer
-    i_Actuators* m_actuators;
-    i_Sensors* m_sensors;
-    i_Connection* m_connection;
-    i_Timer* m_timer;
-    i_Logik* m_logik; // Wieder aktiv!
+    i_Actuators* m_actuators;     // Zeiger auf die Aktorik
+    I_Connection* m_connection;   // Netzwerk-Management
+    logik::i_Logik* m_logik;      // Zeiger auf die FSM-Logik
 
     // ========================================================================
     // 2. Private Event-Handler & Hilfsmethoden
@@ -66,97 +48,110 @@ private:
     void handleConnectionPulse(uint32_t payload);
 
 public:
+    // Konstruktor & Destruktor
     Dispatcher();
-    ~Dispatcher() override; // Virtual Destructor override
+    ~Dispatcher();
 
-    void init(AnlagenPosition pos) override;
-    void run() override;
-    void stop() override;
+    void init(ipc::AnlagenPosition pos) override;
 
     // ========================================================================
-    // Eigene Getter (nicht im Interface, aber wichtig für main.cpp)
+    // Getter
     // ========================================================================
     int getMyChannelId() const { return m_chid; }
     int getMyLocalCoid() const { return m_localCoid; }
+    int getPartnerCoid() const { return m_partnerCoid; } // Umbenannt, da es eine COID ist
+
     std::string getAnlagenPositionName() const {
-        return (m_position == VORN_ANLAGE_1) ? "Anlage_1" : "Anlage_2";
+        return (m_position == ipc::AnlagenPosition::VORN_ANLAGE_1) ? "Anlage_1" : "Anlage_2";
     }
 
     // ========================================================================
-    // Dependency Injection (Setter aus Interface)
+    // Setter (Dependency Injection)
     // ========================================================================
-    void setActuators(i_Actuators* actuators) override { m_actuators = actuators; }
-    void setSensor(i_Sensors* sensor) override { m_sensors = sensor; }
-    void setConnectionManager(i_Connection* connection) override { m_connection = connection; }
-    void setTimer(i_Timer* timer) override { m_timer = timer; }
-    void setLogik(i_Logik* logik) override { m_logik = logik; }
+    void setActuators(i_Actuators* actuators) override {
+        m_actuators = actuators;
+    }
+
+    void setSensor(i_Sensor* sensor) override {
+        // Not used currently in Dispatcher members, but required by interface
+    }
+
+    void setConnectionManager(i_Connection* connection) override {
+        m_connection = connection;
+    }
+
+    void setTimer(i_Timer* timer) override {
+        // Not used currently in Dispatcher members, but required by interface
+    }
+
+    void setLogik(logik::i_Logik* logik) override {
+        m_logik = logik;
+    }
 
     // ========================================================================
-    // DURCHREICHE-METHODEN (Fassade aus Interface implementieren)
+    // Ausfuehrung
     // ========================================================================
+    // Die Endlosschleife!
+    void run() override;
 
-    // Timer
+    // Stoppt die Anlage sauber
+    void stop() override { m_running = false; }
+
+    // ========================================================================
+    // I_Dispatcher Hardware/Network Implementations
+    // ========================================================================
     void startBeltClock(int ms) override;
 
-    // Netzwerk
     void workpieceInfo(int id, WpType type) override;
     void RequestToReceiveWp() override;
     void readyToReceiveWp() override;
     void updateWpListe(WpType type) override;
 
-   // ========================================================================
-    // AKTORIK - Durchreiche-Methoden (Inline)
-    // ========================================================================
+    void driveRight() override;
+    void driveLeft() override;
+    void driveSlowRight() override;
+    void driveSlowLeft() override;
+    void driveStop() override;
 
-    // Motorsteuerung
-    void driveRight() override { if (m_actuators) m_actuators->driveRight(); }
-    void driveLeft() override { if (m_actuators) m_actuators->driveLeft(); }
-    void driveSlowRight() override { if (m_actuators) m_actuators->driveSlowRight(); }
-    void driveSlowLeft() override { if (m_actuators) m_actuators->driveSlowLeft(); }
-    void driveStop() override { if (m_actuators) m_actuators->driveStop(); }
+    void openJunction() override;
+    void closeJunction() override;
 
-    // Sortiereinheit
-    void openJunction() override { if (m_actuators) m_actuators->openJunction(); }
-    void closeJunction() override { if (m_actuators) m_actuators->closeJunction(); }
+    void lightGreenOn() override;
+    void lightGreenOff() override;
+    void lightGreenBlinkFast() override;
+    void lightGreenBlinkSlow() override;
 
-    // Ampelsteuerung
-    void lightGreenOn() override { if (m_actuators) m_actuators->lightGreenOn(); }
-    void lightGreenOff() override { if (m_actuators) m_actuators->lightGreenOff(); }
-    void lightGreenBlinkFast() override { if (m_actuators) m_actuators->lightGreenBlinkFast(); }
-    void lightGreenBlinkSlow() override { if (m_actuators) m_actuators->lightGreenBlinkSlow(); }
+    void lightYellowOn() override;
+    void lightYellowOff() override;
+    void lightYellowBlinkFast() override;
+    void lightYellowBlinkSlow() override;
 
-    void lightYellowOn() override { if (m_actuators) m_actuators->lightYellowOn(); }
-    void lightYellowOff() override { if (m_actuators) m_actuators->lightYellowOff(); }
-    void lightYellowBlinkFast() override { if (m_actuators) m_actuators->lightYellowBlinkFast(); }
-    void lightYellowBlinkSlow() override { if (m_actuators) m_actuators->lightYellowBlinkSlow(); }
+    void lightRedOn() override;
+    void lightRedOff() override;
+    void lightRedBlinkFast() override;
+    void lightRedBlinkSlow() override;
 
-    void lightRedOn() override { if (m_actuators) m_actuators->lightRedOn(); }
-    void lightRedOff() override { if (m_actuators) m_actuators->lightRedOff(); }
-    void lightRedBlinkFast() override { if (m_actuators) m_actuators->lightRedBlinkFast(); }
-    void lightRedBlinkSlow() override { if (m_actuators) m_actuators->lightRedBlinkSlow(); }
+    void turnLEDStartOn() override;
+    void turnLEDStartOff() override;
+    void turnLEDStartBlinkFast() override;
+    void turnLEDStartBlinkSlow() override;
 
-    // Bedienpanel-LEDs
-    void turnLEDStartOn() override { if (m_actuators) m_actuators->turnLEDStartOn(); }
-    void turnLEDStartOff() override { if (m_actuators) m_actuators->turnLEDStartOff(); }
-    void turnLEDStartBlinkFast() override { if (m_actuators) m_actuators->turnLEDStartBlinkFast(); }
-    void turnLEDStartBlinkSlow() override { if (m_actuators) m_actuators->turnLEDStartBlinkSlow(); }
+    void turnLEDResetOn() override;
+    void turnLEDResetOff() override;
+    void turnLEDResetBlinkFast() override;
+    void turnLEDResetBlinkSlow() override;
 
-    void turnLEDResetOn() override { if (m_actuators) m_actuators->turnLEDResetOn(); }
-    void turnLEDResetOff() override { if (m_actuators) m_actuators->turnLEDResetOff(); }
-    void turnLEDResetBlinkFast() override { if (m_actuators) m_actuators->turnLEDResetBlinkFast(); }
-    void turnLEDResetBlinkSlow() override { if (m_actuators) m_actuators->turnLEDResetBlinkSlow(); }
+    void turnLEDQ1On() override;
+    void turnLEDQ1Off() override;
+    void turnLEDQ1BlinkFast() override;
+    void turnLEDQ1BlinkSlow() override;
 
-    void turnLEDQ1On() override { if (m_actuators) m_actuators->turnLEDQ1On(); }
-    void turnLEDQ1Off() override { if (m_actuators) m_actuators->turnLEDQ1Off(); }
-    void turnLEDQ1BlinkFast() override { if (m_actuators) m_actuators->turnLEDQ1BlinkFast(); }
-    void turnLEDQ1BlinkSlow() override { if (m_actuators) m_actuators->turnLEDQ1BlinkSlow(); }
+    void turnLEDQ2On() override;
+    void turnLEDQ2Off() override;
+    void turnLEDQ2BlinkFast() override;
+    void turnLEDQ2BlinkSlow() override;
 
-    void turnLEDQ2On() override { if (m_actuators) m_actuators->turnLEDQ2On(); }
-    void turnLEDQ2Off() override { if (m_actuators) m_actuators->turnLEDQ2Off(); }
-    void turnLEDQ2BlinkFast() override { if (m_actuators) m_actuators->turnLEDQ2BlinkFast(); }
-    void turnLEDQ2BlinkSlow() override { if (m_actuators) m_actuators->turnLEDQ2BlinkSlow(); }
-
-    void turnAllOff() override { if (m_actuators) m_actuators->turnAllOff(); }
+    void turnAllOff() override;
 };
 
 #endif // DISPATCHER_HPP
