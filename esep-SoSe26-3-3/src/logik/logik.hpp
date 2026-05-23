@@ -3,7 +3,9 @@
 
 #include "i_logik.h"
 #include "dispatcher/i_Dispatcher.hpp"
+#include "Workpiece.hpp"
 #include <iostream>
+#include <vector>
 
 namespace logik {
 
@@ -14,6 +16,9 @@ private:
     ipc::AnlagenPosition m_position;
     I_Dispatcher* m_dispatcher;
     BaseState* m_currentState;
+    
+    int m_nextWpId;
+    std::vector<Workpiece> m_workpieces;
 
 public:
     Logik();
@@ -23,6 +28,10 @@ public:
     I_Dispatcher* getDispatcher() const { return m_dispatcher; }
 
     void transitionTo(BaseState* state);
+    void addWorkpiece();
+    bool dispatchSensorEventToWorkpiece(Event e);
+    int getNextWpId() const { return m_nextWpId; }
+    size_t getWorkpieceCount() const { return m_workpieces.size(); }
 
         // i_Logik Interface
         virtual void init(ipc::AnlagenPosition pos) override;

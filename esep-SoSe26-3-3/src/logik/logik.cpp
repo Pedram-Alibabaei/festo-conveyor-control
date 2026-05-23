@@ -4,9 +4,10 @@
 
 namespace logik {
 
-    Logik::Logik() : m_position(ipc::VORN_ANLAGE_1), m_dispatcher(nullptr), m_currentState(nullptr) {
+    Logik::Logik() : m_position(ipc::VORN_ANLAGE_1), m_dispatcher(nullptr), m_currentState(nullptr), m_nextWpId(0) {
         transitionTo(new IdleState());
     }
+
 
     Logik::~Logik() {
         if (m_currentState) delete m_currentState;
@@ -28,6 +29,28 @@ namespace logik {
         }
     }
 
+    void Logik::addWorkpiece() {
+        int id = m_nextWpId++;
+        m_workpieces.emplace_back(id);
+        std::cout << "[Logik] Werkstueck registriert. ID zugewiesen: " << id << std::endl;
+        
+        if (m_dispatcher) {
+            m_dispatcher->workpieceInfo(id, WpType::UNKNOWN); // Inform dispatcher/UI about the new WP
+        }
+    }
+
+    bool Logik::dispatchSensorEventToWorkpiece(Event e) {
+        for (auto& wp : m_workpieces) {
+            if (wp.expectsEvent(e)) {
+                wp.consumeEvent(e);
+                std::cout << "[Logik] Event konsumiert von WP ID: " << wp.getId() << std::endl;
+                return true;
+            }
+        }
+        return false;
+    }
+
+
     void Logik::init(ipc::AnlagenPosition pos) {
         m_position = pos;
         std::cout << "[Logik] Initialisiert für Position " << pos << std::endl;
@@ -42,6 +65,14 @@ namespace logik {
     void Logik::RequestToGiveWp() {}
     void Logik::readyToReceiveWp() {}
     void Logik::updateWpListe(WpType Type) {}
-    void Logik::tackt() {}
+    
+    void Logik::tackt() {
+        for (auto& wp : m_workpieces) {
+            if (wp.updateTackt()) {
+                std::cout << "[Logik] ERROR: Timeout bei WP ID: " << wp.getId() << std::endl;
+                // TODO: Event in die Queue pushen um den ErrorState aufzurufen
+            }
+        }
+    }
 
 } // namespace logik

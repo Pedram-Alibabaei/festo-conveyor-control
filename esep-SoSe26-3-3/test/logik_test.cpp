@@ -55,16 +55,33 @@ TEST_F(LogikTest, EntryBlockedStartsMotorRightAndBlinksSlow) {
 
     EXPECT_CALL(*mockDispatcher, driveRight()).Times(Exactly(1));
     EXPECT_CALL(*mockDispatcher, lightGreenBlinkSlow()).Times(Exactly(1));
+    EXPECT_CALL(*mockDispatcher, workpieceInfo(0, testing::_)).Times(Exactly(1));
 
     fsm->processEvent(logik::Event::ENTRY_BLOCKED);
+    
+    EXPECT_EQ(fsm->getWorkpieceCount(), 1);
+    EXPECT_EQ(fsm->getNextWpId(), 1);
 }
 
-// Test: When END_BLOCKED is processed in RunningState, motor stops
-TEST_F(LogikTest, EndBlockedStopsMotor) {
+// Test: Full workpiece path up to END_BLOCKED
+TEST_F(LogikTest, WorkpiecePathToEndStopsMotor) {
     // Wechsel in RunningState
     fsm->processEvent(logik::Event::START_PRESSED);
     EXPECT_CALL(*mockDispatcher, lightGreenOn()).Times(Exactly(1));
     fsm->processEvent(logik::Event::START_RELEASED);
+
+    // WP am Einlauf registrieren
+    EXPECT_CALL(*mockDispatcher, driveRight()).Times(Exactly(1));
+    EXPECT_CALL(*mockDispatcher, lightGreenBlinkSlow()).Times(Exactly(1));
+    EXPECT_CALL(*mockDispatcher, workpieceInfo(0, testing::_)).Times(Exactly(1));
+    fsm->processEvent(logik::Event::ENTRY_BLOCKED);
+    
+    // Weg durch die Anlage simulieren, damit END_BLOCKED erwartet wird
+    fsm->processEvent(logik::Event::ENTRY_CLEARED);
+    fsm->processEvent(logik::Event::HEIGHT_BLOCKED);
+    fsm->processEvent(logik::Event::HEIGHT_CLEARED);
+    fsm->processEvent(logik::Event::EJECTOR_BLOCKED);
+    fsm->processEvent(logik::Event::EJECTOR_CLEARED);
 
     EXPECT_CALL(*mockDispatcher, driveStop()).Times(Exactly(1));
     EXPECT_CALL(*mockDispatcher, lightGreenOff()).Times(Exactly(1));

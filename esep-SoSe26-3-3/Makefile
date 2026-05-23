@@ -88,7 +88,7 @@ $(OUTPUT_DIR)/test/%.o: test/%.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) -c $(DEPS) -o $@ $(INCLUDES) $(CCFLAGS_all) $(CCFLAGS) $<
 
-$(TEST_TARGET): $(OBJS) $(TEST_OBJS)
+$(TEST_TARGET): $(TEST_OBJS_TO_LINK)
 	$(LD) -o $(TEST_TARGET) $(LDFLAGS_all) $(LDFLAGS) $(TEST_OBJS_TO_LINK) $(LIBS_all) $(LIBS) $(TEST_LIBS)
 
 tests: $(TEST_TARGET)
@@ -100,3 +100,4 @@ rebuild: clean all
 
 #Inclusion of dependencies (object files to source and includes)
 -include $(OBJS:%.o=%.d)
+-include $(TEST_OBJS:%.o=%.d)
