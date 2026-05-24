@@ -4,51 +4,49 @@
  */
 
 #include "motor_controller.hpp"
-
 #include <iostream>
-
-// Eure echte PAL einbinden
 #include <hal/pal.hpp>
 
 namespace hal {
 namespace output_driver {
 
 MotorController::MotorController() : m_currentState(MotorState::STOPPED) {
-    // 1. Pins als Ausgänge konfigurieren (Sehr wichtig, sonst ignoriert die Hardware unsere Befehle!)
+    // 1. Pins als Ausgänge konfigurieren
     pal::op::Forward::config_as_output();
     pal::op::Reverse::config_as_output();
     pal::op::Slow::config_as_output();
     pal::op::Stop::config_as_output();
 
-    // 2. Beim Hochfahren sicherstellen, dass der Motor wirklich steht
-    stop();
+    // 2. Beim Hochfahren den Motor sicher stoppen
+    // Bei Festo bedeutet das oft: Richtungs-Pins auf 0, Stop-Pin auf 1 (Bremse aktiv)
+    resetAllPins();
+    pal::op::Stop::data_set();
 }
 
 MotorController::~MotorController() {
-    // Wenn das System beendet wird, schalten wir den Motor sicherheitshalber ab.
     stop();
 }
 
 void MotorController::resetAllPins() {
-    // Schaltet alle Motor-Richtungen und Geschwindigkeiten hardwareseitig ab
+    // Schaltet alle Richtungen und Geschwindigkeiten ab
     pal::op::Forward::data_clear();
     pal::op::Reverse::data_clear();
     pal::op::Slow::data_clear();
-    pal::op::Stop::data_clear();
+    // Hinweis: Wir fassen den Stop-Pin hier nicht an,
+    // das machen die Fahrfunktionen explizit selbst!
 }
 
 void MotorController::stop() {
     if (m_currentState == MotorState::STOPPED) {
-        return; // Nichts tun, wir stehen schon!
+        return;
     }
 
     resetAllPins();
 
-    // Festo-Spezialität: Der Motor hat einen eigenen "Stop"-Pin für aktives Bremsen
+    // Aktives Bremsen einschalten (Stop-Pin auf 1 setzen)
     pal::op::Stop::data_set();
 
     m_currentState = MotorState::STOPPED;
-    // std::cout << "[MotorController] Motor GESTOPPT." << std::endl; // Auskommentiert für weniger Konsolen-Spam
 }
 
 void MotorController::driveRight() {
@@ -56,14 +54,16 @@ void MotorController::driveRight() {
         return;
     }
 
-    // 1. SICHERHEITS-INTERLOCK: Erst alles abschalten (auch die Bremse lösen)
+    // 1. Richtungs-Pins aufräumen
     resetAllPins();
 
-    // 2. Rechtslauf aktivieren
+    // 2. SICHERHEIT: Bremse lösen (Stop-Pin auf 0 loeschen), damit der Motor drehen kann!
+    pal::op::Stop::data_clear();
+
+    // 3. Rechtslauf aktivieren
     pal::op::Forward::data_set();
 
     m_currentState = MotorState::RIGHT;
-    // std::cout << "[MotorController] Motor faehrt RECHTS." << std::endl;
 }
 
 void MotorController::driveLeft() {
@@ -72,12 +72,12 @@ void MotorController::driveLeft() {
     }
 
     resetAllPins();
+    pal::op::Stop::data_clear(); // Bremse lösen
 
     // Linkslauf aktivieren
     pal::op::Reverse::data_set();
 
     m_currentState = MotorState::LEFT;
-    // std::cout << "[MotorController] Motor faehrt LINKS." << std::endl;
 }
 
 void MotorController::driveSlowRight() {
@@ -86,13 +86,13 @@ void MotorController::driveSlowRight() {
     }
 
     resetAllPins();
+    pal::op::Stop::data_clear(); // Bremse lösen
 
     // Rechtslauf + Langsam-Pin setzen
     pal::op::Forward::data_set();
     pal::op::Slow::data_set();
 
     m_currentState = MotorState::SLOW_RIGHT;
-    // std::cout << "[MotorController] Motor faehrt LANGSAM RECHTS." << std::endl;
 }
 
 void MotorController::driveSlowLeft() {
@@ -101,13 +101,13 @@ void MotorController::driveSlowLeft() {
     }
 
     resetAllPins();
+    pal::op::Stop::data_clear(); // Bremse lösen
 
     // Linkslauf + Langsam-Pin setzen
     pal::op::Reverse::data_set();
     pal::op::Slow::data_set();
 
     m_currentState = MotorState::SLOW_LEFT;
-    // std::cout << "[MotorController] Motor faehrt LANGSAM LINKS." << std::endl;
 }
 
 } // namespace output_driver

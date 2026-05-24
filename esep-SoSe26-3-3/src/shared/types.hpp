@@ -26,7 +26,7 @@ using Size = std::size_t;
 using UIntPtr = std::uintptr_t;
 
 // Alle bekannten Werkstücktypen der Anlage
-enum WpType :uint32_t{
+enum WpType :uint16_t{
  UNKNOWN = _PULSE_CODE_MINAVAIL + 1,             // Startzustand, noch nicht vermessen
  FLAT,                // Flaches Werkstück
  TALL,                // Hohes Werkstück ohne Bohrung
@@ -39,5 +39,7 @@ enum WpType :uint32_t{
 enum AnlagenPosition {
  VORN_ANLAGE_1    = _PULSE_CODE_MINAVAIL + 1,
  HINTEN_ANLAGE_2  = _PULSE_CODE_MINAVAIL + 2,
+
+ UNKNOWN_POSITION   = _PULSE_CODE_MINAVAIL + 3,
 };
 #endif // TYPES_HPP_

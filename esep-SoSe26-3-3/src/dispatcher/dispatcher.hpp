@@ -22,7 +22,7 @@
 #include "hal/i_Sensors.hpp"
 #include "connectionManager/I_Connection.hpp"
 #include "timer/i_Timer.hpp"
-//#include "logik/i_Logik.hpp" // Sobald die Datei existiert, einkommentieren!
+#include "logik/i_logik.hpp"
 
 // NEU: Das Interface inkludieren!
 #include "I_Dispatcher.hpp"
@@ -31,8 +31,6 @@
 #include <sys/dispatch.h>
 
 // Vorwärtsdeklaration für Logik, falls der Include noch auskommentiert ist
-class i_Logik;
-
 // ============================================================================
 // VERERBUNG: Dispatcher implementiert nun I_Dispatcher
 // ============================================================================
@@ -54,7 +52,7 @@ private:
     i_Sensors* m_sensors;
     i_Connection* m_connection;
     i_Timer* m_timer;
-    i_Logik* m_logik; // Wieder aktiv!
+    i_Logik* m_logik;
 
     // ========================================================================
     // 2. Private Event-Handler & Hilfsmethoden
@@ -64,6 +62,8 @@ private:
     void handleNetworkPulse(uint32_t payload);
     void handleTimerPulse(int timer_id);
     void handleConnectionPulse(uint32_t payload);
+    void handleHalEStopPulse(uint32_t payload);
+    void handlePartnerEStopPulse(uint32_t payload);
 
 public:
     Dispatcher();
