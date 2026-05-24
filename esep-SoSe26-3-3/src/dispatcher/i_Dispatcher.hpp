@@ -14,7 +14,8 @@ class i_Actuators;
 class i_Sensors;
 class i_Connection;
 class i_Timer;
-class i_Logik;
+class i_CalibrationManager;
+namespace logik { class i_Logik; }
 
 
 class I_Dispatcher {
@@ -44,7 +45,8 @@ public:
     virtual void setSensor(i_Sensors* sensor) = 0;
     virtual void setConnectionManager(i_Connection* connection) = 0;
     virtual void setTimer(i_Timer* timer) = 0;
-    virtual void setLogik(i_Logik* logik) = 0;
+    virtual void setLogik(logik::i_Logik* logik) = 0;
+    virtual void setCalibrationManager(i_CalibrationManager* cm) = 0;
 
     // ========================================================================
     // (Weiterleitung an Timer )

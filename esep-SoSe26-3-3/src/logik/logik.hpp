@@ -5,18 +5,27 @@
 #ifndef LOGIK_HPP
 #define LOGIK_HPP
 
-#include "I_Logik.hpp"
+#include "i_logik.hpp"
 #include "shared/types.hpp"
 #include "shared/logikEvent.hpp"
+
+class I_Dispatcher;
+
+namespace logik {
+
+class BaseState;
 
 class Logik : public i_Logik {
     private:
         AnlagenPosition m_position;
-        // Hier kommen später deine Zustandsmaschinen (FSMs) und der WorkpieceManager rein
+        BaseState* m_currentState;
+        I_Dispatcher* m_dispatcher;
+        int m_wpCount;
+        int m_nextWpId;
 
     public:
-        Logik() = default;
-        ~Logik() override = default;
+        Logik();
+        ~Logik() override;
 
         // Implementierung der Methoden aus dem Interface:
         void init(AnlagenPosition pos) override;
@@ -26,11 +35,27 @@ class Logik : public i_Logik {
         void workpieceTypeFromHS(WpType type) override;
 
         void workpieceInfo(int id, WpType type) override;
+        
+        void RequestToGiveWp() override;
+        
+        void readyToReceiveWp() override;
 
-        void updateWpListe(WpType type) override; // WpType großgeschrieben wie im Interface
+        void updateWpListe(WpType type) override;
 
         void tackt() override;
-    };
 
+        // FSM und Testing Methoden:
+        void setDispatcher(I_Dispatcher* dispatcher);
+        I_Dispatcher* getDispatcher() const;
+        void changeState(BaseState* newState);
+        
+        int getWorkpieceCount() const;
+        int getNextWpId() const;
+        
+        void addWorkpiece(); // Optional, falls vom Zustand gebraucht
+        void removeWorkpiece(); // Optional
+};
+
+} // namespace logik
 
 #endif // LOGIK_HPP
