@@ -23,6 +23,7 @@
 #include "connectionManager/I_Connection.hpp"
 #include "timer/i_Timer.hpp"
 #include "logik/i_logik.hpp"
+#include "calibrationManager/i_CalibrationManager.hpp"
 
 // NEU: Das Interface inkludieren!
 #include "I_Dispatcher.hpp"
@@ -52,7 +53,8 @@ private:
     i_Sensors* m_sensors;
     i_Connection* m_connection;
     i_Timer* m_timer;
-    i_Logik* m_logik;
+    logik::i_Logik* m_logik;
+    i_CalibrationManager* m_calibrationManager;
 
     // ========================================================================
     // 2. Private Event-Handler & Hilfsmethoden
@@ -89,7 +91,8 @@ public:
     void setSensor(i_Sensors* sensor) override { m_sensors = sensor; }
     void setConnectionManager(i_Connection* connection) override { m_connection = connection; }
     void setTimer(i_Timer* timer) override { m_timer = timer; }
-    void setLogik(i_Logik* logik) override { m_logik = logik; }
+    void setLogik(logik::i_Logik* logik) override { m_logik = logik; }
+    void setCalibrationManager(i_CalibrationManager* cm) override { m_calibrationManager = cm; }
 
     // ========================================================================
     // DURCHREICHE-METHODEN (Fassade aus Interface implementieren)

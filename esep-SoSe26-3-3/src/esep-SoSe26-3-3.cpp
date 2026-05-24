@@ -14,7 +14,8 @@
 #include "shared/types.hpp"
 #include "connectionManager/ConnectionManager.hpp"
 #include "timer/timer.hpp"
-
+#include "logik/logik.hpp"
+#include "calibrationManager/calibrationManager.hpp"
 
 int main(int argc, char *argv[]) {
     std::cout << "===========================================" << std::endl;
@@ -59,10 +60,19 @@ int main(int argc, char *argv[]) {
         timer.startHeartbeatTimer(2000); // Alle 2000ms ein Heartbeat-Check
         timer.startBeltTimer(1000);
 
+        CalibrationManager calibManager;
+        calibManager.load(); // Lade Werte von der Festplatte / SD-Karte
+
+        logik::Logik logik;
+        logik.init(pos);
+        logik.setDispatcher(&dispatcher);
+
         dispatcher.setActuators(&actuators);
         dispatcher.setConnectionManager(&c_manager);
         dispatcher.setSensor(&sensors);
         dispatcher.setTimer(&timer);
+        dispatcher.setLogik(&logik);
+        dispatcher.setCalibrationManager(&calibManager);
 
         dispatcher.run();
 

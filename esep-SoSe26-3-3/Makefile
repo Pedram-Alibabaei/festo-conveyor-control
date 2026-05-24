@@ -79,3 +79,9 @@ rebuild: clean all
 
 #Inclusion of dependencies (object files to source and includes)
 -include $(OBJS:%.o=%.d)
+
+# Test target using host g++ compiler
+test:
+	@mkdir -p build/test
+	g++ -std=c++14 -g -I./src -I./test $(filter-out src/esep-SoSe26-3-3.cpp, $(SRCS)) $(call rwildcard, test, cpp) -o build/test/test_runner -lgtest -lgtest_main -lgmock -pthread
+	./build/test/test_runner
