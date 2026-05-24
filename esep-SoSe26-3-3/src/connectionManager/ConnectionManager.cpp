@@ -18,10 +18,12 @@
 ConnectionManager::ConnectionManager()
     : m_localCoid(-1),
       m_partnerCoid(-1),
+      m_pos(UNKNOWN_POSITION),
       m_attachHandle(nullptr),
-      m_isConnected(false),
       m_partner_Alive(false),
-      m_isSearching(false) {
+      m_isConnected(false),
+      m_isSearching(false)
+{
 }
 
 ConnectionManager::~ConnectionManager() {

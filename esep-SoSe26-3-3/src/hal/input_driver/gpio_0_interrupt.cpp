@@ -158,12 +158,10 @@ void Gpio0Interrupt::handle_interrupt() const noexcept
 {
     using namespace pal;
 
-    // HINWEIS: Prüft nochmal, ob 'ii::Start::read_interrupt_status()' wirklich
-    // den Status des gesamten GPIO_0 Ports (IRQSTATUS_0) zurückgibt. Wenn hier nur
-    // das Bit für den Start-Knopf liegt, funktioniert die Maskierung unten nicht für alle!
+    // 1. Interrupt-Status des gesamten GPIO_0 Ports einlesen
     UInt32 status = ii::Start::read_interrupt_status();
 
-    // clear all interrupts
+    // 2. Alle Interrupts auf diesem Port sofort quittieren (löschen)
     ii::Estop::clear_interrupt_status();
     ii::Start::clear_interrupt_status();
     ii::Reset::clear_interrupt_status();
@@ -176,49 +174,61 @@ void Gpio0Interrupt::handle_interrupt() const noexcept
     is::Ejector::clear_interrupt_status();
     is::Height::clear_interrupt_status();
 
-    // Wir definieren das Struct um eine 'sensor_id' aus unseren IPC-Definitionen
+    // Struktur für die Pin-Auswertung
     struct PinInfo
     {
-        uint16_t sensor_id; // NEU: Damit der Dispatcher weiß, wer gefeuert hat
-        const char* name;
-        bool active;
-        UInt32 mask;
+        uint16_t sensor_id;  // ID des Sensors aus ipc_definitions.hpp
+        bool is_button;      // true = Taster (Pressed/Released), false = Lichtschranke (Blocked/Cleared)
+        bool active;         // Aktueller physikalischer Zustand des Pins
+        UInt32 mask;         // Bitmaske für diesen Pin im GPIO-Register
     };
 
-    // ACHTUNG: Bitte passe die ipc:: Werte an die Namen an,
-    // die du in deiner ipc_definitions.hpp vergeben hast!
+    // Mapping aller Pins auf dem GPIO_0 Port
     PinInfo pins[] = {
-        { ipc::BTN_ESTOP,    "estop",   ii::Estop::is_data_set(),   ii::pin_mask_estop },
-        { ipc::BTN_RESET,    "reset",   ii::Reset::is_data_set(),   ii::pin_mask_reset },
-        { ipc::BTN_START,    "start",   ii::Start::is_data_set(),   ii::pin_mask_start },
-        { ipc::BTN_STOP,     "stop",    ii::Stop::is_data_set(),    ii::pin_mask_stop },
-        { ipc::LS_CHUTE,     "chute",   ip::Chute::is_data_set(),   ip::pin_mask_chute },
-        { ipc::LS_SWITCH,   "ejector", ip::Ejector::is_data_set(), ip::pin_mask_ejector },
-        { ipc::LS_ENTRY,     "entry",   ip::Entry::is_data_set(),   ip::pin_mask_entry },
-        { ipc::LS_END,       "end",     ip::End::is_data_set(),     ip::pin_mask_end },
-        { ipc::SENSOR_METAL, "metal",   ip::Metal::is_data_set(),   ip::pin_mask_metal },
-        // is-ejector und is-height sind vermutlich Aktoren-Rückmeldungen oder doppelt,
-        // passe hier die IDs ebenfalls an deine Definitionen an.
-        { ipc::EJECTOR,   "ejector", is::Ejector::is_data_set(), is::pin_mask_ejector },
-        { ipc::HEIGHT,    "height",  is::Height::is_data_set(),  is::pin_mask_height },
+        { ipc::BTN_ESTOP,     true,  ii::Estop::is_data_set(),   ii::pin_mask_estop },
+        { ipc::BTN_RESET,     true,  ii::Reset::is_data_set(),   ii::pin_mask_reset },
+        { ipc::BTN_START,     true,  ii::Start::is_data_set(),   ii::pin_mask_start },
+        { ipc::BTN_STOP,      true,  ii::Stop::is_data_set(),    ii::pin_mask_stop },
+        { ipc::LS_CHUTE,      false, ip::Chute::is_data_set(),   ip::pin_mask_chute },
+        { ipc::LS_SWITCH,     false, ip::Ejector::is_data_set(), ip::pin_mask_ejector },
+        { ipc::LS_ENTRY,      false, ip::Entry::is_data_set(),   ip::pin_mask_entry },
+        { ipc::LS_END,        false, ip::End::is_data_set(),     ip::pin_mask_end },
+        { ipc::SENSOR_METAL,  false, ip::Metal::is_data_set(),   ip::pin_mask_metal },
+        { ipc::EJECTOR,    false, is::Ejector::is_data_set(), is::pin_mask_ejector },
+        { ipc::HEIGHT,     false, is::Height::is_data_set(),  is::pin_mask_height }
     };
 
+    // 3. Alle Pins durchgehen und prüfen, welcher Pin den Interrupt ausgelöst hat
     for (const auto &pin : pins)
     {
-        // Hat sich dieser Pin verändert?
         if (status & pin.mask)
         {
+            // Bestimmung des genauen Zustands basierend auf deinem State-Enum
+            uint16_t state_value;
 
-            // 1. QNX Payload bauen (Sensor ID + Zustand 1 oder 0)
-            uint32_t payload = ipc::encodeHalPayload(pin.sensor_id, pin.active ? 1 : 0);
+            if (pin.is_button) {
+                // Taster-Logik
+                state_value = pin.active ? ipc::State::PRESSED : ipc::State::RELEASED;
+            } else {
+                // Lichtschranken- und Sensor-Logik
+                state_value = pin.active ? ipc::State::CLEARED : ipc::State::BLOCKED;
+            }
 
-            // 2. Pulse an den Dispatcher feuern!
+            // Spezialfall für E-Stop: Wenn der E-Stop-Pin auslöst (egal ob gedrückt oder gelöst),
+            // bekommt er den eigenen, hochpriorisierten Pulse-Code HAL_ESTOP.
+            int8_t pulse_code = (pin.sensor_id == ipc::BTN_ESTOP) ? ipc::HAL_ESTOP : ipc::HAL_INPUT;
+
+            // 4. QNX Payload packen (Sensor ID + neuer Zustand)
+            uint32_t payload = ipc::encodeHalPayload(pin.sensor_id, state_value);
+
+            // 5. Puls absolut blockierungsfrei an den Dispatcher senden
             if (m_coid != -1) {
-                MsgSendPulse(m_coid, 10, ipc::HAL_INPUT, payload);
+                // Priorität 10 ist Standard für normale Signale
+                MsgSendPulse(m_coid, 10, pulse_code, payload);
             }
         }
     }
 
-    // OS erlauben, den nächsten Interrupt für diesen Port zu werfen
+    // 6. Dem Betriebssystem erlauben, neue Interrupts für diesen Port durchzulassen
     InterruptUnmask(intr_gpio_port_0, m_interrupt_id);
 }

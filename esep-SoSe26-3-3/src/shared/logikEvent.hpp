@@ -17,6 +17,7 @@ namespace logik {
 
         HEIGHT_BLOCKED,
         HEIGHT_CLEARED,
+        HEIGHT_ERROR,
 
         EJECTOR_BLOCKED,
         EJECTOR_CLEARED,
@@ -44,19 +45,20 @@ namespace logik {
         ESTOP_RELEASED,
 
         // Network Events
-        NET_START_PRESSED,
-        NET_START_RELEASED,
+        PARTNER_START_PRESSED,
+        PARTNER_START_RELEASED,
 
-        NET_STOP_PRESSED,
-        NET_STOP_RELEASED,
+        PARTNER_STOP_PRESSED,
+        PARTNER_STOP_RELEASED,
 
-        NET_RESET_PRESSED,
-        NET_RESET_RELEASED,
+        PARTNER_RESET_PRESSED,
+        PARTNER_RESET_RELEASED,
 
-        NET_ESTOP_PRESSED,
-        NET_ESTOP_RELEASED,
+        PARTNER_ESTOP_PRESSED,
+        PARTNER_ESTOP_RELEASED,
 
-        NET_HANDOVER_READY
+        REQ_TO_GIVE_WP,
+        READY_TO_RECEIVE_WP,
     };
 
 } // namespace logik

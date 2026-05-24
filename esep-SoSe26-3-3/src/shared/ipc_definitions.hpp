@@ -45,8 +45,9 @@ namespace ipc {
         // LOKALE HARDWARE & SYSTEM (1 - 9)
         // ====================================================================
         HAL_INPUT         = _PULSE_CODE_MINAVAIL + 1,  // Kommt von der eigenen Sensorik (HAL)
-        CONNECTION_MSG    = _PULSE_CODE_MINAVAIL + 2,  // Interner Handshake (ConnectionManager gefunden)
-        DISCONNECT        = _PULSE_CODE_MINAVAIL + 3,  // Not-Halt oder Verbindungsabbruch
+        HAL_ESTOP         = _PULSE_CODE_MINAVAIL + 2,
+        CONNECTION_MSG    = _PULSE_CODE_MINAVAIL + 3,  // Interner Handshake (ConnectionManager gefunden)
+        DISCONNECT        = _PULSE_CODE_MINAVAIL + 4,  // Not-Halt oder Verbindungsabbruch
 
         // ====================================================================
         // TIMER EVENTS (10 - 19)
@@ -58,15 +59,15 @@ namespace ipc {
         // ====================================================================
         // NETZWERK BASIS (20 - 29)
         // ====================================================================
-        NETWORK_MSG       = _PULSE_CODE_MINAVAIL + 20, // Generische Nachricht vom Partner
+        PARTNER_MSG       = _PULSE_CODE_MINAVAIL + 20, // Generische Nachricht vom Partner
         ANLAGE_2_CIID     = _PULSE_CODE_MINAVAIL + 21, // Initialer Handshake über Qnet
         HEARTBEAT         = _PULSE_CODE_MINAVAIL + 22,
+        PARTNER_ESTOP      = _PULSE_CODE_MINAVAIL + 23,
+
         // ====================================================================
         // NETZWERK WERKSTÜCK-ÜBERGABE (30 - 39)
         // ====================================================================
         WP_INFO       = _PULSE_CODE_MINAVAIL + 30, // Ersetzt dein WP_INFO (ID & Typ)
-        REQ_RECEIVE   = _PULSE_CODE_MINAVAIL + 31, // Darf ich übergeben?
-        READY_RECEIVE = _PULSE_CODE_MINAVAIL + 32, // Ja, ich bin bereit!
         UPDATE_LIST   = _PULSE_CODE_MINAVAIL + 33  // Liste beim Partner updaten
     };
 
@@ -75,25 +76,44 @@ namespace ipc {
     // ============================================================================
     enum SensorID : uint16_t {
         // Tasten
-        BTN_START     = _PULSE_CODE_MINAVAIL + 1,
-        BTN_STOP,
-        BTN_RESET,
-        BTN_ESTOP,
+        BTN_START        = _PULSE_CODE_MINAVAIL + 1,
+        BTN_STOP         = _PULSE_CODE_MINAVAIL + 2,
+        BTN_RESET        = _PULSE_CODE_MINAVAIL + 3,
+        BTN_ESTOP        = _PULSE_CODE_MINAVAIL + 4,
 
-        LS_ENTRY,
-        LS_HEIGHT,// nicht nutzen
-        LS_SWITCH,
-        LS_END,
-        LS_CHUTE,
-        SENSOR_METAL,
+        LS_ENTRY         = _PULSE_CODE_MINAVAIL + 5,
+        LS_HEIGHT        = _PULSE_CODE_MINAVAIL + 6,// nicht nutzen
+        LS_SWITCH        = _PULSE_CODE_MINAVAIL + 7,
+        LS_END           = _PULSE_CODE_MINAVAIL + 8,
+        LS_CHUTE         = _PULSE_CODE_MINAVAIL + 9,
+        SENSOR_METAL     = _PULSE_CODE_MINAVAIL + 10,
 
-        EJECTOR,
-        HEIGHT
+        EJECTOR          = _PULSE_CODE_MINAVAIL + 11,
+        HEIGHT           = _PULSE_CODE_MINAVAIL + 12,
 
     };
 
-    // --- Bit-Masking Hilfsfunktionen für den HAL Payload (ID + State) ---
-    // Packt die 16-Bit SensorID und den 16-Bit Zustand in EINEN 32-Bit QNX Payload.
+    // ============================================================================
+    // 3. NETZWERK NACHRICHTEN (Für NETWORK_MSG Pulses)
+    // ============================================================================
+    // Die globalen Events, die zwischen den beiden Dispatchern verschickt werden.
+    enum NetworkMessage : uint32_t {
+        REQ_RECEIVE           = _PULSE_CODE_MINAVAIL + 1, // Darf ich übergeben?
+        READY_RECEIVE         = _PULSE_CODE_MINAVAIL + 2, // Ja, ich bin bereit!
+        HANDOVER_SUCCESSFUL   = _PULSE_CODE_MINAVAIL + 3  ,                          // Anlage 2: "Habe es erhalten, du kannst stoppen"
+    };
+
+    enum State:uint16_t{
+        BLOCKED    = _PULSE_CODE_MINAVAIL + 1,
+        CLEARED    = _PULSE_CODE_MINAVAIL + 2,
+        PRESSED    = _PULSE_CODE_MINAVAIL + 3,
+        RELEASED   = _PULSE_CODE_MINAVAIL + 4,
+		HIGH_TYPE   = _PULSE_CODE_MINAVAIL + 5,
+
+        HIGH_ERROR = _PULSE_CODE_MINAVAIL + 10,
+
+    };
+
 
     /** @brief Wird vom HAL genutzt, um den Pulse zu bauen */
     inline uint32_t encodeHalPayload(uint16_t sensorId, uint16_t state) {
@@ -109,35 +129,6 @@ namespace ipc {
     inline uint16_t decodeSensorState(uint32_t payload) {
         return static_cast<uint16_t>(payload & 0xFFFF);
     }
-
-    // ============================================================================
-    // 3. NETZWERK NACHRICHTEN (Für NETWORK_MSG Pulses)
-    // ============================================================================
-    // Die globalen Events, die zwischen den beiden Dispatchern verschickt werden.
-    enum NetworkMessage : uint32_t {
-        GLOBAL_ESTOP_PRESSED = _PULSE_CODE_MINAVAIL + 1,
-        GLOBAL_ESTOP_RELEASED,
-        GLOBAL_START_PRESSED,
-        GLOBAL_START_RELEASED,
-        GLOBAL_RESET_PRESSED,
-        GLOBAL_RESET_RELEASED,
-        GLOBAL_STOP_PRESSED,
-        GLOBAL_STOP_RELEASED,
-
-        // Handover-Protokoll (Übergabe des Werkstücks)
-        MSG_REQ_RECEIVE,      // Anlage 1: "Ich habe ein Werkstück am Ende"
-        MSG_READY_RECEIVE,   // Anlage 2: "Alles klar, mein Einlauf ist frei"
-        HANDOVER_SUCCESSFUL,          // Anlage 2: "Habe es erhalten, du kannst stoppen"
-        MSG_UPDATE_LIST
-    };
-
-    enum HeightADC:uint16_t{
-        BLOCKED = _PULSE_CODE_MINAVAIL + 1,
-        CLEARED,
-        HIGH_ERROR
-
-    };
-
 
 
 } // namespace ipc
