@@ -22,10 +22,6 @@ namespace logik {
 
         virtual void workpieceInfo(int id, WpType type) = 0;
 
-        virtual void RequestToGiveWp() = 0;
-
-        virtual void readyToReceiveWp() = 0;
-
         virtual void updateWpListe(wpType Type) = 0;
 
         virtual void ta ckt() = 0;

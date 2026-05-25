@@ -6,9 +6,11 @@
 #define HAL_INPUT_DRIVER_ADC_INTERRUPT_HPP_
 
 #include <hal/input_driver/interrupt.hpp>
-#include "profileAnalyzer.hpp"
-#include <shared/ipc_definitions.hpp>
-#include <cstdint> // NEU: Wichtig für uint8_t und uint32_t
+#include <cstdint>
+
+// Vorwärtsdeklaration, um zyklische Includes zu vermeiden.
+// Der echte Header wird erst in der .cpp inkludiert.
+class ProfileAnalyzer;
 
 namespace hal
 {
@@ -24,53 +26,37 @@ public:
     AdcInterrupt();
 
     /**************************************************************************
-     * @brief Beendet Interrupt-Handling und räumt auf
+     * @brief Beendet Interrupt-Handling und räumt auf.
      */
     ~AdcInterrupt() noexcept = default;
 
-     /**************************************************************************
+    /**************************************************************************
      * @brief Startet den asynchronen ADC-Thread/Interrupt für die Höhenmessung.
      * @param coid Die Connection-ID (Kanal) des Dispatchers.
-     * @param pulseCode Der 8-Bit Identifier (z.B. ipc::HAL_INPUT).
+     * @param analyzer Zeiger auf den zentralen ProfileAnalyzer, der in HalSensors lebt.
      */
-    void initAdcInterrupt(int coid);
+    void initAdcInterrupt(ProfileAnalyzer* analyzer);
 
-     /**************************************************************************
-     * @brief Überträgt die Kalibrierungsdaten an den internen ProfileAnalyzer.
-     * Muss zwingend vor initAdcInterrupt() aufgerufen werden!
-     */
-    void setCalibrationStats();
-
-    void setAdcCalibration(uint32_t trigger,
-                           uint32_t flatMin, uint32_t flatMax,
-                           uint32_t tallMin, uint32_t tallMax,
-                           uint32_t holeMin, uint32_t holeMax,
-                           uint32_t emptyCountLimit);
-
-     /**************************************************************************
-     * @brief Stoppt den asynchronen ADC-Mess-Thread.
+    /**************************************************************************
+     * @brief Stoppt den asynchronen ADC-Mess-Thread und maskiert die Hardware.
      */
     void stopAdcInterrupt();
 
-
 private:
     /**************************************************************************
-     * @brief Legt fest, auf welche Interrupts reagiert wird
+     * @brief Legt fest, auf welche Interrupts reagiert wird.
      */
-    void
-    configure_interrupt() const noexcept final override;
+    void configure_interrupt() const noexcept final override;
 
     /**************************************************************************
-     * @brief Interrupt Service Routine
+     * @brief Interrupt Service Routine (ISR) - Liest den ADC-Wert und leitet ihn weiter.
      */
-    void
-    handle_interrupt() const noexcept final override;
+    void handle_interrupt() const noexcept final override;
 
     // ========================================================================
-    // Member-Variablen für QNX Kommunikation und Auswertung
+    // Member-Variablen für QNX Kommunikation und Hardware-Kopplung
     // ========================================================================
-    int m_coid;                         // Die Ziel-Adresse für unsere Pulses
-    mutable ProfileAnalyzer m_analyzer; // 'mutable', damit es in der const Methode nutzbar bleibt
+    ProfileAnalyzer* m_analyzer;        // Zeiger auf das Analyse-Objekt der Fassade
 };
 
 } // namespace input_driver

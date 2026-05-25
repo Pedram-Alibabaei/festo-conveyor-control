@@ -1,5 +1,5 @@
 /**
-* @file hal_sensors.hpp
+ * @file hal_sensors.hpp
  * @brief Konkrete Implementierung der i_Sensors Schnittstelle (Facade Pattern).
  */
 
@@ -8,9 +8,10 @@
 
 #include "i_Sensors.hpp"
 
-// Hier inkludieren wir die "geheimen" internen Klassen
+// Hier inkludieren wir die internen Low-Level Hardware-Treiber
 #include "hal/input_driver/gpio_0_interrupt.hpp"
 #include "hal/input_driver/adc_interrupt.hpp"
+#include "hal/input_driver/profileAnalyzer.hpp"
 
 namespace hal {
 
@@ -19,24 +20,33 @@ namespace hal {
         // Die konkreten Hardware-Treiber sind hier versteckt (Kapselung)
         input_driver::Gpio0Interrupt m_gpio_interrupt;
         input_driver::AdcInterrupt   m_adc_interrupt;
+        ProfileAnalyzer              m_analyzer;
 
     public:
         HalSensors() = default;
         ~HalSensors() override;
 
         // ========================================================================
-        // Implementierung des i_Sensors Vertrages (override)
+        // 1. Digitale Interrupt-Steuerung (GPIO)
         // ========================================================================
-        void init(int coid ) override;
+        void init(int coid) override;
         void stopInterrupts() override;
 
-        void setAdcCalibrationStats()override;
-        void setAdcCalibration(uint32_t trigger,
-                               uint32_t flatMin, uint32_t flatMax,
-                               uint32_t tallMin, uint32_t tallMax,
-                               uint32_t holeMin, uint32_t holeMax,
-                               uint32_t emptyCountLimit) override;
+        // ========================================================================
+        // 2. ADC- & PROFILANALYSATOR-ZUSTÄNDE (Aus dem Interface)
+        // ========================================================================
+        void setAdcIdelState() override;
+        void setAdcWaitigForWpState() override;
+        void setAdcCalibrationsState() override;
 
+        /**
+         * @brief Aktualisiert die internen Schwellenwerte des ProfileAnalyzers live.
+         */
+        void updateCalibrationThresholds(uint16_t calib_mode, uint16_t calib_value) override;
+
+        // ========================================================================
+        // 3. Initiale Statusabfragen (Polling)
+        // ========================================================================
         bool isEstopPressed() override;
     };
 

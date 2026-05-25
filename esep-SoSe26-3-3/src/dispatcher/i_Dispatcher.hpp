@@ -1,5 +1,5 @@
 /**
-* @file I_Dispatcher.hpp
+ * @file I_Dispatcher.hpp
  * @brief Die einzige Schnittstelle, die die Logik zur Aussenwelt braucht.
  */
 
@@ -7,6 +7,8 @@
 #define I_DISPATCHER_HPP
 
 #include <cstdint>
+#include <map>
+#include <string>
 #include "shared/ipc_definitions.hpp"
 #include <shared/types.hpp>
 
@@ -15,7 +17,6 @@ class i_Sensors;
 class i_Connection;
 class i_Timer;
 class i_Logik;
-
 
 class I_Dispatcher {
 public:
@@ -37,7 +38,18 @@ public:
      */
     virtual void stop() = 0;
 
-// ========================================================================
+    // ========================================================================
+    // KALIBRIERUNGS-SCHNITTSTELLE (NEU - Map-Übertrag)
+    // ========================================================================
+
+    /**
+     * @brief Übergibt die vollständige Map aller live eingelernten Kalibrierungsdaten
+     * an den CalibrationManager zum permanenten Speichern.
+     * @param calibData Die Map mit Key-Value-Paaren (z.B. {"CALIB_EMPTY_BELT", 3450})
+     */
+    virtual void saveCompleteCalibrationMap(const std::map<std::string, int>& calibData) = 0;
+
+    // ========================================================================
     // Dependency Injection (Setter)
     // ========================================================================
     virtual void setActuators(i_Actuators* actuators) = 0;
@@ -47,17 +59,12 @@ public:
     virtual void setLogik(i_Logik* logik) = 0;
 
     // ========================================================================
-    // (Weiterleitung an Timer )
-    // ========================================================================
-    virtual void startBeltClock(int ms) = 0;
-
-    // ========================================================================
     // (Weiterleitung an andere Anlage / Netzwerk )
     // ========================================================================
     virtual void workpieceInfo(int id, WpType type) = 0;
     virtual void RequestToReceiveWp() = 0;
     virtual void readyToReceiveWp() = 0;
-    virtual void updateWpListe(WpType type)=0;
+    virtual void updateWpListe(WpType type) = 0;
 
     // ========================================================================
     // (Weiterleitung an HAL - Aktorik)

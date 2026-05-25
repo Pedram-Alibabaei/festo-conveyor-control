@@ -4,10 +4,12 @@
  */
 
 #include "CalibrationManager.hpp"
+#include "shared/ipc_definitions.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <sys/stat.h>
+#include <sys/neutrino.h>
 
 // ============================================================================
 // KONSTRUKTOR
@@ -20,44 +22,41 @@ CalibrationManager::CalibrationManager(const std::string& defaultFilepath)
 // DATEI-OPERATIONEN
 // ============================================================================
 
-void CalibrationManager::loadFromFile(const std::string& filepath) {
-    m_filepath = filepath;
-    clear(); // RAM vorher leeren, um Altlasten zu entfernen
+bool CalibrationManager::fileExists() {
+    struct stat buffer;
+    return (stat(m_filepath.c_str(), &buffer) == 0);
+}
+
+void CalibrationManager::load() {
+    clear(); // RAM vorher leeren
 
     std::ifstream file(m_filepath);
     if (!file.is_open()) {
         std::cerr << "[CalibrationManager] Warnung: Datei '" << m_filepath
-                  << "' konnte nicht geoeffnet werden. Starte mit leeren Werten." << std::endl;
+                  << "' konnte nicht geoeffnet werden. Starte leer." << std::endl;
         return;
     }
 
     std::string line;
-    int lineCount = 0;
     while (std::getline(file, line)) {
-        lineCount++;
         std::string key;
         int value = 0;
-
         if (parseLine(line, key, value)) {
             m_data[key] = value;
         }
     }
 
-    std::cout << "[CalibrationManager] " << m_data.size() << " Werte erfolgreich aus '"
-              << m_filepath << "' geladen (Zeilen gesamt: " << lineCount << ")." << std::endl;
+    std::cout << "[CalibrationManager] " << m_data.size() << " Werte erfolgreich geladen." << std::endl;
 }
 
-void CalibrationManager::saveToFile(const std::string& filepath) {
-    m_filepath = filepath;
+void CalibrationManager::save() {
     std::ofstream file(m_filepath);
-
     if (!file.is_open()) {
-        std::cerr << "[CalibrationManager] FEHLER: Konnte Kalibrierungsdatei '"
-                  << m_filepath << "' nicht zum Schreiben oeffnen!" << std::endl;
+        std::cerr << "[CalibrationManager] FEHLER: Konnte '" << m_filepath
+                  << "' nicht zum Schreiben oeffnen!" << std::endl;
         return;
     }
 
-    // Schreibt alle aktuellen Key-Value-Paare zeilenweise in die Datei
     file << "# ===================================================\n";
     file << "# FESTO MPS Station - Kalibrierungsdaten\n";
     file << "# Automatisch generiert vom CalibrationManager\n";
@@ -68,21 +67,49 @@ void CalibrationManager::saveToFile(const std::string& filepath) {
     }
 
     file.close();
-    std::cout << "[CalibrationManager] " << m_data.size() << " Werte permanent in '"
-              << m_filepath << "' gespeichert." << std::endl;
+    std::cout << "[CalibrationManager] " << m_data.size() << " Werte permanent gesichert." << std::endl;
 }
 
-bool CalibrationManager::fileExists(const std::string& filepath) {
-    struct stat buffer;
-    return (stat(filepath.c_str(), &buffer) == 0);
-}
+void CalibrationManager::distributeValues(int dispatcherCoid) {
+    if (dispatcherCoid == -1) {
+        std::cerr << "[CalibrationManager] Fehler: Ungueltige Dispatcher-COID!" << std::endl;
+        return;
+    }
 
-void CalibrationManager::load() {
-    loadFromFile(m_filepath);
-}
+    // ------------------------------------------------------------------------
+    // 1. ADC-WERTE SENDEN (Nutzt MANAGER_ADC_CALIBRATION)
+    // ------------------------------------------------------------------------
+    if (hasKey(calib::EMPTY_BELT)) {
+        uint32_t p = ipc::encodeCalibPayload(m_data[calib::EMPTY_BELT], ipc::CalibMode::EMPTY_BELT);
+        MsgSendPulse(dispatcherCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::MANAGER_ADC_CALIBRATION, p);
+    }
+    if (hasKey(calib::FLAT_CENTER)) {
+        uint32_t p = ipc::encodeCalibPayload(m_data[calib::FLAT_CENTER], ipc::CalibMode::FLAT_WP);
+        MsgSendPulse(dispatcherCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::MANAGER_ADC_CALIBRATION, p);
+    }
+    if (hasKey(calib::MIN_SAMPLES_FOR_CLASS)) {
+        uint32_t p = ipc::encodeCalibPayload(m_data[calib::MIN_SAMPLES_FOR_CLASS], ipc::CalibMode::MIN_SAMPLES);
+        MsgSendPulse(dispatcherCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::MANAGER_ADC_CALIBRATION, p);
+    }
 
-void CalibrationManager::save() {
-    saveToFile(m_filepath);
+    // 2. ZEIT-TICKS SENDEN (MANAGER_TICK_CALIBRATION)
+    // Map ordnet den Text-Schlüssel direkt dem neuen CalibMode-Subtyp zu!
+    std::map<std::string, uint16_t> tickMapping = {
+        {calib::TICKS_ENTRY_C_TO_HEIGHT_B,   ipc::CalibMode::TICK_ENTRY_C_TO_HEIGHT_B},
+        {calib::TICKS_HEIGHT_B_TO_HEIGHT_C,  ipc::CalibMode::TICK_HEIGHT_B_TO_HEIGHT_C},
+        {calib::TICKS_HEIGHT_C_TO_EJECTOR_B, ipc::CalibMode::TICK_HEIGHT_C_TO_EJECTOR_B},
+        {calib::TICKS_EJECTOR_B_TO_EJECTOR_C, ipc::CalibMode::TICK_EJECTOR_B_TO_EJECTOR_C},
+        {calib::TICKS_EJECTOR_C_TO_END_B,    ipc::CalibMode::TICK_EJECTOR_C_TO_END_B},
+        {calib::TICKS_END_B_TO_END_C,        ipc::CalibMode::TICK_END_B_TO_END_C}
+    };
+
+    for (const auto& mapping : tickMapping) {
+        if (hasKey(mapping.first)) {
+            // [ 16 Bit: Wert in Ticks ] [ 16 Bit: Genauer Segment-Typ (CalibMode) ]
+            uint32_t p = ipc::encodeCalibPayload(m_data[mapping.first], mapping.second);
+            MsgSendPulse(dispatcherCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::MANAGER_TICK_CALIBRATION, p);
+        }
+    }
 }
 
 // ============================================================================
@@ -96,17 +123,13 @@ bool CalibrationManager::hasKey(const std::string& key) {
 int CalibrationManager::getInt(const std::string& key, int defaultValue) {
     auto it = m_data.find(key);
     if (it != m_data.end()) {
-        return it->second; // Wert gefunden
+        return it->second;
     }
-    // Falls der Wert fehlt, loggen wir eine Warnung und geben den Default zurück
-    std::cerr << "[CalibrationManager] Warnung: Schluessel '" << key
-              << "' nicht gefunden! Nutze Standardwert: " << defaultValue << std::endl;
     return defaultValue;
 }
 
 void CalibrationManager::setInt(const std::string& key, int value) {
     m_data[key] = value;
-    std::cout << "[CalibrationManager] RAM-Update: " << key << " = " << value << std::endl;
 }
 
 void CalibrationManager::clear() {
@@ -118,7 +141,6 @@ void CalibrationManager::clear() {
 // ============================================================================
 
 bool CalibrationManager::parseLine(const std::string& line, std::string& outKey, int& outValue) {
-    // 1. Leerzeilen oder Kommentare überspringen
     if (line.empty() || line[0] == '#' || line[0] == ';') {
         return false;
     }
@@ -127,22 +149,17 @@ bool CalibrationManager::parseLine(const std::string& line, std::string& outKey,
     std::string keyStr;
     std::string valueStr;
 
-    // 2. An dem Gleichheitszeichen '=' trennen
     if (std::getline(ss, keyStr, '=') && std::getline(ss, valueStr)) {
-
-        // Whitespaces am Anfang/Ende vom Key trimmen (Sicherheitshalber)
+        // Whitespaces trimmen
         keyStr.erase(0, keyStr.find_first_not_of(" \t\r\n"));
         keyStr.erase(keyStr.find_last_not_of(" \t\r\n") + 1);
 
         outKey = keyStr;
 
         try {
-            // String-Wert in Ganzzahl (int) konvertieren
             outValue = std::stoi(valueStr);
             return true;
-        } catch (const std::exception& e) {
-            std::cerr << "[CalibrationManager] Parser-Fehler bei Wert von Key '"
-                      << keyStr << "': " << e.what() << std::endl;
+        } catch (...) {
             return false;
         }
     }

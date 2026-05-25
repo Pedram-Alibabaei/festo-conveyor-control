@@ -4,12 +4,12 @@
  *
  * @details WICHTIGER ARCHITEKTUR-HINWEIS:
  * Diese Klasse arbeitet vollständig ereignisgesteuert (Event-Driven) mittels QNX Pulses.
- * Anstatt Sensoren aktiv abzufragen (Polling), muss die Logik/der Dispatcher
- * die Interrupts einmalig über initInterrupts() und initAdcInterrupt() aktivieren.
+ * Anstatt Sensoren aktiv abzufragen (Polling), muss der Dispatcher/die Logik
+ * die Hardware-Meldungen einmalig über init() aktivieren.
  * Danach sendet diese HAL-Klasse bei jeder Flankenänderung und nach jeder
  * Werkstück-Profilanalyse automatisch einen Pulse an den übergebenen Kanal.
  *
- * Das Bit-Packing der Pulse-Payload (ID + Zustand) ist in der IPC_definitions.hpp definiert.
+ * Das Bit-Packing der Pulse-Payload (ID + Zustand) ist in der ipc_definitions.hpp definiert.
  */
 
 #ifndef I_SENSORS_HPP
@@ -33,7 +33,6 @@ public:
      * Nachrichten (Pulses) zu generieren.
      *
      * @param coid Die Connection-ID (Kanal) des Dispatchers, an den die Pulses gesendet werden.
-     * @param pulseCode Der 8-Bit Identifier (z.B. PulseCode::HAL_INPUT), der den Pulsen angehängt wird.
      */
     virtual void init(int coid) = 0;
 
@@ -44,23 +43,32 @@ public:
 
 
     // ========================================================================
-    // 2. Analoge Sensorik (Asynchrone Höhen-Profilanalyse)
+    // 2. ADC- & PROFILANALYSATOR-ZUSTÄNDE (Zustandsmaschine der Messung)
     // ========================================================================
 
     /**
-     * @brief Überträgt die Kalibrierungsdaten an die ADC-Auswertelogik (ProfileAnalyzer).
-     *
-     * Muss aufgerufen werden, bevor Messungen stattfinden (z.B. nach dem Auslesen
-     * einer Konfigurationsdatei beim Systemstart).
+     * @brief Setzt den ADC-Zustand auf IDLE (Keine Messung aktiv, Band leer).
      */
-    virtual void setAdcCalibrationStats()=0;
+    virtual void setAdcIdelState() = 0;
 
-    virtual void setAdcCalibration(uint32_t trigger,
-                                   uint32_t flatMin, uint32_t flatMax,
-                                   uint32_t tallMin, uint32_t tallMax,
-                                   uint32_t holeMin, uint32_t holeMax,
-                                   uint32_t emptyCountLimit) = 0;
+    /**
+     * @brief Bereitet den ADC auf ein ankommendes Werkstueck vor.
+     */
+    virtual void setAdcWaitigForWpState() = 0;
 
+    /**
+     * @brief Versetzt den Profilanalysator in den Kalibrierungs-Modus.
+     */
+    virtual void setAdcCalibrationsState() = 0;
+
+    /**
+     * @brief Aktualisiert die internen Schwellenwerte des ProfileAnalyzers live.
+     * * Wird beim Systemstart vom Dispatcher aufgerufen, sobald der CalibrationManager
+     * die Werte erfolgreich aus der Textdatei geladen hat.
+     * * @param calib_mode Der Sub-Typ der Kalibrierung (z.B. ipc::CalibMode::EMPTY_BELT).
+     * @param calib_value Der geladene ADC-Rohwert oder Ticks-Wert.
+     */
+    virtual void updateCalibrationThresholds(uint16_t calib_mode, uint16_t calib_value) = 0;
 
 
     // ========================================================================

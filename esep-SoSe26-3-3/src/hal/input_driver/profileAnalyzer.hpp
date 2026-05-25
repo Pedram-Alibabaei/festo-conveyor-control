@@ -1,110 +1,75 @@
 /**
  * @file ProfileAnalyzer.hpp
- *
- * @brief Klassenbeschreibung: ProfileAnalyzer
- *
- * Die Klasse ProfileAnalyzer ist ein reines Logik-Modul ("Number Cruncher") zur
- * Auswertung analoger Höhenprofile. Sie ist vollständig entkoppelt von der Hardware
- * (HAL) und dem Betriebssystem (QNX), was sie hochgradig testbar macht.
- *
- * Hauptaufgaben (Zuständigkeiten):
- * - Signalglättung (Smoothing): Nutzt einen gleitenden Mittelwert (Moving Average
- *   Filter) über die letzten 5 Messwerte, um elektromagnetisches Rauschen oder
- *   mechanisches Wackeln (Spikes) in Echtzeit herauszufiltern.
- * - Topografie-Analyse: Erkennt Werkstücke geschwindigkeitsunabhängig, indem
- *   ausschließlich Extremwerte (höchster Gipfel, tiefstes Tal) während des Mess-
- *   fensters analysiert werden, anstatt statische Sample-Mengen zu zählen.
- * - Hysterese-Überwachung: Bestimmt über einen Zähler den sicheren Abriss
- *   (Ende der Messung), sobald das Förderband wieder zuverlässig leer ist.
+ * @brief Logische Zustandsschaltung und Auswertung der ADC-Höhenprofile.
  */
 
 #ifndef PROFILE_ANALYZER_HPP
 #define PROFILE_ANALYZER_HPP
 
 #include <cstdint>
-// Hier bindest du eure Datei ein, in der das WpType-Enum (UNKNOWN, FLAT, TALL, DRILLED) definiert ist
-#include <shared/types.hpp>
+#include <map>
 
 class ProfileAnalyzer {
 private:
-    // ========================================================================
-    // 1. Signal-Filter (Gleitender Mittelwert)
-    // ========================================================================
-    uint32_t m_filter_buffer[5];  // Ringpuffer für die letzten 5 Werte
-    uint8_t  m_filter_index;      // Aktuelle Schreibposition im Puffer
-    bool     m_filter_is_full;    // True, sobald die ersten 5 Werte gesammelt wurden
+    // Die vom Dispatcher übergebene COID, um Ergebnisse autonom zu verschicken
+    int m_coid;
 
-    // ========================================================================
-    // 2. Das "Gedächtnis" für das aktuelle Werkstück
-    // ========================================================================
-    uint32_t m_current_peak_height; // Der absolut höchste gemessene, geglättete Wert
-    bool     m_hole_detected;       // Wurde zwischendurch ein signifikantes Tal erkannt?
-    uint32_t m_empty_belt_counter;  // Zählt, wie lange das Band am Stück leer ist (Hysterese)
-    bool     m_is_measuring;        // Status-Flag: Befindet sich aktuell ein Teil unter dem Sensor?
-    bool   m_binary;
+    // Interne Zustandsmaschine für die Werkstück-Erkennung am ADC
+    enum class AnalyzerState {
+        IDLE,               // Band ist leer, keine Messung
+        WAITING_FOR_WP,     // Bereit für das nächste Werkstück
+        MEASURING,          // Werkstück befindet sich unter dem Sensor
+        CALIBRATION         // Live-Kalibrierung läuft (Einlernen)
+    };
 
-    // ========================================================================
-    // 3. Kalibrierungsdaten (Werden beim Systemstart aus einer Datei geladen)
-    // ========================================================================
-    uint32_t m_trigger_threshold;   // Ab welchem ADC-Wert beginnt ein Werkstück?
+    AnalyzerState m_currentState;
 
-    // Toleranzbänder (Min/Max) für die verschiedenen Zonen
-    uint32_t m_flat_min;
-    uint32_t m_flat_max;
+    // Speicher für die geladenen oder eingelernten Kalibrierungsschwellenwerte
+    // Key: ipc::CalibMode (z.B. EMPTY_BELT, FLAT_WP) -> Value: ADC-Rohwert
+    std::map<uint16_t, uint16_t> m_thresholds;
 
-    uint32_t m_tall_min;
-    uint32_t m_tall_max;
+    // Interne Variablen zur Profilerfassung während einer Messung
+    uint16_t m_maxHeightInCurrentProfile;
+    uint32_t m_sampleCounter;
 
-    uint32_t m_hole_min;
-    uint32_t m_hole_max;
-
-    uint32_t m_binary_min;
-    uint32_t m_binary_max;
-
-    uint32_t m_empty_count_limit;   // Wie viele "Leer"-Messungen bedeuten das Ende der Messung?
+    /**
+     * @brief Hilfsmethode, um das fertig gemessene Profil zu analysieren
+     * und das Ergebnis als Puls an den Dispatcher zu senden.
+     */
+    void evaluationFinished(uint16_t finalTypeOrValue);
 
 public:
     /**
-     * @brief Konstruktor: Initialisiert alle Werte sicher mit 0.
+     * @brief Konstruktor. Initialisiert den Analyzer im IDLE-Zustand.
      */
     ProfileAnalyzer();
 
-    /**
-     * @brief Setzt die System-Kalibrierung (Schwellenwerte und Zonen).
-     * Wird idealerweise beim Systemstart vom main-Thread aufgerufen.
-     */
-    void setCalibrationStats();
-
-    void setCalibration(uint32_t trigger,
-                        uint32_t flatMin, uint32_t flatMax,
-                        uint32_t tallMin, uint32_t tallMax,
-                        uint32_t holeMin, uint32_t holeMax,
-                        uint32_t emptyCountLimit);
+    ~ProfileAnalyzer() = default;
 
     /**
-     * @brief Setzt das interne Gedächtnis und den Filter zurück.
-     * Muss aufgerufen werden, nachdem eine Messung erfolgreich beendet wurde.
+     * @brief Setzt die Connection-ID (Kanal) zum Dispatcher.
+     * Wird einmalig von HalSensors::init() aufgerufen.
      */
-    void reset();
+    void setConnectionId(int coid);
 
     /**
-     * @brief Nimmt einen rohen ADC-Wert entgegen, glättet ihn und aktualisiert das Höhenprofil.
-     * @param raw_adc_value Der rohe, ungefilterte Wert direkt aus dem Hardware-Register.
+     * @brief Verarbeitet ein einzelnes ADC-Sample aus der Interrupt-Service-Routine.
+     * @param adcValue Der rohe 32-Bit Analogwert direkt von der Hardware.
      */
-    void processSample(UInt32 raw_adc_value);
+    void processSample(uint32_t adcValue);
+
+    // ========================================================================
+    // LOGISCHE ZUSTANDSTEUERUNG (Aufgerufen durch die HalSensors-Fassade)
+    // ========================================================================
+
+    void setAdcIdelState();
+    void setAdcWaitigForWpState();
+    void setAdcCalibrationsState();
 
     /**
-     * @brief Prüft, ob das Werkstück den Sensorbereich vollständig verlassen hat.
-     * @return True, wenn die Hysterese-Bedingung (Band ist lange genug leer) erfüllt ist.
+     * @brief Injektiert geladene Schwellenwerte (z.B. beim Booten aus der Datei).
      */
-    bool isMeasurementComplete() const;
-
-    /**
-     * @brief Wertet das aufgezeichnete Profil aus und fällt das finale Urteil.
-     * Darf erst aufgerufen werden, wenn isMeasurementComplete() true zurückgibt.
-     * @return Der ermittelte Werkstücktyp (WpType).
-     */
-    WpType determineFinalType() const;
+    void updateCalibrationThresholds(uint16_t calib_mode, uint16_t calib_value);
 };
 
 #endif // PROFILE_ANALYZER_HPP

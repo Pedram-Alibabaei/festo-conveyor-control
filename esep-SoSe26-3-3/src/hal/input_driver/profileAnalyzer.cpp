@@ -1,194 +1,145 @@
 /**
  * @file ProfileAnalyzer.cpp
- *
- * @brief Implementierung der ProfileAnalyzer-Klasse.
- *
- * Diese Datei enthält die Logik zur Rauschunterdrückung (Moving Average Filter)
- * und zur profilbasierten, geschwindigkeitsunabhängigen Werkstückerkennung.
+ * @brief Logische Zustandsschaltung und Auswertung der ADC-Höhenprofile.
  */
 
 #include "ProfileAnalyzer.hpp"
-#include <shared/types.hpp>
-// ============================================================================
-// Konstruktor & Setup
-// ============================================================================
+#include "shared/ipc_definitions.hpp"
+#include <iostream>
 
-/**
- * @brief Standardkonstruktor.
- * Setzt das gesamte Gedächtnis, den Filter und die Kalibrierung auf sichere Startwerte (0).
- */
-ProfileAnalyzer::ProfileAnalyzer() {
-    // 1. Filter zurücksetzen
-    for (int i = 0; i < 5; i++) {
-        m_filter_buffer[i] = 0;
-    }
-    m_filter_index   = 0;
-    m_filter_is_full = false;
-
-    // 2. Gedächtnis zurücksetzen
-    m_current_peak_height = 0;
-    m_hole_detected       = false;
-    m_empty_belt_counter  = 0;
-    m_is_measuring        = false;
-
-    // 3. Kalibrierung nullen
-    m_trigger_threshold = 0;
-    m_flat_min = 0; m_flat_max = 0;
-    m_tall_min = 0; m_tall_max = 0;
-    m_hole_min = 0; m_hole_max = 0;
-    m_empty_count_limit = 15;
-}
-
-/**
- * @brief Übernimmt die System-Kalibrierung aus der Konfigurationsdatei.
- */
-void ProfileAnalyzer::setCalibration(uint32_t trigger,
-                                     uint32_t flatMin, uint32_t flatMax,
-                                     uint32_t tallMin, uint32_t tallMax,
-                                     uint32_t holeMin, uint32_t holeMax,
-                                     uint32_t emptyCountLimit) {
-    m_trigger_threshold = trigger;
-    m_flat_min = flatMin;
-    m_flat_max = flatMax;
-    m_tall_min = tallMin;
-    m_tall_max = tallMax;
-    m_hole_min = holeMin;
-    m_hole_max = holeMax;
-    m_empty_count_limit = emptyCountLimit;
-}
-
-/**
- * @brief Setzt die Klasse in den Bereitschaftsmodus für das nächste Werkstück.
- * Leert den Filter-Puffer und löscht das Profilgedächtnis der letzten Messung.
- */
-void ProfileAnalyzer::reset() {
-    // Filter leeren
-    for (int i = 0; i < 5; i++) {
-        m_filter_buffer[i] = 0;
-    }
-    m_filter_index   = 0;
-    m_filter_is_full = false;
-
-    // Gedächtnis leeren
-    m_current_peak_height = 0;
-    m_hole_detected       = false;
-    m_empty_belt_counter  = 0;
-    m_is_measuring        = false;
+extern "C" {
+#include <sys/neutrino.h>
 }
 
 // ============================================================================
-// Die Hauptlogik (Wird für jeden rohen ADC-Wert 1x aufgerufen)
+// KONSTRUKTOR & KONFIGURATION
 // ============================================================================
 
-/**
- * @brief Verarbeitet einen neuen ADC-Messwert.
- * Wendet zuerst einen gleitenden Mittelwert an und analysiert danach das Profil.
- */
-void ProfileAnalyzer::processSample(uint32_t raw_adc_value) {
+ProfileAnalyzer::ProfileAnalyzer()
+    : m_coid(-1),
+      m_currentState(AnalyzerState::IDLE),
+      m_sampleCounter(0) {
+}
 
-    // ------------------------------------------------------------------------
-    // STUFE 1: SIGNAL-GLÄTTUNG (Moving Average Filter)
-    // ------------------------------------------------------------------------
+void ProfileAnalyzer::setConnectionId(int coid) {
+    m_coid = coid;
+}
 
-    // Wert in den Ringpuffer schreiben und Index weiterrücken
-    m_filter_buffer[m_filter_index] = raw_adc_value;
-    m_filter_index++;
+// ============================================================================
+// LOGISCHE ZUSTANDSTEUERUNG (Aufgerufen durch HalSensors)
+// ============================================================================
 
-    // Puffer-Überlauf behandeln (Ringstruktur)
-    if (m_filter_index >= 5) {
-        m_filter_index = 0;
-        m_filter_is_full = true; // Ab jetzt sind immer 5 gültige Werte im Puffer
-    }
+void ProfileAnalyzer::setAdcIdelState() {
+    m_currentState = AnalyzerState::IDLE;
+    m_sampleCounter = 0;
+}
 
-    // Solange wir noch keine 5 Werte für einen sauberen Durchschnitt haben,
-    // ignorieren wir die Eingabe und warten auf das nächste Sample.
-    if (!m_filter_is_full) {
-        return;
-    }
+void ProfileAnalyzer::setAdcWaitigForWpState() {
+    m_currentState = AnalyzerState::WAITING_FOR_WP;
+    m_sampleCounter = 0;
+}
 
-    // Durchschnitt berechnen (Rauschen herausfiltern)
-    uint32_t sum = 0;
-    for (int i = 0; i < 5; i++) {
-        sum += m_filter_buffer[i];
-    }
-    uint32_t smoothed_value = sum / 5;
+void ProfileAnalyzer::setAdcCalibrationsState() {
+    m_currentState = AnalyzerState::CALIBRATION;
+    m_sampleCounter = 0;
+}
 
+void ProfileAnalyzer::updateCalibrationThresholds(uint16_t calib_mode, uint16_t calib_value) {
+    m_thresholds[calib_mode] = calib_value;
+}
 
-    // ------------------------------------------------------------------------
-    // STUFE 2: TOPOGRAFIE-ERKENNUNG (Mit dem geglätteten Wert!)
-    // ------------------------------------------------------------------------
+// ============================================================================
+// VERARBEITUNG DER SAMPLER (Aus der Interrupt Service Routine)
+// ============================================================================
 
-    // Fall A: Wir warten noch auf ein Werkstück (Trigger-Erkennung)
-    if (!m_is_measuring) {
-        if (smoothed_value > m_trigger_threshold) {
-            // Startschuss: Das Werkstück ist da!
-            m_is_measuring = true;
-            m_current_peak_height = smoothed_value;
-            m_hole_detected = false;
-            m_empty_belt_counter = 0;
-        }
-        return; // Für diesen Zyklus fertig
-    }
+void ProfileAnalyzer::processSample(uint32_t adcValue) {
+    // Falls die COID noch nicht gesetzt ist, ignorieren wir die Samples sicherheitshalber
+    if (m_coid == -1) return;
 
-    // Fall B: Wir messen gerade ein Werkstück
-    if (m_is_measuring) {
+    uint16_t currentRaw = static_cast<uint16_t>(adcValue & 0xFFF); // 12-Bit ADC Auflösung
 
-        // 1. Gipfel-Tracking (Neuen maximalen Höhenrekord speichern)
-        if (smoothed_value > m_current_peak_height) {
-            m_current_peak_height = smoothed_value;
-        }
+    switch (m_currentState) {
 
-        // 2. Bohrungs-Erkennung (Tal-Tracking)
-        // Nur wenn das Werkstück grundsätzlich hoch ist, suchen wir nach einer Bohrung
-        if (m_current_peak_height >= m_tall_min) {
-            if (smoothed_value >= m_hole_min && smoothed_value <= m_hole_max) {
-                m_hole_detected = true;
+        case AnalyzerState::IDLE:
+            // Im Idle-Zustand wird die Hardware zwar getriggert, wir werten aber nichts aus
+            break;
+
+        case AnalyzerState::WAITING_FOR_WP:
+            // Hole den gelernten Schwellenwert für das leere Band (Default: z.B. 3500)
+            // Wenn der Wert sinkt, befindet sich ein Werkstück unter dem Sensor
+            {
+                uint16_t emptyBeltThreshold = m_thresholds.count(ipc::CalibMode::EMPTY_BELT) ?
+                                              m_thresholds[ipc::CalibMode::EMPTY_BELT] : 3500;
+
+                // Werkstück bricht die Lichtschranke / senkt den ADC-Wert unter das Toleranzband
+                if (currentRaw < (emptyBeltThreshold - 100)) {
+                    m_currentState = AnalyzerState::MEASURING;
+                    m_maxHeightInCurrentProfile = currentRaw; // Ersten Messwert sichern
+                    m_sampleCounter = 1;
+                }
             }
-            if (smoothed_value >= m_binary_min&& smoothed_value <= m_binary_max){
-                m_binary = true;
+            break;
+
+        case AnalyzerState::MEASURING:
+            {
+                uint16_t emptyBeltThreshold = m_thresholds.count(ipc::CalibMode::EMPTY_BELT) ?
+                                              m_thresholds[ipc::CalibMode::EMPTY_BELT] : 3500;
+
+                // Solange das Werkstück da ist, tracken wir das Profil (z.B. den Peak/kleinsten ADC-Wert)
+                if (currentRaw < (emptyBeltThreshold - 100)) {
+                    m_sampleCounter++;
+                    // Da der Sensor invertiert arbeitet (Höher = kleinerer ADC-Wert),
+                    // suchen wir hier für das Maximum das mathematische Minimum des Rohwerts.
+                    if (currentRaw < m_maxHeightInCurrentProfile) {
+                        m_maxHeightInCurrentProfile = currentRaw;
+                    }
+                }
+                else {
+                    // Werkstück hat den ADC-Sensor verlassen -> Auswertung abschließen!
+                    // Hier würde jetzt die Typermittlung anhand der Schwellenwerte stattfinden (z.B. WP_FLAT)
+                    uint16_t detectedType = 1; // Dummy-Typ für die Logik (Normaler HAL_INPUT Puls-Payload)
+
+                    evaluationFinished(detectedType);
+                    m_currentState = AnalyzerState::IDLE; // Zurück in den Idle, bis Logik wieder freigibt
+                }
             }
-        }
+            break;
 
-        // 3. Abriss-Erkennung (Fährt das Teil gerade aus dem Lichtschrankenbereich?)
-        if (smoothed_value <= m_trigger_threshold) {
-            m_empty_belt_counter++; // Band scheint wieder leer zu sein
-        } else {
-            // Wert ist wieder über den Trigger gestiegen -> Abbruch der Hysterese
-            m_empty_belt_counter = 0;
-        }
+        case AnalyzerState::CALIBRATION:
+            // LIVE-KALIBRIERUNG (Wenn keine Datei existierte)
+            // Die Logik steuert, welches Objekt gerade eingelernt wird. Der Analyzer sammelt die Rohwerte
+            // und schiebt sie per HAL_ADC_CALIBRATION unverarbeitet hoch zur Auswertung in die Logik-FSM.
+            {
+                m_sampleCounter++;
+                if (currentRaw < m_maxHeightInCurrentProfile || m_maxHeightInCurrentProfile == 0) {
+                    m_maxHeightInCurrentProfile = currentRaw;
+                }
+
+                // Ein kurzes Sample-Fenster reicht zum Einlernen (z.B. 50 Samples stabil)
+                if (m_sampleCounter >= 50) {
+                    // Wir schicken den ermittelten Extremwert im passenden Live-Modus hoch.
+                    // Welcher Modus das ist (EMPTY_BELT oder FLAT_WP), weiß die Logik-FSM anhand ihres Zustands.
+                    uint32_t payload = ipc::encodeCalibPayload(m_maxHeightInCurrentProfile, ipc::CalibMode::EMPTY_BELT);
+
+                    MsgSendPulse(m_coid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::HAL_ADC_CALIBRATION, payload);
+
+                    // Um ein Überfluten zu verhindern, gehen wir nach dem Absenden in den Idle
+                    m_currentState = AnalyzerState::IDLE;
+                }
+            }
+            break;
     }
 }
 
 // ============================================================================
-// Auswertung & Getter
+// HILFSMETHODEN
 // ============================================================================
 
-/**
- * @brief Prüft anhand der Hysterese, ob die Messung komplett abgeschlossen ist.
- */
-bool ProfileAnalyzer::isMeasurementComplete() const {
-    return m_is_measuring && (m_empty_belt_counter >= m_empty_count_limit);
-}
+void ProfileAnalyzer::evaluationFinished(uint16_t finalTypeOrValue) {
+    // Ein normales Werkstück wurde im laufenden Betrieb vermessen
+    // Packen: [ 16 Bit: Zustand/Typ ] [ 16 Bit: SensorID ]
+    uint32_t payload = ipc::encodeHalPayload(ipc::SensorID::HEIGHT, finalTypeOrValue);
 
-/**
- * @brief Fällt das finale Urteil über den Werkstücktyp anhand des gesammelten Profils.
- */
-WpType ProfileAnalyzer::determineFinalType() const {
-    WpType final_type = WpType::UNKNOWN;
-
-    // 1. Ist der Gipfel im Flach-Bereich?
-    if (m_current_peak_height >= m_flat_min && m_current_peak_height <= m_flat_max) {
-        final_type = WpType::FLAT;
-    }
-    // 2. Ist der Gipfel im Hoch-Bereich?
-    else if (m_current_peak_height >= m_tall_min && m_current_peak_height <= m_tall_max) {
-        // Wurde zusätzlich ein Tal (Bohrung) gefunden?
-        if (m_hole_detected) {
-            final_type = WpType::TALL_DRILLED;
-        } else {
-            final_type = WpType::TALL;
-        }
-    }
-
-    return final_type;
+    // Normaler HAL_INPUT Puls an den Dispatcher abfeuern
+    MsgSendPulse(m_coid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::HAL_INPUT, payload);
 }
