@@ -17,5 +17,8 @@ build/armv7le-debug/src/esep-SoSe26-3-3.o: src/esep-SoSe26-3-3.cpp \
  src/hal/output_driver/blink_timer.hpp \
  src/hal/output_driver/panel_led_controller.hpp src/shared/types.hpp \
  src/connectionManager/ConnectionManager.hpp \
- src/connectionManager/I_Connection.hpp src/timer/timer.hpp \
- src/timer/i_Timer.hpp
+ src/connectionManager/I_Connection.hpp \
+ src/calibrationManager/CalibrationManager.hpp \
+ src/calibrationManager/I_CalibrationManager.hpp \
+ src/calibrationManager/I_CalibrationManager.hpp src/logik/logik.hpp \
+ src/logik/i_Logik.hpp src/timer/timer.hpp src/timer/i_Timer.hpp
