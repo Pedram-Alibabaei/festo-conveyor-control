@@ -1,7 +1,3 @@
-//
-// Created by bahoz on 23.05.2026.
-//
-
 /**
  * @file Logik.cpp
  * @brief Implementierung des zentralen Logik-Herzens und Zustandsautomaten.
@@ -11,16 +7,17 @@
 #include <iostream>
 #include "shared/logikEvent.hpp"
 
+namespace logik { // Namespace-Block geöffnet
+
 void Logik::init(AnlagenPosition pos) {
     m_position = pos;
     std::string posName = (pos == AnlagenPosition::VORN_ANLAGE_1) ? "Anlage 1 (Vorn)" : "Anlage 2 (Hinten)";
     std::cout << "[Logik] Initialisiert fuer Position: " << posName << std::endl;
 
-    // Hier spaeter: Instanzen der FSMs oder des WorkpieceManagers aufsetzen
+    // Hier später: Instanzen der FSMs oder des WorkpieceManagers aufsetzen
 }
 
 void Logik::processEvent(logik::Event e) {
-    // Hier laeuft spaeter jedes Sensor- und Taster-Signal auf!
     switch (e) {
         case logik::Event::ENTRY_BLOCKED:
             std::cout << "[Logik-FSM] Werkstueck am Einlauf erkannt." << std::endl;
@@ -50,21 +47,18 @@ void Logik::processEvent(logik::Event e) {
             break;
 
         default:
-            // Temporäres generisches Logging für alle noch nicht explizit behandelten Events
-            // (Verhindert, dass die Konsole bei Ticks überflutet wird)
             break;
     }
 }
 
 void Logik::workpieceTypeFromHS(WpType type) {
     std::cout << "[Logik-ADC] Profiler meldet erkannten Typ: " << static_cast<int>(type) << std::endl;
-    // Hier spaeter: Dem aktuell vermessenen Werkstueck in der Liste seinen Typ zuweisen
+    // Hier später: Dem aktuell vermessenen Werkstueck in der Liste seinen Typ zuweisen
 }
 
 void Logik::workpieceInfo(int id, WpType type) {
     std::cout << "[Logik-Netzwerk] Info von Partner: ID " << id
               << " vom Typ " << static_cast<int>(type) << " kommt zu uns." << std::endl;
-    // Hier spaeter: Werkstueck in die Empfangs-Liste der Anlage 2 eintragen
 }
 
 void Logik::updateWpListe(WpType type) {
@@ -73,7 +67,25 @@ void Logik::updateWpListe(WpType type) {
 
 void Logik::tackt() {
     // Diese Methode wird bei JEDEM Belt-Tick (z.B. alle 10ms) aufgerufen.
-    // Extrem wichtig fuer das Schieberegister / die Positionsverfolgung!
-
-    // Hier spaeter: m_workpieceManager.updatePositions();
+    // Hier später: m_workpieceManager.updatePositions();
 }
+
+// ============================================================================
+// KALIBRIERUNGS-SCHNITTSTELLEN (NEU)
+// ============================================================================
+
+void Logik::setTrackedSegmentTicks(uint16_t calibMode, uint16_t tickValue) {
+    std::cout << "[Logik-Kalib] Erhaltene Wegstrecken-Ticks: Segment-Modus="
+              << calibMode << " Ticks=" << tickValue << std::endl;
+
+    // Hier fütterst du später die Timings deiner FSM/ deines Schieberegisters,
+    // damit die Weiche exakt zum richtigen Takt-Zeitpunkt öffnet!
+}
+
+void Logik::receiveRawCalibrationData(uint16_t calibMode, uint16_t adcValue) {
+    // Wird während des Live-Einlernens im Service-Modus getriggert
+    std::cout << "[Logik-Kalib] Live-ADC-Kalibrierwert empfangen: Modus="
+              << calibMode << " Wert=" << adcValue << std::endl;
+}
+
+} // namespace logik
