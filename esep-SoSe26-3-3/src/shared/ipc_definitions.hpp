@@ -116,23 +116,30 @@ namespace ipc {
         HIGH_ERROR = _PULSE_CODE_MINAVAIL + 10,
 
     };
-
     // Sub-Typen für Kalibrierungs-Payloads (Sowohl ADC als auch Ticks!)
-    namespace CalibMode:uint16_t {
-        // 1. ADC-Schwellen
-        const uint16_t EMPTY_BELT                  = 1;
-        const uint16_t FLAT_WP                     = 2;
-        const uint16_t MIN_SAMPLES                 = 3;
+    enum class CalibMode : uint16_t {
+        // 1. ADC-Schwellen (Zustände & Rohwerte)
+        EMPTY_BELT                  = 1,
+        FLAT_WP                     = 2, // FlatCenter
+        MIN_SAMPLES                 = 3,
 
-        // 2. Wegstrecken
-        const uint16_t TICK_ENTRY_C_TO_HEIGHT_B    = 10;
-        const uint16_t TICK_HEIGHT_B_TO_HEIGHT_C   = 11;
-        const uint16_t TICK_HEIGHT_C_TO_EJECTOR_B  = 12;
-        const uint16_t TICK_EJECTOR_B_TO_EJECTOR_C = 13;
-        const uint16_t TICK_EJECTOR_C_TO_END_B     = 14;
-        const uint16_t TICK_END_B_TO_END_C         = 15;
+        // Berechnete Toleranzgrenzen für die FSM-Typerkennung (Erweiterung)
+        FLAT_MIN                    = 4,
+        FLAT_MAX                    = 5,
+        TALL_MIN                    = 6,
+        TALL_MAX                    = 7,
+        DRILLED_MIN                 = 8,
+        DRILLED_MAX                 = 9,
+        MAX_HEIGHT                  =10,
 
-    }
+        // 2. Wegstrecken (Ticks)
+        TICK_ENTRY_C_TO_HEIGHT_B    = 11,
+        TICK_HEIGHT_B_TO_HEIGHT_C   = 12,
+        TICK_HEIGHT_C_TO_EJECTOR_B  = 13,
+        TICK_EJECTOR_B_TO_EJECTOR_C = 14,
+        TICK_EJECTOR_C_TO_END_B     = 15,
+        TICK_END_B_TO_END_C         = 16
+    };
 
 
     /**

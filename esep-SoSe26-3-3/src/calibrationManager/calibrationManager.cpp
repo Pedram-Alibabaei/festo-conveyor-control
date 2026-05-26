@@ -80,28 +80,30 @@ void CalibrationManager::distributeValues(int dispatcherCoid) {
     // 1. ADC-WERTE SENDEN (Nutzt MANAGER_ADC_CALIBRATION)
     // ------------------------------------------------------------------------
     if (hasKey(calib::EMPTY_BELT)) {
-        uint32_t p = ipc::encodeCalibPayload(m_data[calib::EMPTY_BELT], ipc::CalibMode::EMPTY_BELT);
+        uint32_t p = ipc::encodeCalibPayload(m_data[calib::EMPTY_BELT], static_cast<uint16_t>(ipc::CalibMode::EMPTY_BELT));
         MsgSendPulse(dispatcherCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::MANAGER_ADC_CALIBRATION, p);
     }
     if (hasKey(calib::FLAT_CENTER)) {
-        uint32_t p = ipc::encodeCalibPayload(m_data[calib::FLAT_CENTER], ipc::CalibMode::FLAT_WP);
+        uint32_t p = ipc::encodeCalibPayload(m_data[calib::FLAT_CENTER],static_cast<uint16_t>(ipc::CalibMode::FLAT_WP));
         MsgSendPulse(dispatcherCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::MANAGER_ADC_CALIBRATION, p);
     }
     if (hasKey(calib::MIN_SAMPLES_FOR_CLASS)) {
-        uint32_t p = ipc::encodeCalibPayload(m_data[calib::MIN_SAMPLES_FOR_CLASS], ipc::CalibMode::MIN_SAMPLES);
+        uint32_t p = ipc::encodeCalibPayload(m_data[calib::MIN_SAMPLES_FOR_CLASS], static_cast<uint16_t>(ipc::CalibMode::MIN_SAMPLES));
         MsgSendPulse(dispatcherCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::MANAGER_ADC_CALIBRATION, p);
     }
 
     // 2. ZEIT-TICKS SENDEN (MANAGER_TICK_CALIBRATION)
-    // Map ordnet den Text-Schlüssel direkt dem neuen CalibMode-Subtyp zu!
-    std::map<std::string, uint16_t> tickMapping = {
-        {calib::TICKS_ENTRY_C_TO_HEIGHT_B,   ipc::CalibMode::TICK_ENTRY_C_TO_HEIGHT_B},
-        {calib::TICKS_HEIGHT_B_TO_HEIGHT_C,  ipc::CalibMode::TICK_HEIGHT_B_TO_HEIGHT_C},
-        {calib::TICKS_HEIGHT_C_TO_EJECTOR_B, ipc::CalibMode::TICK_HEIGHT_C_TO_EJECTOR_B},
-        {calib::TICKS_EJECTOR_B_TO_EJECTOR_C, ipc::CalibMode::TICK_EJECTOR_B_TO_EJECTOR_C},
-        {calib::TICKS_EJECTOR_C_TO_END_B,    ipc::CalibMode::TICK_EJECTOR_C_TO_END_B},
-        {calib::TICKS_END_B_TO_END_C,        ipc::CalibMode::TICK_END_B_TO_END_C}
-    };
+        // Map ordnet den Text-Schlüssel direkt dem neuen CalibMode-Subtyp zu!
+        using CM = ipc::CalibMode; // Kurzer Alias für die Lesbarkeit
+
+        std::map<std::string, uint16_t> tickMapping = {
+            {calib::TICKS_ENTRY_C_TO_HEIGHT_B,    static_cast<uint16_t>(CM::TICK_ENTRY_C_TO_HEIGHT_B)},
+            {calib::TICKS_HEIGHT_B_TO_HEIGHT_C,   static_cast<uint16_t>(CM::TICK_HEIGHT_B_TO_HEIGHT_C)},
+            {calib::TICKS_HEIGHT_C_TO_EJECTOR_B,  static_cast<uint16_t>(CM::TICK_HEIGHT_C_TO_EJECTOR_B)},
+            {calib::TICKS_EJECTOR_B_TO_EJECTOR_C, static_cast<uint16_t>(CM::TICK_EJECTOR_B_TO_EJECTOR_C)},
+            {calib::TICKS_EJECTOR_C_TO_END_B,     static_cast<uint16_t>(CM::TICK_EJECTOR_C_TO_END_B)},
+            {calib::TICKS_END_B_TO_END_C,         static_cast<uint16_t>(CM::TICK_END_B_TO_END_C)}
+        };
 
     for (const auto& mapping : tickMapping) {
         if (hasKey(mapping.first)) {
