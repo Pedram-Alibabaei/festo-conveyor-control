@@ -1,0 +1,168 @@
+/**
+ * @file CalibrationManager.cpp
+ * @brief Konkrete Implementierung des Key-Value Kalibrierungs-Speichers.
+ */
+
+#include "CalibrationManager.hpp"
+#include "shared/ipc_definitions.hpp"
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <sys/stat.h>
+#include <sys/neutrino.h>
+
+// ============================================================================
+// KONSTRUKTOR
+// ============================================================================
+CalibrationManager::CalibrationManager(const std::string& defaultFilepath)
+    : m_filepath(defaultFilepath) {
+}
+
+// ============================================================================
+// DATEI-OPERATIONEN
+// ============================================================================
+
+bool CalibrationManager::fileExists() {
+    struct stat buffer;
+    return (stat(m_filepath.c_str(), &buffer) == 0);
+}
+
+void CalibrationManager::load() {
+    clear(); // RAM vorher leeren
+
+    std::ifstream file(m_filepath);
+    if (!file.is_open()) {
+        std::cerr << "[CalibrationManager] Warnung: Datei '" << m_filepath
+                  << "' konnte nicht geoeffnet werden. Starte leer." << std::endl;
+        return;
+    }
+
+    std::string line;
+    while (std::getline(file, line)) {
+        std::string key;
+        int value = 0;
+        if (parseLine(line, key, value)) {
+            m_data[key] = value;
+        }
+    }
+
+    std::cout << "[CalibrationManager] " << m_data.size() << " Werte erfolgreich geladen." << std::endl;
+}
+
+void CalibrationManager::save() {
+    std::ofstream file(m_filepath);
+    if (!file.is_open()) {
+        std::cerr << "[CalibrationManager] FEHLER: Konnte '" << m_filepath
+                  << "' nicht zum Schreiben oeffnen!" << std::endl;
+        return;
+    }
+
+    file << "# ===================================================\n";
+    file << "# FESTO MPS Station - Kalibrierungsdaten\n";
+    file << "# Automatisch generiert vom CalibrationManager\n";
+    file << "# ===================================================\n\n";
+
+    for (const auto& pair : m_data) {
+        file << pair.first << "=" << pair.second << "\n";
+    }
+
+    file.close();
+    std::cout << "[CalibrationManager] " << m_data.size() << " Werte permanent gesichert." << std::endl;
+}
+
+void CalibrationManager::distributeValues(int dispatcherCoid) {
+    if (dispatcherCoid == -1) {
+        std::cerr << "[CalibrationManager] Fehler: Ungueltige Dispatcher-COID!" << std::endl;
+        return;
+    }
+
+    // ------------------------------------------------------------------------
+    // 1. ADC-WERTE SENDEN (Nutzt MANAGER_ADC_CALIBRATION)
+    // ------------------------------------------------------------------------
+    if (hasKey(calib::EMPTY_BELT)) {
+        uint32_t p = ipc::encodeCalibPayload(m_data[calib::EMPTY_BELT], static_cast<uint16_t>(ipc::CalibMode::EMPTY_BELT));
+        MsgSendPulse(dispatcherCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::MANAGER_ADC_CALIBRATION, p);
+    }
+    if (hasKey(calib::FLAT_CENTER)) {
+        uint32_t p = ipc::encodeCalibPayload(m_data[calib::FLAT_CENTER],static_cast<uint16_t>(ipc::CalibMode::FLAT_WP);
+        MsgSendPulse(dispatcherCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::MANAGER_ADC_CALIBRATION, p);
+    }
+    if (hasKey(calib::MIN_SAMPLES_FOR_CLASS)) {
+        uint32_t p = ipc::encodeCalibPayload(m_data[calib::MIN_SAMPLES_FOR_CLASS], ipc::CalibMode::MIN_SAMPLES);
+        MsgSendPulse(dispatcherCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::MANAGER_ADC_CALIBRATION, p);
+    }
+
+    // 2. ZEIT-TICKS SENDEN (MANAGER_TICK_CALIBRATION)
+    // Map ordnet den Text-Schlüssel direkt dem neuen CalibMode-Subtyp zu!
+    std::map<std::string, uint16_t> tickMapping = {
+        {calib::TICKS_ENTRY_C_TO_HEIGHT_B,   ipc::CalibMode::TICK_ENTRY_C_TO_HEIGHT_B},
+        {calib::TICKS_HEIGHT_B_TO_HEIGHT_C,  ipc::CalibMode::TICK_HEIGHT_B_TO_HEIGHT_C},
+        {calib::TICKS_HEIGHT_C_TO_EJECTOR_B, ipc::CalibMode::TICK_HEIGHT_C_TO_EJECTOR_B},
+        {calib::TICKS_EJECTOR_B_TO_EJECTOR_C, ipc::CalibMode::TICK_EJECTOR_B_TO_EJECTOR_C},
+        {calib::TICKS_EJECTOR_C_TO_END_B,    ipc::CalibMode::TICK_EJECTOR_C_TO_END_B},
+        {calib::TICKS_END_B_TO_END_C,        ipc::CalibMode::TICK_END_B_TO_END_C}
+    };
+
+    for (const auto& mapping : tickMapping) {
+        if (hasKey(mapping.first)) {
+            // [ 16 Bit: Wert in Ticks ] [ 16 Bit: Genauer Segment-Typ (CalibMode) ]
+            uint32_t p = ipc::encodeCalibPayload(m_data[mapping.first], mapping.second);
+            MsgSendPulse(dispatcherCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::MANAGER_TICK_CALIBRATION, p);
+        }
+    }
+}
+
+// ============================================================================
+// DATEN-OPERATIONEN (RAM-Zugriff)
+// ============================================================================
+
+bool CalibrationManager::hasKey(const std::string& key) {
+    return (m_data.find(key) != m_data.end());
+}
+
+int CalibrationManager::getInt(const std::string& key, int defaultValue) {
+    auto it = m_data.find(key);
+    if (it != m_data.end()) {
+        return it->second;
+    }
+    return defaultValue;
+}
+
+void CalibrationManager::setInt(const std::string& key, int value) {
+    m_data[key] = value;
+}
+
+void CalibrationManager::clear() {
+    m_data.clear();
+}
+
+// ============================================================================
+// PRIVATE HILFSMETHODEN (Der Parser)
+// ============================================================================
+
+bool CalibrationManager::parseLine(const std::string& line, std::string& outKey, int& outValue) {
+    if (line.empty() || line[0] == '#' || line[0] == ';') {
+        return false;
+    }
+
+    std::stringstream ss(line);
+    std::string keyStr;
+    std::string valueStr;
+
+    if (std::getline(ss, keyStr, '=') && std::getline(ss, valueStr)) {
+        // Whitespaces trimmen
+        keyStr.erase(0, keyStr.find_first_not_of(" \t\r\n"));
+        keyStr.erase(keyStr.find_last_not_of(" \t\r\n") + 1);
+
+        outKey = keyStr;
+
+        try {
+            outValue = std::stoi(valueStr);
+            return true;
+        } catch (...) {
+            return false;
+        }
+    }
+
+    return false;
+}
