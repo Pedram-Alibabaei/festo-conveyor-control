@@ -1,59 +1,81 @@
 /**
- * @file Logik.cpp
- * @brief Implementierung des zentralen Logik-Herzens und Zustandsautomaten.
+ * @file logik.cpp
+ * @brief Implementierung des Contextes (GoF State Pattern) für die Festo-Anlage.
  */
 
-#include "Logik.hpp"
+#include "logik.hpp"
+#include "states/BaseState.hpp"
+#include "states/IdleState.hpp" // Startzustand
 #include <iostream>
-#include "shared/logikEvent.hpp"
 
-namespace logik { // Namespace-Block geöffnet
+namespace logik {
 
-void Logik::init(AnlagenPosition pos) {
-    m_position = pos;
-    std::string posName = (pos == AnlagenPosition::VORN_ANLAGE_1) ? "Anlage 1 (Vorn)" : "Anlage 2 (Hinten)";
-    std::cout << "[Logik] Initialisiert fuer Position: " << posName << std::endl;
-
-    // Hier später: Instanzen der FSMs oder des WorkpieceManagers aufsetzen
+Logik::Logik() : m_position(UNKNOWN_POSITION), m_currentState(nullptr), m_dispatcher(nullptr) {
 }
 
-void Logik::processEvent(logik::Event e) {
-    switch (e) {
-        case logik::Event::ENTRY_BLOCKED:
-            std::cout << "[Logik-FSM] Werkstueck am Einlauf erkannt." << std::endl;
-            break;
-        case logik::Event::ENTRY_CLEARED:
-            std::cout << "[Logik-FSM] Werkstueck hat Einlauf verlassen." << std::endl;
-            break;
-        case logik::Event::HEIGHT_BLOCKED:
-            std::cout << "[Logik-FSM] Werkstueck hat Hoehenmessung erreicht." << std::endl;
-            break;
-        case logik::Event::HEIGHT_CLEARED:
-            std::cout << "[Logik-FSM] Hoehenmessung beendet." << std::endl;
-            break;
-
-        // Buttons
-        case logik::Event::START_PRESSED:
-            std::cout << "[Logik-FSM] Start-Taster gedrueckt -> Starte Anlage." << std::endl;
-            break;
-        case logik::Event::STOP_PRESSED:
-            std::cout << "[Logik-FSM] Stop-Taster gedrueckt -> Stoppe Anlage." << std::endl;
-            break;
-        case logik::Event::ESTOP_PRESSED:
-            std::cerr << "[Logik-FSM] !!! NOT-HALT AKTIVIERT !!!" << std::endl;
-            break;
-        case logik::Event::ESTOP_RELEASED:
-            std::cout << "[Logik-FSM] Not-Halt entriegelt. Warte auf Reset." << std::endl;
-            break;
-
-        default:
-            break;
+Logik::~Logik() {
+    if (m_currentState) {
+        delete m_currentState;
     }
 }
 
+void Logik::init(AnlagenPosition pos) {
+    m_position = pos;
+    std::string posName = (pos == AnlagenPosition::VORN_ANLAGE_1) ? "Anlage 1" : "Anlage 2";
+    std::cout << "[Logik] Initialisiert fuer Position: " << posName << std::endl;
+
+    // 1. Startzustand festlegen
+    transitionTo(new IdleState());
+}
+
+// ============================================================================
+// STATE PATTERN (GoF) CORE
+// ============================================================================
+
+void Logik::transitionTo(BaseState* newState) {
+    // 1. Wenn wir schon in einem Zustand sind, dessen onExit() aufrufen und loeschen
+    if (m_currentState != nullptr) {
+        m_currentState->onExit();
+        delete m_currentState;
+    }
+
+    // 2. Neuen Zustand setzen und mit diesem Kontext verknuepfen
+    m_currentState = newState;
+    m_currentState->setContext(this);
+
+    // 3. Start-Routine des neuen Zustands aufrufen
+    m_currentState->onEnter();
+}
+
+void Logik::processEvent(logik::Event e) {
+    // DAS IST DAS HERZSTÜCK DES PATTERNS:
+    // Kein switch-case mehr! Wir delegieren blind an den aktuellen Zustand.
+    if (m_currentState) {
+        m_currentState->handle(e);
+    } else {
+        std::cerr << "[Logik] FATAL: Kein aktiver Zustand gesetzt!" << std::endl;
+    }
+}
+
+// ============================================================================
+// WERKSTUECK-TRACKING (Dummys fuer den Compiler)
+// ============================================================================
+
+void Logik::addWorkpiece() {
+    std::cout << "[Logik] addWorkpiece() aufgerufen. (Tracking noch nicht implementiert)" << std::endl;
+}
+
+bool Logik::dispatchSensorEventToWorkpiece(logik::Event e) {
+    std::cout << "[Logik] dispatchSensorEventToWorkpiece() (Tracking noch nicht implementiert)" << std::endl;
+    return true;
+}
+
+// ============================================================================
+// INTERFACE IMPLEMENTIERUNG (Rest)
+// ============================================================================
+
 void Logik::workpieceTypeFromHS(WpType type) {
     std::cout << "[Logik-ADC] Profiler meldet erkannten Typ: " << static_cast<int>(type) << std::endl;
-    // Hier später: Dem aktuell vermessenen Werkstueck in der Liste seinen Typ zuweisen
 }
 
 void Logik::workpieceInfo(int id, WpType type) {
@@ -66,24 +88,15 @@ void Logik::updateWpListe(WpType type) {
 }
 
 void Logik::tackt() {
-    // Diese Methode wird bei JEDEM Belt-Tick (z.B. alle 10ms) aufgerufen.
-    // Hier später: m_workpieceManager.updatePositions();
+    // Diese Methode wird bei JEDEM Belt-Tick aufgerufen.
 }
-
-// ============================================================================
-// KALIBRIERUNGS-SCHNITTSTELLEN (NEU)
-// ============================================================================
 
 void Logik::setTrackedSegmentTicks(uint16_t calibMode, uint16_t tickValue) {
     std::cout << "[Logik-Kalib] Erhaltene Wegstrecken-Ticks: Segment-Modus="
               << calibMode << " Ticks=" << tickValue << std::endl;
-
-    // Hier fütterst du später die Timings deiner FSM/ deines Schieberegisters,
-    // damit die Weiche exakt zum richtigen Takt-Zeitpunkt öffnet!
 }
 
 void Logik::receiveRawCalibrationData(uint16_t calibMode, uint16_t adcValue) {
-    // Wird während des Live-Einlernens im Service-Modus getriggert
     std::cout << "[Logik-Kalib] Live-ADC-Kalibrierwert empfangen: Modus="
               << calibMode << " Wert=" << adcValue << std::endl;
 }
