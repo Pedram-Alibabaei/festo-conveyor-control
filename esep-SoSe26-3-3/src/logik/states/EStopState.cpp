@@ -165,7 +165,7 @@ void EStopUnlockedState::executeReset() {
         d->turnAllOff();
         d->lightRedBlinkFast(); // Identisch zum physischen Not-Halt
     }
-    std::cout << "[Safety] KRITISCH: NETZWERKABBRUCH! Anlage sicherheitsgerichtet gestoppt." << std::endl;
+   // std::cout << "[Safety] KRITISCH: NETZWERKABBRUCH! Anlage sicherheitsgerichtet gestoppt." << std::endl;
 }
 
     void ConnectionLostState::handle(Event e) {
@@ -174,7 +174,7 @@ void EStopUnlockedState::executeReset() {
     switch (e) {
         case Event::CONNECTION_RESTORED:
             // Verbindung ist wieder da -> Wir wechseln in den Quittierungs-Modus!
-            std::cout << "[Safety] Verbindung wiederhergestellt. Warte auf Quittierung (Reset)..." << std::endl;
+          //  std::cout << "[Safety] Verbindung wiederhergestellt. Warte auf Quittierung (Reset)..." << std::endl;
             m_context->transitionTo(new EStopUnlockedState());
             break;
 
