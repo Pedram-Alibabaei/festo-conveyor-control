@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="BackendCodeEditorMiscSettings">
+    <option name="/Default/Housekeeping/FeatureSuggestion/FeatureSuggestionManager/DisabledSuggesters/=SwitchToGoToActionSuggester/@EntryIndexedValue" value="true" type="bool" />
+    <option name="/Default/Housekeeping/GlobalSettingsUpgraded/IsUpgraded/@EntryValue" value="true" type="bool" />
+    <option name="/Default/RiderDebugger/RiderRestoreDecompile/RestoreDecompileSetting/@EntryValue" value="false" type="bool" />
+  </component>
+  <component name="CMakeProjectFlavorService">
+    <option name="flavorId" value="CMakePlainProjectFlavor" />
+  </component>
+  <component name="CMakeSettings">
+    <configurations>
+      <configuration PROFILE_NAME="Debug" ENABLED="true" CONFIG_NAME="Debug" />
+    </configurations>
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="a0c4156a-c0e7-4ddc-8920-96d556fdc514" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/states/IdleState.cpp" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/states/IdleState.hpp" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/states/RunningState.cpp" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/states/RunningState.hpp" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/states/ServiceState.cpp" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/states/ServiceState.hpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/esep-SoSe26-3-3" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/esep-SoSe26-3-3" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/dispatcher/dispatcher.d" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/dispatcher/dispatcher.d" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/dispatcher/dispatcher.o" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/dispatcher/dispatcher.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/esep-SoSe26-3-3.d" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/esep-SoSe26-3-3.d" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/esep-SoSe26-3-3.o" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/esep-SoSe26-3-3.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/logik.d" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/logik.d" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/logik.o" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/logik.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/src/dispatcher/dispatcher.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/dispatcher/dispatcher.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/src/esep-SoSe26-3-3.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/esep-SoSe26-3-3.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/logik.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/logik.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/logik.hpp" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/logik.hpp" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="ClangdSettings">
+    <option name="formatViaClangd" value="false" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_BRANCH_BY_REPOSITORY">
+      <map>
+        <entry key="$PROJECT_DIR$" value="new-test-fsm" />
+      </map>
+    </option>
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GitLabMergeRequestFiltersHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPENED&quot;,
+    &quot;assignee&quot;: {
+      &quot;type&quot;: &quot;org.jetbrains.plugins.gitlab.mergerequest.ui.filters.GitLabMergeRequestsFiltersValue.MergeRequestsMemberFilterValue.MergeRequestsAssigneeFilterValue&quot;,
+      &quot;username&quot;: &quot;infwtv291&quot;,
+      &quot;fullname&quot;: &quot;Habib Sefidrawan&quot;
+    }
+  }
+}</component>
+  <component name="GitLabMergeRequestsSettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;first&quot;: &quot;https://git.haw-hamburg.de/ese2026-team-3-3/esep-2026sose-team-3-3.git&quot;,
+    &quot;second&quot;: &quot;cc936b27-37ed-44ae-8302-224c63773479&quot;
+  }
+}</component>
+  <component name="MacroExpansionManager">
+    <option name="directoryName" value="3TWTsEYA" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;customColor&quot;: &quot;&quot;,
+  &quot;associatedIndex&quot;: 1
+}</component>
+  <component name="ProjectId" id="3ELw65yTbqCs2O4iAxciDJ1sQqo" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.RadMigrateCodeStyle": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.cidr.known.project.marker": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.readMode.enableVisualFormatting": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "cf.first.check.clang-format": "false",
+    "cidr.known.project.marker": "true",
+    "git-widget-placeholder": "Calibration-Manager",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "settings.editor.selected.configurable": "preferences.pluginManager",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\hsefidrawan\Desktop\Uni\ESE\esep-2026sose-team-3-3\esep-SoSe26-3-3\src\logik\states" />
+      <recent name="C:\Users\hsefidrawan\Desktop\Uni\ESE\esep-2026sose-team-3-3\esep-SoSe26-3-3\src\logik" />
+    </key>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="a0c4156a-c0e7-4ddc-8920-96d556fdc514" name="Changes" comment="" />
+      <created>1779970981770</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1779970981770</updated>
+      <workItem from="1779970984928" duration="2591000" />
+      <workItem from="1779973619141" duration="2002000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+</project>
