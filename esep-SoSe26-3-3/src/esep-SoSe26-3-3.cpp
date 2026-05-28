@@ -73,6 +73,12 @@ int main(int argc, char *argv[]) {
         dispatcher.setLogik(&logik_fsm);
         dispatcher.setCalibrationManager(&calib_manager);
 
+        // 1. Die Logik braucht den Dispatcher, damit die States Befehle senden können:
+                logik_fsm.setDispatcher(&dispatcher);
+
+                // 2. Logik initialisieren (Das startet den Zustandsautomaten -> geht in IdleState!)
+                logik_fsm.init(pos);
+
         // ====================================================================
         // SCHRITT 4: DISPATCHER IN EINEM THREAD STARTEN (Der Empfänger steht bereit!)
         // ====================================================================

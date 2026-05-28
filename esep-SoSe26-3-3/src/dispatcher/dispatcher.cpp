@@ -146,8 +146,9 @@ void Dispatcher::handlePulse(const struct _pulse& pulse) {
             break;
 
         case ipc::DISCONNECT:
-            m_logik->processEvent(logik::Event::ESTOP_PRESSED);
-            break;
+                    // m_logik->processEvent(logik::Event::ESTOP_PRESSED); // <--- AUSKOMMENTIEREN!
+                    std::cout << "[Dispatcher] WARNUNG: Netzwerk weg. Ignoriert fuer Solo-Test!" << std::endl;
+                    break;
 
         // ====================================================================
         // TIMER EVENTS
