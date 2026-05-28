@@ -60,6 +60,7 @@ int main(int argc, char *argv[]) {
 
         CalibrationManager calib_manager;
         logik::Logik logik_fsm;
+        logik_fsm.setDispatcher(&dispatcher);
 
         Timer timer;
         timer.init(dis_coid);
@@ -105,8 +106,8 @@ int main(int argc, char *argv[]) {
         }
 
         // 6. Erst NACH der Kalibrierung die Timer starten, damit Ticks nicht die Kalibrierung überholen
-        timer.startHeartbeatTimer(2000);
-        timer.startBeltTimer(1000);
+        timer.startHeartbeatTimer(50);
+        timer.startBeltTimer(10);
 
         std::cout << "Anlage ist nun VOLLSTÄNDIG BEREIT und synchronisiert!" << std::endl;
         std::cout << "======================================================\n" << std::endl;

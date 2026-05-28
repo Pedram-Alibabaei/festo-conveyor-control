@@ -5,20 +5,33 @@
 #ifndef LOGIK_HPP
 #define LOGIK_HPP
 
-#include "i_Logik.hpp" // Header-Namen angepasst (kleines i)
+#include "i_Logik.hpp"
 #include "shared/types.hpp"
 #include "shared/logikEvent.hpp"
 
-namespace logik { // In den Namespace eingebettet für main.cpp Compatibility
+// Vorwärtsdeklaration statt schwerem #include,
+// da m_dispatcher nur ein Zeiger (Pointer) ist.
+class I_Dispatcher;
+
+namespace logik {
 
     class Logik : public i_Logik {
     private:
         AnlagenPosition m_position;
-        // Hier kommen später deine Zustandsmaschinen (FSMs) und der WorkpieceManager rein
+        bool m_isCalibrated;
+        // Variablen für den 200-Takt-Zähler beim Testen
+        bool m_countTicks;
+        uint32_t m_tickCounter;
+
+        // Zeiger auf das Dispatcher-Interface
+        I_Dispatcher* m_dispatcher;
 
     public:
-        Logik() = default;
-        ~Logik() override = default;
+        Logik();
+        ~Logik() override; // Fehlerhaftes Leerzeichen/Semikolon entfernt
+
+        // Setter für die Dependency Injection in der main.cpp
+        void setDispatcher(I_Dispatcher* disp) { m_dispatcher = disp; }
 
         // Implementierung der Methoden aus dem Interface:
         void init(AnlagenPosition pos) override;
@@ -28,7 +41,7 @@ namespace logik { // In den Namespace eingebettet für main.cpp Compatibility
         void updateWpListe(WpType type) override;
         void tackt() override;
 
-        // NEU: Diese beiden fehlten noch, um das Interface komplett zu erfüllen
+        // Erfüllung der Kalibrierungs-Schnittstellen aus dem Interface
         void setTrackedSegmentTicks(uint16_t calibMode, uint16_t tickValue) override;
         void receiveRawCalibrationData(uint16_t calibMode, uint16_t adcValue) override;
     };

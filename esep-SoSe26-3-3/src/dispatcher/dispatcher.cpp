@@ -256,7 +256,9 @@ void Dispatcher::handleHalPulse(uint32_t payload) {
             m_logik->processEvent(logik::Event::HEIGHT_CLEARED);
         } else if (sensor_state == ipc::State::HIGH_ERROR) {
             m_logik->processEvent(logik::Event::HEIGHT_ERROR);
-        }
+        }else {
+        	m_logik->workpieceTypeFromHS(static_cast<WpType>(sensor_state));
+		}
     }
     else if (sensor_id == ipc::SENSOR_METAL) {
         m_logik->processEvent(sensor_state == ipc::State::BLOCKED ? logik::Event::METAL_DETECTED : logik::Event::METAL_CLEARED);

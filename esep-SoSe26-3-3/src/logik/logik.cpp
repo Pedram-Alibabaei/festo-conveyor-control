@@ -1,49 +1,101 @@
 /**
  * @file Logik.cpp
- * @brief Implementierung des zentralen Logik-Herzens und Zustandsautomaten.
+ * @brief Vollständige Implementierung der Test-Logik mit Kalibrierung und Erkennungsmodus.
  */
 
 #include "Logik.hpp"
+#include "dispatcher/I_Dispatcher.hpp" // Header für Dispatcher-Aufrufe binden
 #include <iostream>
-#include "shared/logikEvent.hpp"
 
-namespace logik { // Namespace-Block geöffnet
+namespace logik {
+
+// ============================================================================
+// KONSTRUKTOR & INITIALISIERUNG
+// ============================================================================
+
+Logik::Logik()
+    : m_position(AnlagenPosition::VORN_ANLAGE_1),
+      m_countTicks(false),
+      m_tickCounter(0),
+      m_dispatcher(nullptr),
+      m_isCalibrated(false) { // Am Start ist die Anlage noch unkalibriert
+}
+
+Logik::~Logik() {
+    // Sicherer, leerer virtueller Destruktor zur Behebung des vtable-Fehlers
+}
 
 void Logik::init(AnlagenPosition pos) {
     m_position = pos;
     std::string posName = (pos == AnlagenPosition::VORN_ANLAGE_1) ? "Anlage 1 (Vorn)" : "Anlage 2 (Hinten)";
     std::cout << "[Logik] Initialisiert fuer Position: " << posName << std::endl;
-
-    // Hier später: Instanzen der FSMs oder des WorkpieceManagers aufsetzen
 }
 
+// ============================================================================
+// CENTRAL EVENT PROCESSING (Zentrale Ereignis-Verarbeitung)
+// ============================================================================
+
 void Logik::processEvent(logik::Event e) {
+    if (!m_dispatcher) {
+        std::cerr << "[Logik] CRITICAL: Kein Dispatcher-Zeiger gesetzt!" << std::endl;
+        return;
+    }
+
     switch (e) {
-        case logik::Event::ENTRY_BLOCKED:
-            std::cout << "[Logik-FSM] Werkstueck am Einlauf erkannt." << std::endl;
-            break;
-        case logik::Event::ENTRY_CLEARED:
-            std::cout << "[Logik-FSM] Werkstueck hat Einlauf verlassen." << std::endl;
-            break;
-        case logik::Event::HEIGHT_BLOCKED:
-            std::cout << "[Logik-FSM] Werkstueck hat Hoehenmessung erreicht." << std::endl;
-            break;
-        case logik::Event::HEIGHT_CLEARED:
-            std::cout << "[Logik-FSM] Hoehenmessung beendet." << std::endl;
+
+        // 1. START-TASTER: Unterscheidet zwischen Erst-Kalibrierung und Normalbetrieb
+        case logik::Event::START_PRESSED:
+
+                std::cout << "[Logik] START -> Modus: KALIBRIERUNG." << std::endl;
+				m_isCalibrated = false;
+                m_dispatcher->setAdcCalibrationsState();
             break;
 
-        // Buttons
-        case logik::Event::START_PRESSED:
-            std::cout << "[Logik-FSM] Start-Taster gedrueckt -> Starte Anlage." << std::endl;
+        // 2. EINLAUF-LICHTSCHRANKE: Werkstück wird aufgelegt
+        case logik::Event::ENTRY_BLOCKED:
+
+                m_dispatcher->driveRight();
+                m_tickCounter = 0;
+                m_countTicks = true; // Aktiviert die 200-Takt-Bremsrampe in tackt()
             break;
+
+        case logik::Event::ENTRY_CLEARED:
+            std::cout << "[Logik] Werkstueck hat den Einlauf verlassen." << std::endl;
+            break;
+
+        case logik::Event::HEIGHT_BLOCKED:
+            std::cout << "[Logik] Werkstueck hat den Hoehensensor erreicht." << std::endl;
+            break;
+
+        case logik::Event::HEIGHT_CLEARED:
+            std::cout << "[Logik] Werkstueck hat den Hoehensensor verlassen." << std::endl;
+            break;
+
+        // 3. ZIEL-LICHTSCHRANKEN: Werkstück hat das Bandende erreicht
+        case logik::Event::END_BLOCKED:
+        case logik::Event::CHUTE_BLOCKED:
+            std::cout << "[Logik] Ziel erreicht -> Motor STOPP." << std::endl;
+            m_dispatcher->driveStop();
+
+            // Wenn wir aus der Erst-Kalibrierung kommen, schalten wir die FSM um!
+            if (!m_isCalibrated) {
+                m_isCalibrated = true;
+                std::cout << "\n==================================================" << std::endl;
+                std::cout << " [Logik] >>> KALIBRIERUNG ERFOLGREICH BEENDET! <<<" << std::endl;
+                std::cout << "==================================================\n" << std::endl;
+            }
+            break;
+
+        // Sicherheits- und Notabschaltungen
         case logik::Event::STOP_PRESSED:
-            std::cout << "[Logik-FSM] Stop-Taster gedrueckt -> Stoppe Anlage." << std::endl;
+            std::cout << "[Logik] setAdcIdelState" << std::endl;
+            m_dispatcher->setAdcWaitigForWpState();
             break;
+
         case logik::Event::ESTOP_PRESSED:
-            std::cerr << "[Logik-FSM] !!! NOT-HALT AKTIVIERT !!!" << std::endl;
-            break;
-        case logik::Event::ESTOP_RELEASED:
-            std::cout << "[Logik-FSM] Not-Halt entriegelt. Warte auf Reset." << std::endl;
+            std::cerr << "[Logik] !!! NOT-HALT AUSGELÖST -> SOFORTIGER HARDWARE-STOPP !!!" << std::endl;
+            m_dispatcher->driveStop();
+            m_countTicks = false;
             break;
 
         default:
@@ -51,41 +103,57 @@ void Logik::processEvent(logik::Event e) {
     }
 }
 
-void Logik::workpieceTypeFromHS(WpType type) {
-    std::cout << "[Logik-ADC] Profiler meldet erkannten Typ: " << static_cast<int>(type) << std::endl;
-    // Hier später: Dem aktuell vermessenen Werkstueck in der Liste seinen Typ zuweisen
-}
-
-void Logik::workpieceInfo(int id, WpType type) {
-    std::cout << "[Logik-Netzwerk] Info von Partner: ID " << id
-              << " vom Typ " << static_cast<int>(type) << " kommt zu uns." << std::endl;
-}
-
-void Logik::updateWpListe(WpType type) {
-    std::cout << "[Logik-Netzwerk] Partner bittet um Listen-Update fuer Typ " << static_cast<int>(type) << std::endl;
-}
+// ============================================================================
+// BAND-TAKTE / TIMING-MANAGEMENT
+// ============================================================================
 
 void Logik::tackt() {
-    // Diese Methode wird bei JEDEM Belt-Tick (z.B. alle 10ms) aufgerufen.
-    // Hier später: m_workpieceManager.updatePositions();
+    // Wird vom Belt-Timer kontinuierlich (z.B. alle 10ms) aufgerufen
+
+    if (m_countTicks && m_dispatcher) {
+        m_tickCounter++;
+
+        // Nur im Kalibriermodus: Nach 200 Takten bremsen, bevor das Teil unter den Sensor rutscht
+        if (m_tickCounter >= 200) {
+
+			    if (m_isCalibrated) {
+ 					std::cout << "[Logik-Kalib] set Adc Waitig For WpState." << std::endl;
+					m_dispatcher->setAdcWaitigForWpState();
+				}
+            m_dispatcher->driveSlowRight();
+
+            m_countTicks = false;
+            m_tickCounter = 0;
+        }
+    }
 }
 
 // ============================================================================
-// KALIBRIERUNGS-SCHNITTSTELLEN (NEU)
+// RÜCKMELDUNG VOM PROFILEANALYZER (Ergebnis des 12-Segment-Scans)
 // ============================================================================
 
-void Logik::setTrackedSegmentTicks(uint16_t calibMode, uint16_t tickValue) {
-    std::cout << "[Logik-Kalib] Erhaltene Wegstrecken-Ticks: Segment-Modus="
-              << calibMode << " Ticks=" << tickValue << std::endl;
+void Logik::workpieceTypeFromHS(WpType type) {
+    // Hier liest die Logik das Ergebnis deiner 'evaluationFinished'-Methode aus!
+    std::string name = "UNKNOWN";
+    switch (type) {
+        case WpType::FLAT:         name = "FLAT (Flach)"; break;
+        case WpType::TALL:         name = "TALL (Hoch)"; break;
+        case WpType::TALL_DRILLED: name = "TALL_DRILLED (Gebohrt)"; break;
+        default:                   name = "UNBEKANNT / FEHLER"; break;
+    }
 
-    // Hier fütterst du später die Timings deiner FSM/ deines Schieberegisters,
-    // damit die Weiche exakt zum richtigen Takt-Zeitpunkt öffnet!
+    std::cout << "\n==================================================" << std::endl;
+    std::cout << " [LOGIK-AUSWERTUNG] Werkstueck-Typ ist: " << name << std::endl;
+    std::cout << "==================================================\n" << std::endl;
 }
 
-void Logik::receiveRawCalibrationData(uint16_t calibMode, uint16_t adcValue) {
-    // Wird während des Live-Einlernens im Service-Modus getriggert
-    std::cout << "[Logik-Kalib] Live-ADC-Kalibrierwert empfangen: Modus="
-              << calibMode << " Wert=" << adcValue << std::endl;
-}
+// ============================================================================
+// UNGENUTZTE INTERFACE-METHODEN (Als Stubs ausformuliert)
+// ============================================================================
+
+void Logik::workpieceInfo(int id, WpType type) {}
+void Logik::updateWpListe(WpType type) {}
+void Logik::setTrackedSegmentTicks(uint16_t calibMode, uint16_t tickValue) {}
+void Logik::receiveRawCalibrationData(uint16_t calibMode, uint16_t adcValue) {}
 
 } // namespace logik
