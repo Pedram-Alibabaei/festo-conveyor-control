@@ -112,7 +112,7 @@ void EStopUnlockedState::handle(Event e) {
         case Event::RESET_PRESSED:
             // 1. Dem Partner aktiv sagen: "Ich habe hier gerade Reset gedrückt!"
             if (auto d = m_context->getDispatcher()) {
-                d->sendPartnerResetRequest();
+                d->sendPartnerResetPressed();
             }
 
             // 2. Für uns selbst merken: Lokaler Knopf ist gedrückt
@@ -130,7 +130,7 @@ void EStopUnlockedState::handle(Event e) {
             }
             break;
 
-        case Event::PARTNER_RESET_REQUESTED:
+        case Event::PARTNER_RESET_PRESSED:
             // Der Partner teilt uns mit, dass sein Reset-Knopf betätigt wurde!
             m_partnerResetPressed = true;
 
@@ -165,7 +165,7 @@ void EStopUnlockedState::executeReset() {
         d->turnAllOff();
         d->lightRedBlinkFast(); // Identisch zum physischen Not-Halt
     }
-    std::cout << "[Safety] KRITISCH: NETZWERKABBRUCH! Anlage sicherheitsgerichtet gestoppt." << std::endl;
+   // std::cout << "[Safety] KRITISCH: NETZWERKABBRUCH! Anlage sicherheitsgerichtet gestoppt." << std::endl;
 }
 
     void ConnectionLostState::handle(Event e) {
@@ -174,7 +174,7 @@ void EStopUnlockedState::executeReset() {
     switch (e) {
         case Event::CONNECTION_RESTORED:
             // Verbindung ist wieder da -> Wir wechseln in den Quittierungs-Modus!
-            std::cout << "[Safety] Verbindung wiederhergestellt. Warte auf Quittierung (Reset)..." << std::endl;
+          //  std::cout << "[Safety] Verbindung wiederhergestellt. Warte auf Quittierung (Reset)..." << std::endl;
             m_context->transitionTo(new EStopUnlockedState());
             break;
 

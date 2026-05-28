@@ -74,12 +74,6 @@ public:
     // ========================================================================
     void saveCompleteCalibrationMap(const std::map<std::string, int>& calibData) override;
 
-
-
-    // In dispatcher.hpp
-    void sendPulseToPartner(uint8_t pulseCode);
-    void sendPartnerResetRequest();
-
     // ========================================================================
     // Eigene Getter (Wichtig für die main.cpp)
     // ========================================================================

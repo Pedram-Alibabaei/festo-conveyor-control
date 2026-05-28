@@ -56,7 +56,7 @@ namespace logik {
 
         PARTNER_ESTOP_PRESSED,
         PARTNER_ESTOP_RELEASED,
-        PARTNER_RESET_REQUESTED,
+
         CONNECTION_LOST,
         CONNECTION_RESTORED,
         REQ_TO_GIVE_WP,

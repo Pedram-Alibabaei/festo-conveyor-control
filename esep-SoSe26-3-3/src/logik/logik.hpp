@@ -68,9 +68,6 @@ namespace logik {
         bool dispatchSensorEventToWorkpiece(logik::Event e);
 
 
-        // Prüfe, ob der Partner bereits ein Reset-Event geschickt hat
-        // (Das löst du dann in deiner State-Logik aus)
-        void triggerPartnerResetEvent();
     };
 
 } // namespace logik
