@@ -141,8 +141,8 @@ int main(int argc, char *argv[]) {
         // ====================================================================
         // Erst NACH der Kalibrierung die Timer starten, damit Ticks nicht die
         // Kalibrierungsnachrichten überholen (Race Conditions vermeiden).
-        timer.startHeartbeatTimer(2000); // Partner-Überwachung (Netzwerk)
-        timer.startBeltTimer(1000);      // Logik-Ticks (Förderband)
+        timer.startHeartbeatTimer(50); // Partner-Überwachung (Netzwerk)
+        timer.startBeltTimer(50);      // Logik-Ticks (Förderband)
 
         std::cout << "Anlage ist nun VOLLSTÄNDIG BEREIT und synchronisiert!" << std::endl;
         std::cout << "======================================================\n" << std::endl;

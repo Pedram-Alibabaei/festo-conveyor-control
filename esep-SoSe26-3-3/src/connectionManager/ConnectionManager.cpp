@@ -83,7 +83,18 @@ void ConnectionManager::init(int localCoid,AnlagenPosition pos) {
 void ConnectionManager::connectToPartner() {
     // Sicherheits-Check: Nur starten, wenn wir nicht schon suchen oder verbunden sind
     if (!m_isSearching && !m_isConnected) {
+
+        // ====================================================================
+        // NEU: ZOMBIE-THREAD AUFRÄUMEN!
+        // Bevor wir einen neuen Thread starten, müssen wir den alten,
+        // bereits beendeten Thread sauber aus dem Speicher löschen.
+        // ====================================================================
+        if (m_connectThread.joinable()) {
+            m_connectThread.join();
+        }
+
         m_isSearching = true;
+        // Jetzt ist der Platz frei und wir können sicher einen neuen Thread starten
         m_connectThread = std::thread(&ConnectionManager::connectionTask, this);
     }
 }
@@ -144,12 +155,10 @@ void ConnectionManager::connectionTask() {
 // ============================================================================
 
 void ConnectionManager::heartbeatTackt() {
-    // Wenn gar keine Verbindung besteht, muessen wir auch nichts ueberwachen.
     if (!m_isConnected) {
         return;
     }
 
-    // DIE DEADLINE-PRUEFUNG: Hat der Partner seit dem letzten Takt geantwortet?
     if (m_partner_Alive == false) {
         // DEADLINE VERPASST!
         std::cerr << "[ConnMgr] KRITISCHER FEHLER: Heartbeat-Deadline verpasst! Loese Not-Halt aus." << std::endl;
@@ -160,9 +169,21 @@ void ConnectionManager::heartbeatTackt() {
         if (m_localCoid != -1) {
             MsgSendPulse(m_localCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::DISCONNECT, 0);
         }
+
+        // ====================================================================
+        // NEU: BEREINIGUNG & NEUSTART DER SUCHE
+        // ====================================================================
+        if (m_partnerCoid != -1) {
+            ConnectDetach(m_partnerCoid); // Alte, tote Verbindung in QNX freigeben
+            m_partnerCoid = -1;
+        }
+
+        // Startet den Hintergrund-Thread neu. Er rattert jetzt wieder lautlos
+        // im Hintergrund, bis das Kabel wieder eingesteckt wird!
+        connectToPartner();
+
     } else {
         // Er hat rechtzeitig geantwortet.
-        // Wir setzen die Falle wieder scharf fuer das naechste 50ms-Fenster!
         m_partner_Alive = false;
     }
 }

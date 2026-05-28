@@ -76,6 +76,9 @@ public:
 
 
 
+    // In dispatcher.hpp
+    void sendPulseToPartner(uint8_t pulseCode);
+    void sendPartnerResetRequest();
 
     // ========================================================================
     // Eigene Getter (Wichtig für die main.cpp)

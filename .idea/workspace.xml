@@ -18,23 +18,33 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="a0c4156a-c0e7-4ddc-8920-96d556fdc514" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/states/IdleState.cpp" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/states/IdleState.hpp" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/states/RunningState.cpp" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/states/RunningState.hpp" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/states/ServiceState.cpp" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/states/ServiceState.hpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/esep-SoSe26-3-3" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/esep-SoSe26-3-3" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/connectionManager/ConnectionManager.d" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/connectionManager/ConnectionManager.d" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/connectionManager/ConnectionManager.o" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/connectionManager/ConnectionManager.o" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/dispatcher/dispatcher.d" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/dispatcher/dispatcher.d" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/dispatcher/dispatcher.o" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/dispatcher/dispatcher.o" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/esep-SoSe26-3-3.d" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/esep-SoSe26-3-3.d" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/esep-SoSe26-3-3.o" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/esep-SoSe26-3-3.o" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/logik.d" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/logik.d" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/logik.o" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/logik.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/states/EStopState.d" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/states/EStopState.d" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/states/EStopState.o" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/states/EStopState.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/states/IdleState.d" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/states/IdleState.d" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/states/IdleState.o" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/states/IdleState.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/states/RunningState.d" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/states/RunningState.d" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/states/RunningState.o" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/states/RunningState.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/states/ServiceState.d" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/states/ServiceState.d" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/states/ServiceState.o" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/build/armv7le-debug/src/logik/states/ServiceState.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/src/connectionManager/ConnectionManager.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/connectionManager/ConnectionManager.cpp" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/src/dispatcher/dispatcher.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/dispatcher/dispatcher.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/src/dispatcher/dispatcher.hpp" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/dispatcher/dispatcher.hpp" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/src/esep-SoSe26-3-3.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/esep-SoSe26-3-3.cpp" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/logik.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/logik.cpp" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/logik.hpp" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/logik.hpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/states/EStopState.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/states/EStopState.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/states/EStopState.hpp" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/logik/states/EStopState.hpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/esep-SoSe26-3-3/src/shared/logikEvent.hpp" beforeDir="false" afterPath="$PROJECT_DIR$/esep-SoSe26-3-3/src/shared/logikEvent.hpp" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -47,7 +57,7 @@
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="new-test-fsm" />
+        <entry key="$PROJECT_DIR$" value="main" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -91,7 +101,7 @@
     "RunOnceActivity.typescript.service.memoryLimit.init": "true",
     "cf.first.check.clang-format": "false",
     "cidr.known.project.marker": "true",
-    "git-widget-placeholder": "Calibration-Manager",
+    "git-widget-placeholder": "Logik-estop",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",

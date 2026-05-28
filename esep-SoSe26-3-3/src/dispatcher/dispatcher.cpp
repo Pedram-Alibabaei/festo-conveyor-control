@@ -146,9 +146,10 @@ void Dispatcher::handlePulse(const struct _pulse& pulse) {
             break;
 
         case ipc::DISCONNECT:
-                    // m_logik->processEvent(logik::Event::ESTOP_PRESSED); // <--- AUSKOMMENTIEREN!
-                    std::cout << "[Dispatcher] WARNUNG: Netzwerk weg. Ignoriert fuer Solo-Test!" << std::endl;
-                    break;
+            std::cout << "[Dispatcher] Netzwerkverbindung verloren!" << std::endl;
+            m_partnerCoid = -1; // WICHTIG: Connection-Handle löschen, damit wir nicht ins Leere senden
+            m_logik->processEvent(logik::Event::CONNECTION_LOST);
+            break;
 
         // ====================================================================
         // TIMER EVENTS
@@ -222,6 +223,9 @@ void Dispatcher::handleConnectionPulse(uint32_t payload) {
     if (m_position == HINTEN_ANLAGE_2) {
         MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::ANLAGE_2_CIID, 1);
     }
+
+    // NEU: Dem System mitteilen, dass die Verbindung (wieder) etabliert ist
+    m_logik->processEvent(logik::Event::CONNECTION_RESTORED);
 }
 
 // ============================================================================
@@ -280,9 +284,16 @@ void Dispatcher::handleNetworkPulse(uint32_t payload) {
     uint16_t sensor_id = ipc::decodeSensorID(payload);
     uint16_t message_type = ipc::decodeSensorState(payload);
 
+    // Wenn der Partner START drückt oder loslässt
     if (sensor_id == ipc::BTN_START) {
         m_logik->processEvent(message_type == ipc::State::PRESSED ? logik::Event::PARTNER_START_PRESSED : logik::Event::PARTNER_START_RELEASED);
     }
+    // NEU: Wenn der Partner im EStopUnlockedState den RESET drückt
+    else if (sensor_id == ipc::BTN_RESET && message_type == ipc::State::PRESSED) {
+        std::cout << "[Dispatcher] Netzwerk-Event: Partner fordert synchronisierten Reset!" << std::endl;
+        m_logik->processEvent(logik::Event::PARTNER_RESET_REQUESTED);
+    }
+    // Werkstückübergabe-Protokoll
     else if (message_type == ipc::NetworkMessage::REQ_RECEIVE) {
         m_logik->processEvent(logik::Event::REQ_TO_GIVE_WP);
     }
@@ -318,6 +329,20 @@ void Dispatcher::readyToReceiveWp() {
 void Dispatcher::updateWpListe(WpType type) {
     if (m_partnerCoid != -1) {
         MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::UPDATE_LIST, static_cast<uint32_t>(type));
+    }
+}
+// ============================================================================
+// SYNCHRONISIERTER RESET (Master-Master Brücke)
+// ============================================================================
+void Dispatcher::sendPartnerResetRequest() {
+    if (m_partnerCoid != -1) {
+        // Wir verpacken die Sensor-ID (BTN_RESET) und einen eindeutigen Netzwerk-Zustand.
+        // Dafür nutzen wir das bestehende PARTNER_MSG System.
+        // Hinweis: ipc::State::PRESSED/RELEASED wird hier zweckentfremdet, um die Anfrage zu signalisieren.
+        uint32_t payload = ipc::encodeHalPayload(ipc::BTN_RESET, ipc::State::PRESSED);
+
+        MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_MSG, payload);
+        std::cout << "[Dispatcher] Reset-Anfrage erfolgreich an Partner gesendet." << std::endl;
     }
 }
 

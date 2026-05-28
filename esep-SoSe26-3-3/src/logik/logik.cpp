@@ -7,6 +7,7 @@
 #include "states/BaseState.hpp"
 #include "states/IdleState.hpp" // Startzustand
 #include <iostream>
+#include "states/EStopState.hpp"
 
 namespace logik {
 
@@ -48,12 +49,16 @@ void Logik::transitionTo(BaseState* newState) {
 }
 
 void Logik::processEvent(logik::Event e) {
-    // DAS IST DAS HERZSTÜCK DES PATTERNS:
-    // Kein switch-case mehr! Wir delegieren blind an den aktuellen Zustand.
+    // 1. GLOBALE SICHERHEITS-ÜBERSTEUERUNG
+    // Ein Verbindungsabbruch reißt das System SOFORT aus jedem Zustand in den sicheren Halt!
+    if (e == logik::Event::CONNECTION_LOST) {
+        transitionTo(new ConnectionLostState());
+        return; // Direkt abbrechen, nicht mehr an den aktuellen Zustand weitergeben!
+    }
+
+    // 2. Normales State-Handling
     if (m_currentState) {
         m_currentState->handle(e);
-    } else {
-        std::cerr << "[Logik] FATAL: Kein aktiver Zustand gesetzt!" << std::endl;
     }
 }
 
