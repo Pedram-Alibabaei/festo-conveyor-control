@@ -26,7 +26,8 @@ Dispatcher::Dispatcher()
       m_running(false),
       m_actuators(nullptr),
       m_sensors(nullptr),
-      m_connection(nullptr),
+      m_connection(nullptr),          // Netzwerk-Manager
+      m_calibrationManager(nullptr),   // KORRIGIERT: Kalibrierungs-Manager Pointer
       m_timer(nullptr),
       m_logik(nullptr)
 {
@@ -112,13 +113,42 @@ void Dispatcher::handlePulse(const struct _pulse& pulse) {
             handleHalEStopPulse(pulse.value.sival_int);
             break;
 
+        case ipc::PulseCode::HAL_ADC_CALIBRATION:
+            {
+                uint16_t calib_value = (pulse.value.sival_int >> 16) & 0xFFFF;
+                uint16_t calib_mode  = pulse.value.sival_int & 0xFFFF;
+                m_logik->receiveRawCalibrationData(calib_mode, calib_value);
+            }
+            break;
+
+        case ipc::PulseCode::MANAGER_ADC_CALIBRATION:
+            // Daten kommen beim Booten aus dem CalibrationManager -> Direkt an die Sensorik (ProfileAnalyzer)
+            if (m_sensors) {
+                uint16_t calib_value = (pulse.value.sival_int >> 16) & 0xFFFF;
+                uint16_t calib_mode  = pulse.value.sival_int & 0xFFFF;
+                m_sensors->updateCalibrationThresholds(calib_mode, calib_value);
+            }
+            break;
+
+        case ipc::PulseCode::MANAGER_TICK_CALIBRATION:
+            // Ticks kommen beim Booten aus dem CalibrationManager -> Direkt an die FSM-Zeiten der Logik
+            {
+                uint16_t tick_value = (pulse.value.sival_int >> 16) & 0xFFFF;
+                uint16_t calib_mode = pulse.value.sival_int & 0xFFFF;
+
+                // Nutzt den neuen CalibMode-Subtyp (z.B. TICK_END_B_TO_END_C)
+                m_logik->setTrackedSegmentTicks(calib_mode, tick_value);
+            }
+            break;
+
         case ipc::CONNECTION_MSG:
             handleConnectionPulse(pulse.value.sival_int);
             break;
 
         case ipc::DISCONNECT:
-            m_logik->processEvent(logik::Event::ESTOP_PRESSED);
-            break;
+                    // m_logik->processEvent(logik::Event::ESTOP_PRESSED); // <--- AUSKOMMENTIEREN!
+                    std::cout << "[Dispatcher] WARNUNG: Netzwerk weg. Ignoriert fuer Solo-Test!" << std::endl;
+                    break;
 
         // ====================================================================
         // TIMER EVENTS
@@ -137,7 +167,6 @@ void Dispatcher::handlePulse(const struct _pulse& pulse) {
             break;
 
         case ipc::SORTER_TIMER_TICK:
-
             m_logik->processEvent(logik::Event::EJECTOR_CLEARED);
             break;
 
@@ -184,7 +213,7 @@ void Dispatcher::handlePulse(const struct _pulse& pulse) {
         default:
             std::cerr << "[Dispatcher] Warnung: Unbekannter Puls-Code: " << (int)pulse.code << std::endl;
             break;
-    }
+}
 }
 
 void Dispatcher::handleConnectionPulse(uint32_t payload) {
@@ -211,7 +240,6 @@ void Dispatcher::handleHalPulse(uint32_t payload) {
         }
     }
     else if (sensor_id == ipc::BTN_STOP) {
-        // Hinweis: Falls Stop low-aktiv ist, mappt deine HAL das bereits im GPIO-Treiber!
         m_logik->processEvent(sensor_state == ipc::State::PRESSED ? logik::Event::STOP_PRESSED : logik::Event::STOP_RELEASED);
     }
     else if (sensor_id == ipc::BTN_RESET) {
@@ -294,7 +322,7 @@ void Dispatcher::updateWpListe(WpType type) {
 }
 
 // ============================================================================
-// LOKALER E-STOP (Auswertung erfolgt über das neue State-Enum der Logik)
+// LOKALER E-STOP
 // ============================================================================
 void Dispatcher::handleHalEStopPulse(uint32_t payload) {
     uint16_t sensor_id = ipc::decodeSensorID(payload);
@@ -334,6 +362,19 @@ void Dispatcher::handlePartnerEStopPulse(uint32_t payload) {
     }
 }
 
-void Dispatcher::startBeltClock(int ms) {
-    // Unbenutzte Rumpfmethode für die Interface-Kompatibilität
+// ============================================================================
+// KALIBRIERUNGS-SCHNITTSTELLE (KORRIGIERT)
+// ============================================================================
+void Dispatcher::saveCompleteCalibrationMap(const std::map<std::string, int>& calibData) {
+    if (!m_calibrationManager) return; // Greift nun sauber auf das m_calibrationManager-Member zu
+
+    // 1. Alle Werte aus der Logik-Map in den CalibrationManager übertragen
+    for (const auto& pair : calibData) {
+        m_calibrationManager->setInt(pair.first, pair.second);
+    }
+
+    // 2. Die Map permanent in die Textdatei schreiben
+    m_calibrationManager->save();
+
+    std::cout << "[Dispatcher] Komplette Kalibrierungs-Map an Manager uebergeben und gespeichert." << std::endl;
 }

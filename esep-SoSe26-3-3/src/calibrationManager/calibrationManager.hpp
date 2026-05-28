@@ -12,6 +12,7 @@
 
 class CalibrationManager : public i_CalibrationManager {
 private:
+    // Der intern genutzte Pfad zur Kalibrierungsdatei (z.B. auf der SD-Karte)
     std::string m_filepath;
 
     // Der RAM-Speicher (Key-Value Tabelle) für alle ADC- und Zeit-Schwellen
@@ -24,58 +25,55 @@ private:
 
 public:
     /**
-     * @brief Konstruktor.
-     * @param defaultFilepath Der Standardpfad zur Kalibrierungsdatei im QNX-System.
+     * @brief Konstruktor. Setzt den Standardpfad, der für alle Datei-Operationen genutzt wird.
+     * @param defaultFilepath Der Pfad zur Datei im QNX-System.
      */
     CalibrationManager(const std::string& defaultFilepath = "/root/festo_calibration.txt");
 
     ~CalibrationManager() override = default;
 
     // ========================================================================
-    // DATEI-OPERATIONEN (Aus dem Interface)
+    // DATEI-OPERATIONEN (Aus dem Interface - Pfadunabhängig)
     // ========================================================================
 
     /**
-     * @brief Sucht und laedt die Textdatei von einem spezifischen Pfad.
+     * @brief Lädt die Kalibrierungsdatei vom intern gesetzten Standardpfad.
      */
-    void loadFromFile(const std::string& filepath) override;
+    void load() override;
 
     /**
-     * @brief Speichert alle aktuellen RAM-Werte permanent in die angegebene Textdatei.
+     * @brief Speichert alle aktuellen RAM-Werte permanent auf den Standardpfad.
      */
-    void saveToFile(const std::string& filepath) override;
+    void save() override;
 
     /**
-     * @brief Prueft, ob an dem Pfad bereits eine Kalibrierung existiert.
+     * @brief Prüft, ob die Kalibrierungsdatei auf dem Standardpfad existiert.
      */
-    bool fileExists(const std::string& filepath) override;
+    bool fileExists() override;
 
     /**
-     * @brief Bequemlichkeits-Methode: Laedt die Daten vom im Konstruktor gesetzten Standardpfad.
+     * @brief Verpackt alle geladenen Werte als spezifische Pulse und schickt sie
+     * zur Verteilung an den Dispatcher.
+     * @param dispatcherCoid Der Verbindungs-Kanal (Connection ID) zum Dispatcher.
      */
-    void load();
-
-    /**
-     * @brief Bequemlichkeits-Methode: Speichert die Daten auf dem Standardpfad ab.
-     */
-    void save();
+    void distributeValues(int dispatcherCoid) override;
 
     // ========================================================================
     // DATEN-OPERATIONEN (Aus dem Interface)
     // ========================================================================
 
     /**
-     * @brief Prueft, ob ein bestimmter Kalibrierwert (z.B. calib::TICKS_END_B_TO_END_C) existiert.
+     * @brief Prüft, ob ein bestimmter Kalibrierwert im RAM existiert.
      */
     bool hasKey(const std::string& key) override;
 
     /**
-     * @brief Holt einen Kalibrierwert aus dem RAM. Falls nicht kalibriert, greift der Default-Wert.
+     * @brief Holt einen Kalibrierwert aus dem RAM. Falls nicht vorhanden, greift der Default-Wert.
      */
     int getInt(const std::string& key, int defaultValue = 0) override;
 
     /**
-     * @brief Setzt oder aktualisiert einen Wert im RAM (wird erst beim save() auf die SD-Karte geschrieben).
+     * @brief Setzt oder aktualisiert einen Wert im RAM.
      */
     void setInt(const std::string& key, int value) override;
 

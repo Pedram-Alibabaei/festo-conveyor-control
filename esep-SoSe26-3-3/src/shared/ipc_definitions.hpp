@@ -44,10 +44,13 @@ namespace ipc {
         // ====================================================================
         // LOKALE HARDWARE & SYSTEM (1 - 9)
         // ====================================================================
-        HAL_INPUT         = _PULSE_CODE_MINAVAIL + 1,  // Kommt von der eigenen Sensorik (HAL)
-        HAL_ESTOP         = _PULSE_CODE_MINAVAIL + 2,
-        CONNECTION_MSG    = _PULSE_CODE_MINAVAIL + 3,  // Interner Handshake (ConnectionManager gefunden)
-        DISCONNECT        = _PULSE_CODE_MINAVAIL + 4,  // Not-Halt oder Verbindungsabbruch
+        HAL_INPUT                = _PULSE_CODE_MINAVAIL + 1,  // Kommt von der eigenen Sensorik (HAL)
+        HAL_ESTOP                = _PULSE_CODE_MINAVAIL + 2,  // Not-Halt-Taster
+        HAL_ADC_CALIBRATION      = _PULSE_CODE_MINAVAIL + 3,  // Rohwerte von der HAL während Messung
+        MANAGER_ADC_CALIBRATION  = _PULSE_CODE_MINAVAIL + 4,  // Geladene ADC-Werte vom CalibrationManager beim Start
+        MANAGER_TICK_CALIBRATION = _PULSE_CODE_MINAVAIL + 5,  // Geladene Ticks vom CalibrationManager beim Start
+        CONNECTION_MSG           = _PULSE_CODE_MINAVAIL + 6,  // Interner Handshake (ConnectionManager gefunden)
+        DISCONNECT               = _PULSE_CODE_MINAVAIL + 7,  // Not-Halt oder Verbindungsabbruch
 
         // ====================================================================
         // TIMER EVENTS (10 - 19)
@@ -113,7 +116,42 @@ namespace ipc {
         HIGH_ERROR = _PULSE_CODE_MINAVAIL + 10,
 
     };
+    // Sub-Typen für Kalibrierungs-Payloads (Sowohl ADC als auch Ticks!)
+    enum class CalibMode : uint16_t {
+        // 1. ADC-Schwellen (Zustände & Rohwerte)
+        EMPTY_BELT                  = 1,
+        FLAT_WP                     = 2, // FlatCenter
+        MIN_SAMPLES                 = 3,
 
+        // Berechnete Toleranzgrenzen für die FSM-Typerkennung (Erweiterung)
+        FLAT_MIN                    = 4,
+        FLAT_MAX                    = 5,
+        TALL_MIN                    = 6,
+        TALL_MAX                    = 7,
+        DRILLED_MIN                 = 8,
+        DRILLED_MAX                 = 9,
+        MAX_HEIGHT                  =10,
+
+        // 2. Wegstrecken (Ticks)
+        TICK_ENTRY_C_TO_HEIGHT_B    = 11,
+        TICK_HEIGHT_B_TO_HEIGHT_C   = 12,
+        TICK_HEIGHT_C_TO_EJECTOR_B  = 13,
+        TICK_EJECTOR_B_TO_EJECTOR_C = 14,
+        TICK_EJECTOR_C_TO_END_B     = 15,
+        TICK_END_B_TO_END_C         = 16
+    };
+
+
+    /**
+     * @brief Hilfsmethode zum Packen der Kalibrierungs-Payload.
+     * @param value Der eigentliche Kalibrierwert (ADC-Wert oder Sample-Anzahl).
+     * @param mode Der Sub-Typ aus dem Namespace CalibMode.
+     * * Struktur im 32-Bit Integer:
+     * [ Bit 31 ... 16: Kalibrierwert (16 Bit) ] [ Bit 15 ... 0: CalibMode-ID (16 Bit) ]
+     */
+    inline uint32_t encodeCalibPayload(uint16_t value, uint16_t mode) {
+        return (static_cast<uint32_t>(value) << 16) | static_cast<uint32_t>(mode);
+    }
 
     /** @brief Wird vom HAL genutzt, um den Pulse zu bauen */
     inline uint32_t encodeHalPayload(uint16_t sensorId, uint16_t state) {

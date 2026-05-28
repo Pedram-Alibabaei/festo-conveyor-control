@@ -1,110 +1,84 @@
 /**
  * @file ProfileAnalyzer.hpp
- *
- * @brief Klassenbeschreibung: ProfileAnalyzer
- *
- * Die Klasse ProfileAnalyzer ist ein reines Logik-Modul ("Number Cruncher") zur
- * Auswertung analoger Höhenprofile. Sie ist vollständig entkoppelt von der Hardware
- * (HAL) und dem Betriebssystem (QNX), was sie hochgradig testbar macht.
- *
- * Hauptaufgaben (Zuständigkeiten):
- * - Signalglättung (Smoothing): Nutzt einen gleitenden Mittelwert (Moving Average
- *   Filter) über die letzten 5 Messwerte, um elektromagnetisches Rauschen oder
- *   mechanisches Wackeln (Spikes) in Echtzeit herauszufiltern.
- * - Topografie-Analyse: Erkennt Werkstücke geschwindigkeitsunabhängig, indem
- *   ausschließlich Extremwerte (höchster Gipfel, tiefstes Tal) während des Mess-
- *   fensters analysiert werden, anstatt statische Sample-Mengen zu zählen.
- * - Hysterese-Überwachung: Bestimmt über einen Zähler den sicheren Abriss
- *   (Ende der Messung), sobald das Förderband wieder zuverlässig leer ist.
+ * @brief Logische Zustandsschaltung und Auswertung der ADC-Höhenprofile.
  */
 
 #ifndef PROFILE_ANALYZER_HPP
 #define PROFILE_ANALYZER_HPP
 
 #include <cstdint>
-// Hier bindest du eure Datei ein, in der das WpType-Enum (UNKNOWN, FLAT, TALL, DRILLED) definiert ist
-#include <shared/types.hpp>
+#include <map>
+#include <vector>
 
 class ProfileAnalyzer {
 private:
-    // ========================================================================
-    // 1. Signal-Filter (Gleitender Mittelwert)
-    // ========================================================================
-    uint32_t m_filter_buffer[5];  // Ringpuffer für die letzten 5 Werte
-    uint8_t  m_filter_index;      // Aktuelle Schreibposition im Puffer
-    bool     m_filter_is_full;    // True, sobald die ersten 5 Werte gesammelt wurden
+    int m_coid;
+
+    enum class AnalyzerState {
+        IDLE,
+        WAITING_FOR_WP,
+        MEASURING,
+        CALIBRATION
+    };
+    AnalyzerState m_currentState;
+
+    // Interne Schritte für die sequentielle Kalibrierung
+    enum class CalibStep {
+        MEASURE_BELT,       // Stufe 1: Leeres Band einmessen
+        WAIT_FOR_WP,        // Stufe 2: Auf Werkstück warten & Peak einmessen
+        WAIT_FOR_LEAVE      // Stufe 3: Zählen, bis Werkstück Band verlässt (MIN_SAMPLES)
+    };
+    CalibStep m_currentCalibStep;
+
+    std::map<uint16_t, uint16_t> m_thresholds;
+    uint16_t m_maxHeightInCurrentProfile;
+    uint32_t m_sampleCounter;
+    uint16_t m_tempBeltValue; // Temporärer Speicher für die Band-Erkennung während des Einlernens
+
+    // 1. Block-Sammel-Puffer für die erste Glättung (10 Werte)
+    static constexpr size_t SMOOTHING_SAMPLE_COUNT = 10;
+    uint32_t m_rawBuffer[SMOOTHING_SAMPLE_COUNT];
+    size_t m_fillCount;
 
     // ========================================================================
-    // 2. Das "Gedächtnis" für das aktuelle Werkstück
+    // LIVE-SEGMENTIERUNG (12 Klassen)
     // ========================================================================
-    uint32_t m_current_peak_height; // Der absolut höchste gemessene, geglättete Wert
-    bool     m_hole_detected;       // Wurde zwischendurch ein signifikantes Tal erkannt?
-    uint32_t m_empty_belt_counter;  // Zählt, wie lange das Band am Stück leer ist (Hysterese)
-    bool     m_is_measuring;        // Status-Flag: Befindet sich aktuell ein Teil unter dem Sensor?
-    bool   m_binary;
+    static constexpr size_t NUM_PROFILE_CLASSES = 12;
 
-    // ========================================================================
-    // 3. Kalibrierungsdaten (Werden beim Systemstart aus einer Datei geladen)
-    // ========================================================================
-    uint32_t m_trigger_threshold;   // Ab welchem ADC-Wert beginnt ein Werkstück?
+    // Speicher für die ermittelten Typen der 12 Segmente
+    uint16_t m_segmentTypes[NUM_PROFILE_CLASSES];
+    size_t m_currentSegmentIndex; // Welches Segment befüllen wir gerade (0 bis 11)?
 
-    // Toleranzbänder (Min/Max) für die verschiedenen Zonen
-    uint32_t m_flat_min;
-    uint32_t m_flat_max;
+    // Dynamischer Zwischenpuffer für genau ein Segment (Größe = MIN_SAMPLES / 12)
+    std::vector<uint16_t> m_currentSegmentBuffer;
 
-    uint32_t m_tall_min;
-    uint32_t m_tall_max;
+    /**
+     * @brief Bestimmt den Zustand/Typ eines einzelnen Segments anhand der gesammelten Samples.
+     * @param segmentSamples Der Puffer mit den Rohwerten dieses Segments.
+     * @return uint16_t Der ermittelte Typ für dieses Segment.
+     */
+    uint16_t determineSegmentType(const std::vector<uint16_t>& segmentSamples);
 
-    uint32_t m_hole_min;
-    uint32_t m_hole_max;
+    /**
+     * @brief Analysiert die fertige Kette aus 12 Segment-Typen und bestimmt den Werkstück-Gesamttyp.
+     */
+    uint16_t determineFinalWorkpieceType();
 
-    uint32_t m_binary_min;
-    uint32_t m_binary_max;
-
-    uint32_t m_empty_count_limit;   // Wie viele "Leer"-Messungen bedeuten das Ende der Messung?
+    uint32_t calculateBlockAverage();
+    void recalculateTypeThresholds(uint16_t flatCenter);
+    void evaluationFinished(uint16_t finalTypeOrValue);
 
 public:
-    /**
-     * @brief Konstruktor: Initialisiert alle Werte sicher mit 0.
-     */
     ProfileAnalyzer();
+    ~ProfileAnalyzer() = default;
 
-    /**
-     * @brief Setzt die System-Kalibrierung (Schwellenwerte und Zonen).
-     * Wird idealerweise beim Systemstart vom main-Thread aufgerufen.
-     */
-    void setCalibrationStats();
+    void setConnectionId(int coid);
+    void processSample(uint32_t adcValue);
 
-    void setCalibration(uint32_t trigger,
-                        uint32_t flatMin, uint32_t flatMax,
-                        uint32_t tallMin, uint32_t tallMax,
-                        uint32_t holeMin, uint32_t holeMax,
-                        uint32_t emptyCountLimit);
-
-    /**
-     * @brief Setzt das interne Gedächtnis und den Filter zurück.
-     * Muss aufgerufen werden, nachdem eine Messung erfolgreich beendet wurde.
-     */
-    void reset();
-
-    /**
-     * @brief Nimmt einen rohen ADC-Wert entgegen, glättet ihn und aktualisiert das Höhenprofil.
-     * @param raw_adc_value Der rohe, ungefilterte Wert direkt aus dem Hardware-Register.
-     */
-    void processSample(UInt32 raw_adc_value);
-
-    /**
-     * @brief Prüft, ob das Werkstück den Sensorbereich vollständig verlassen hat.
-     * @return True, wenn die Hysterese-Bedingung (Band ist lange genug leer) erfüllt ist.
-     */
-    bool isMeasurementComplete() const;
-
-    /**
-     * @brief Wertet das aufgezeichnete Profil aus und fällt das finale Urteil.
-     * Darf erst aufgerufen werden, wenn isMeasurementComplete() true zurückgibt.
-     * @return Der ermittelte Werkstücktyp (WpType).
-     */
-    WpType determineFinalType() const;
+    void setAdcIdelState();
+    void setAdcWaitigForWpState();
+    void setAdcCalibrationsState();
+    void updateCalibrationThresholds(uint16_t calib_mode, uint16_t calib_value);
 };
 
 #endif // PROFILE_ANALYZER_HPP

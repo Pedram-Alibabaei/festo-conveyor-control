@@ -8,12 +8,12 @@
 #include <hal/pal/adc.hpp>
 #include <shared/types.hpp>
 
-// NEU: Wichtig für ipc::encodeHalPayload und ipc::HEIGHT_ADC
+// Wichtig für ipc::encodeHalPayload und deine neuen Puls-Codes
 #include <shared/ipc_definitions.hpp>
+#include "profileAnalyzer.hpp" // Hier den echten Header für den Zeiger inkludieren
 
 #include <iostream>
 #include <thread>
-#include "shared/types.hpp"
 
 extern "C"
 {
@@ -32,20 +32,18 @@ using namespace hal::input_driver;
 // ============================================================================
 AdcInterrupt::AdcInterrupt() :
                 Interrupt(),
-                m_coid(-1)
-
+                m_analyzer(nullptr) // Initialisiert als Nullpointer
 {
     // Absichtlich leer! Der Thread und die Hardware-Registrierung
-    // passieren jetzt erst kontrolliert in initAdcInterrupt().
+    // passieren erst kontrolliert in initAdcInterrupt().
 }
 
 // ============================================================================
-// 2. Initialisierung (Von außen durch main.cpp aufgerufen)
+// 2. Initialisierung (Von außen durch HalSensors aufgerufen)
 // ============================================================================
-void AdcInterrupt::initAdcInterrupt(int coid)
+void AdcInterrupt::initAdcInterrupt( ProfileAnalyzer* analyzer)
 {
-    m_coid = coid;
-
+    m_analyzer = analyzer; // Sichert den Zeiger auf das Objekt in der Fassade
 
     // 1. Hardware-Interrupt beim OS registrieren
     m_interrupt_id = setup_interrupt(pulse_intr, intr_adc);
@@ -62,20 +60,7 @@ void AdcInterrupt::initAdcInterrupt(int coid)
 }
 
 // ============================================================================
-// 3. Kalibrierung (Muss vor initAdcInterrupt gerufen werden)
-// ============================================================================
-void AdcInterrupt::setAdcCalibration(uint32_t trigger,
-                                     uint32_t flatMin, uint32_t flatMax,
-                                     uint32_t tallMin, uint32_t tallMax,
-                                     uint32_t holeMin, uint32_t holeMax,
-                                     uint32_t emptyCountLimit)
-{
-    // Reicht die Werte einfach an das interne "Gehirn" (ProfileAnalyzer) weiter
-    m_analyzer.setCalibration(trigger, flatMin, flatMax, tallMin, tallMax, holeMin, holeMax, emptyCountLimit);
-}
-
-// ============================================================================
-// 4. Deaktivierung
+// 3. Deaktivierung
 // ============================================================================
 void AdcInterrupt::stopAdcInterrupt()
 {
@@ -92,7 +77,7 @@ void AdcInterrupt::stopAdcInterrupt()
 }
 
 // ============================================================================
-// 5. Hardware Konfiguration
+// 4. Hardware Konfiguration
 // ============================================================================
 void AdcInterrupt::configure_interrupt() const noexcept
 {
@@ -100,7 +85,7 @@ void AdcInterrupt::configure_interrupt() const noexcept
 }
 
 // ============================================================================
-// 6. Interrupt-Behandlung (Der Puls-Sender)
+// 5. Interrupt-Behandlung (Der Puls-Sender)
 // ============================================================================
 void AdcInterrupt::handle_interrupt() const noexcept
 {
@@ -109,38 +94,10 @@ void AdcInterrupt::handle_interrupt() const noexcept
     // 1. Rohwert aus dem Hardware-Register lesen
     Height::clear_interrupt_event();
     InterruptUnmask(intr_adc, m_interrupt_id);
-    UInt32 current_adc_value = Height::analog_value();
+    uint32_t current_adc_value = Height::analog_value();
 
-    // 2. Den Wert in den Analyzer füttern
-    m_analyzer.processSample(current_adc_value);
-
-    // 3. Den Analyzer fragen: "Ist das Werkstück komplett vorbeigefahren?"
-    if (m_analyzer.isMeasurementComplete()) {
-
-        // 4. JA! Jetzt holen wir uns das finale Ergebnis ab:
-        // (Achte darauf, dass WPType hier so geschrieben wird, wie in deiner types.hpp)
-        WpType detected_type = m_analyzer.determineFinalType();
-
-        if (detected_type != WpType::UNKNOWN) {
-            std::cout << "[ADC HAL] Profilanalyse beendet! Erkannt: "
-                      << static_cast<int>(detected_type) << std::endl;
-
-            // ================================================================
-            // NEU: QNX Pulse an den Dispatcher senden!
-            // ================================================================
-            if (m_coid != -1) {
-                // Wir packen die ID (HEIGHT_ADC) und den Typ (z.B. TALL) in ein 32-Bit Paket
-                uint32_t payload = ipc::encodeHalPayload(ipc::HEIGHT, static_cast<uint16_t>(detected_type));
-
-                // Pulse abfeuern (Priorität 10, Code z.B. HAL_INPUT, Daten = payload)
-                MsgSendPulse(m_coid, 10, ipc::HEIGHT, payload);
-            }
-        }
-
-        // 5. WICHTIG: Analyzer für das nächste Werkstück zurücksetzen!
-        m_analyzer.reset();
+    // 2. Den Wert direkt an den Analyzer der HalSensors-Klasse hochreichen
+    if (m_analyzer != nullptr) {
+        m_analyzer->processSample(current_adc_value);
     }
-
-    // 6. Hardware-Interrupt löschen und für die nächste Messung scharfschalten
-
 }

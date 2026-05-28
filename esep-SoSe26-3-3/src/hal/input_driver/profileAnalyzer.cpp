@@ -1,194 +1,367 @@
 /**
  * @file ProfileAnalyzer.cpp
- *
- * @brief Implementierung der ProfileAnalyzer-Klasse.
- *
- * Diese Datei enthält die Logik zur Rauschunterdrückung (Moving Average Filter)
- * und zur profilbasierten, geschwindigkeitsunabhängigen Werkstückerkennung.
+ * @brief Logische Zustandsschaltung und Auswertung der ADC-Höhenprofile.
  */
 
 #include "ProfileAnalyzer.hpp"
+#include "shared/ipc_definitions.hpp"
+#include <iostream>
 #include <shared/types.hpp>
-// ============================================================================
-// Konstruktor & Setup
-// ============================================================================
 
-/**
- * @brief Standardkonstruktor.
- * Setzt das gesamte Gedächtnis, den Filter und die Kalibrierung auf sichere Startwerte (0).
- */
-ProfileAnalyzer::ProfileAnalyzer() {
-    // 1. Filter zurücksetzen
-    for (int i = 0; i < 5; i++) {
-        m_filter_buffer[i] = 0;
-    }
-    m_filter_index   = 0;
-    m_filter_is_full = false;
-
-    // 2. Gedächtnis zurücksetzen
-    m_current_peak_height = 0;
-    m_hole_detected       = false;
-    m_empty_belt_counter  = 0;
-    m_is_measuring        = false;
-
-    // 3. Kalibrierung nullen
-    m_trigger_threshold = 0;
-    m_flat_min = 0; m_flat_max = 0;
-    m_tall_min = 0; m_tall_max = 0;
-    m_hole_min = 0; m_hole_max = 0;
-    m_empty_count_limit = 15;
-}
-
-/**
- * @brief Übernimmt die System-Kalibrierung aus der Konfigurationsdatei.
- */
-void ProfileAnalyzer::setCalibration(uint32_t trigger,
-                                     uint32_t flatMin, uint32_t flatMax,
-                                     uint32_t tallMin, uint32_t tallMax,
-                                     uint32_t holeMin, uint32_t holeMax,
-                                     uint32_t emptyCountLimit) {
-    m_trigger_threshold = trigger;
-    m_flat_min = flatMin;
-    m_flat_max = flatMax;
-    m_tall_min = tallMin;
-    m_tall_max = tallMax;
-    m_hole_min = holeMin;
-    m_hole_max = holeMax;
-    m_empty_count_limit = emptyCountLimit;
-}
-
-/**
- * @brief Setzt die Klasse in den Bereitschaftsmodus für das nächste Werkstück.
- * Leert den Filter-Puffer und löscht das Profilgedächtnis der letzten Messung.
- */
-void ProfileAnalyzer::reset() {
-    // Filter leeren
-    for (int i = 0; i < 5; i++) {
-        m_filter_buffer[i] = 0;
-    }
-    m_filter_index   = 0;
-    m_filter_is_full = false;
-
-    // Gedächtnis leeren
-    m_current_peak_height = 0;
-    m_hole_detected       = false;
-    m_empty_belt_counter  = 0;
-    m_is_measuring        = false;
+extern "C" {
+#include <sys/neutrino.h>
 }
 
 // ============================================================================
-// Die Hauptlogik (Wird für jeden rohen ADC-Wert 1x aufgerufen)
+// KONSTRUKTOR & KONFIGURATION
 // ============================================================================
 
-/**
- * @brief Verarbeitet einen neuen ADC-Messwert.
- * Wendet zuerst einen gleitenden Mittelwert an und analysiert danach das Profil.
- */
-void ProfileAnalyzer::processSample(uint32_t raw_adc_value) {
+ProfileAnalyzer::ProfileAnalyzer()
+    : m_coid(-1),
+      m_currentState(AnalyzerState::IDLE),
+      m_currentCalibStep(CalibStep::MEASURE_BELT),
+      m_maxHeightInCurrentProfile(0),
+      m_sampleCounter(0),
+      m_tempBeltValue(3500),
+      m_fillCount(0),
+      m_currentSegmentIndex(0) {
 
-    // ------------------------------------------------------------------------
-    // STUFE 1: SIGNAL-GLÄTTUNG (Moving Average Filter)
-    // ------------------------------------------------------------------------
-
-    // Wert in den Ringpuffer schreiben und Index weiterrücken
-    m_filter_buffer[m_filter_index] = raw_adc_value;
-    m_filter_index++;
-
-    // Puffer-Überlauf behandeln (Ringstruktur)
-    if (m_filter_index >= 5) {
-        m_filter_index = 0;
-        m_filter_is_full = true; // Ab jetzt sind immer 5 gültige Werte im Puffer
+    for (size_t i = 0; i < SMOOTHING_SAMPLE_COUNT; ++i) {
+        m_rawBuffer[i] = 0;
     }
+    // 12 Segmente mit UNKNOWN initialisieren
+    for (size_t i = 0; i < NUM_PROFILE_CLASSES; ++i) {
+        m_segmentTypes[i] = static_cast<uint16_t>(WpType::UNKNOWN);
+    }
+}
 
-    // Solange wir noch keine 5 Werte für einen sauberen Durchschnitt haben,
-    // ignorieren wir die Eingabe und warten auf das nächste Sample.
-    if (!m_filter_is_full) {
+void ProfileAnalyzer::setConnectionId(int coid) {
+    m_coid = coid;
+}
+
+// ============================================================================
+// LOGISCHE ZUSTANDSTEUERUNG (Aufgerufen durch HalSensors)
+// ============================================================================
+
+void ProfileAnalyzer::setAdcIdelState() {
+    m_currentState = AnalyzerState::IDLE;
+}
+
+void ProfileAnalyzer::setAdcWaitigForWpState() {
+    m_currentState = AnalyzerState::WAITING_FOR_WP;
+}
+
+void ProfileAnalyzer::setAdcCalibrationsState() {
+    m_currentState = AnalyzerState::CALIBRATION;
+    m_currentCalibStep = CalibStep::MEASURE_BELT; // Kette immer von vorne starten!
+    m_maxHeightInCurrentProfile = 0;
+    m_sampleCounter = 0;
+}
+
+// ============================================================================
+// HILFSMETHODE: MITTELWERT BERECHNEN
+// ============================================================================
+uint32_t ProfileAnalyzer::calculateBlockAverage() {
+    uint64_t sum = 0;
+    for (size_t i = 0; i < SMOOTHING_SAMPLE_COUNT; ++i) {
+        sum += m_rawBuffer[i];
+    }
+    return static_cast<uint32_t>(sum / SMOOTHING_SAMPLE_COUNT);
+}
+
+// ============================================================================
+// VERARBEITUNG DER SAMPLER (Aus der Interrupt Service Routine)
+// ============================================================================
+
+void ProfileAnalyzer::processSample(uint32_t adcValue) {
+    if (m_coid == -1) return;
+
+    // ========================================================================
+    // 1. BLOCK-GLÄTTUNG (Sammle erst 10 Rohwerte im festen Array)
+    // ========================================================================
+    m_rawBuffer[m_fillCount] = adcValue;
+    m_fillCount++;
+
+    if (m_fillCount < SMOOTHING_SAMPLE_COUNT) {
         return;
     }
 
-    // Durchschnitt berechnen (Rauschen herausfiltern)
-    uint32_t sum = 0;
-    for (int i = 0; i < 5; i++) {
-        sum += m_filter_buffer[i];
-    }
-    uint32_t smoothed_value = sum / 5;
+    uint32_t smoothedValue = calculateBlockAverage();
+    m_fillCount = 0;
 
+    uint16_t currentRaw = static_cast<uint16_t>(smoothedValue & 0xFFF);
 
-    // ------------------------------------------------------------------------
-    // STUFE 2: TOPOGRAFIE-ERKENNUNG (Mit dem geglätteten Wert!)
-    // ------------------------------------------------------------------------
+    // ========================================================================
+    // 2. DIE ZUSTANDSMASCHINE
+    // ========================================================================
+    switch (m_currentState) {
 
-    // Fall A: Wir warten noch auf ein Werkstück (Trigger-Erkennung)
-    if (!m_is_measuring) {
-        if (smoothed_value > m_trigger_threshold) {
-            // Startschuss: Das Werkstück ist da!
-            m_is_measuring = true;
-            m_current_peak_height = smoothed_value;
-            m_hole_detected = false;
-            m_empty_belt_counter = 0;
-        }
-        return; // Für diesen Zyklus fertig
-    }
+        case AnalyzerState::IDLE:
+            break;
 
-    // Fall B: Wir messen gerade ein Werkstück
-    if (m_is_measuring) {
+        case AnalyzerState::WAITING_FOR_WP:
+            {
+                uint16_t emptyBeltThreshold = m_thresholds.count(static_cast<uint16_t>(ipc::CalibMode::EMPTY_BELT)) ?
+                                              m_thresholds[static_cast<uint16_t>(ipc::CalibMode::EMPTY_BELT)] : 3500;
 
-        // 1. Gipfel-Tracking (Neuen maximalen Höhenrekord speichern)
-        if (smoothed_value > m_current_peak_height) {
-            m_current_peak_height = smoothed_value;
-        }
+                if (currentRaw < (emptyBeltThreshold - 100)) {
+                    m_currentState = AnalyzerState::MEASURING;
+                    m_maxHeightInCurrentProfile = currentRaw;
+                    m_sampleCounter = 1;
+                    m_currentSegmentIndex = 0;
+                    m_currentSegmentBuffer.clear();
 
-        // 2. Bohrungs-Erkennung (Tal-Tracking)
-        // Nur wenn das Werkstück grundsätzlich hoch ist, suchen wir nach einer Bohrung
-        if (m_current_peak_height >= m_tall_min) {
-            if (smoothed_value >= m_hole_min && smoothed_value <= m_hole_max) {
-                m_hole_detected = true;
+                    for (size_t i = 0; i < NUM_PROFILE_CLASSES; ++i) {
+                        m_segmentTypes[i] = static_cast<uint16_t>(WpType::UNKNOWN);
+                    }
+                }
             }
-            if (smoothed_value >= m_binary_min&& smoothed_value <= m_binary_max){
-                m_binary = true;
-            }
-        }
+            break;
 
-        // 3. Abriss-Erkennung (Fährt das Teil gerade aus dem Lichtschrankenbereich?)
-        if (smoothed_value <= m_trigger_threshold) {
-            m_empty_belt_counter++; // Band scheint wieder leer zu sein
-        } else {
-            // Wert ist wieder über den Trigger gestiegen -> Abbruch der Hysterese
-            m_empty_belt_counter = 0;
-        }
+        case AnalyzerState::MEASURING:
+            {
+                // ------------------------------------------------------------
+                // CRITICAL CHECK: MAX_HEIGHT (Höhenfehler-Überwachung)
+                // ------------------------------------------------------------
+                uint16_t highErrorLimit = m_thresholds[static_cast<uint16_t>(ipc::CalibMode::MAX_HEIGHT)];
+
+                if (currentRaw < highErrorLimit) {
+                    std::cerr << "[Analyzer] CRITICAL: Werkstueck zu hoch! ADC: " << currentRaw << std::endl;
+
+                    uint32_t payload = ipc::encodeHalPayload(ipc::SensorID::HEIGHT, ipc::State::HIGH_ERROR);
+                    MsgSendPulse(m_coid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::HAL_INPUT, payload);
+
+                    m_currentState = AnalyzerState::IDLE;
+                    break;
+                }
+
+                // ------------------------------------------------------------
+                // NORMALER MESSABLAUF
+                // ------------------------------------------------------------
+                uint16_t emptyBeltThreshold = m_thresholds[static_cast<uint16_t>(ipc::CalibMode::EMPTY_BELT)];
+
+                if (currentRaw < (emptyBeltThreshold - 100)) {
+                    m_sampleCounter++;
+
+                    if (currentRaw < m_maxHeightInCurrentProfile) {
+                        m_maxHeightInCurrentProfile = currentRaw;
+                    }
+
+                    uint16_t minSamples = m_thresholds[static_cast<uint16_t>(ipc::CalibMode::MIN_SAMPLES)];
+                    size_t samplesPerSegment = (minSamples > 0) ? (minSamples / NUM_PROFILE_CLASSES) : 10;
+
+                    m_currentSegmentBuffer.push_back(currentRaw);
+
+                    if (m_currentSegmentBuffer.size() >= samplesPerSegment && m_currentSegmentIndex < NUM_PROFILE_CLASSES) {
+                        m_segmentTypes[m_currentSegmentIndex] = determineSegmentType(m_currentSegmentBuffer);
+                        m_currentSegmentIndex++;
+                        m_currentSegmentBuffer.clear();
+                    }
+                }
+                else {
+                    // ------------------------------------------------------------
+                    // WERKSTÜCK HAT SENSOR VERLASSEN
+                    // ------------------------------------------------------------
+                    if (!m_currentSegmentBuffer.empty() && m_currentSegmentIndex < NUM_PROFILE_CLASSES) {
+                        m_segmentTypes[m_currentSegmentIndex] = determineSegmentType(m_currentSegmentBuffer);
+                    }
+
+                    uint16_t minSamples = m_thresholds[static_cast<uint16_t>(ipc::CalibMode::MIN_SAMPLES)];
+                    if (m_sampleCounter >= (minSamples * 0.7)) {
+                        uint16_t finalWpType = determineFinalWorkpieceType();
+                        evaluationFinished(finalWpType);
+                    } else {
+                        std::cout << "[Analyzer] Messung verworfen (zu kurz oder Rauschen)." << std::endl;
+                    }
+
+                    m_currentState = AnalyzerState::IDLE;
+                }
+            }
+            break;
+
+        case AnalyzerState::CALIBRATION:
+            {
+                using CM = ipc::CalibMode;
+
+                switch (m_currentCalibStep) {
+
+                    // --------------------------------------------------------
+                    // STUFE 1: LEERES BAND EINMESSEN (50 Samples)
+                    // --------------------------------------------------------
+                    case CalibStep::MEASURE_BELT:
+                        m_sampleCounter++;
+                        if (m_sampleCounter == 1) {
+                            m_maxHeightInCurrentProfile = currentRaw;
+                        } else {
+                            m_maxHeightInCurrentProfile = (m_maxHeightInCurrentProfile + currentRaw) / 2;
+                        }
+
+                        if (m_sampleCounter >= 50) {
+                            m_tempBeltValue = m_maxHeightInCurrentProfile;
+
+                            uint32_t payload = ipc::encodeCalibPayload(m_tempBeltValue, static_cast<uint16_t>(CM::EMPTY_BELT));
+                            MsgSendPulse(m_coid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::HAL_ADC_CALIBRATION, payload);
+
+                            std::cout << "[Calib] Stufe 1 fertig: EMPTY_BELT = " << m_tempBeltValue << ". Warte auf WP..." << std::endl;
+
+                            m_currentCalibStep = CalibStep::WAIT_FOR_WP;
+                            m_maxHeightInCurrentProfile = 4095;
+                            m_sampleCounter = 0;
+                        }
+                        break;
+
+                    // --------------------------------------------------------
+                    // STUFE 2: WARTEN AUF FLACHES WERKSTÜCK & PEAK ERFASSEN
+                    // --------------------------------------------------------
+                    case CalibStep::WAIT_FOR_WP:
+                        if (currentRaw < (m_tempBeltValue - 100)) {
+                            m_sampleCounter++;
+
+                            if (currentRaw < m_maxHeightInCurrentProfile) {
+                                m_maxHeightInCurrentProfile = currentRaw;
+                            }
+
+                            if (m_sampleCounter == 15) {
+                                uint32_t payload = ipc::encodeCalibPayload(m_maxHeightInCurrentProfile, static_cast<uint16_t>(CM::FLAT_WP));
+                                MsgSendPulse(m_coid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::HAL_ADC_CALIBRATION, payload);
+
+                                std::cout << "[Calib] Stufe 2 fertig: FLAT_WP = " << m_maxHeightInCurrentProfile << ". Erfasse Gesamtlänge..." << std::endl;
+
+                                m_currentCalibStep = CalibStep::WAIT_FOR_LEAVE;
+                            }
+                        }
+                        break;
+
+                    // --------------------------------------------------------
+                    // STUFE 3: WEITERZÄHLEN, BIS WERKSTÜCK DAS BAND VERLÄSST
+                    // --------------------------------------------------------
+                    case CalibStep::WAIT_FOR_LEAVE:
+                        m_sampleCounter++;
+
+                        if (currentRaw >= (m_tempBeltValue - 80)) {
+                            uint16_t totalSamples = static_cast<uint16_t>(m_sampleCounter);
+
+                            uint32_t payload = ipc::encodeCalibPayload(totalSamples, static_cast<uint16_t>(CM::MIN_SAMPLES));
+                            MsgSendPulse(m_coid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::HAL_ADC_CALIBRATION, payload);
+
+                            std::cout << "[Calib] Stufe 3 fertig: MIN_SAMPLES = " << totalSamples << ". Kalibrierung beendet!" << std::endl;
+
+                            m_currentState = AnalyzerState::IDLE;
+                        }
+                        break;
+                }
+            }
+            break;
     }
 }
 
 // ============================================================================
-// Auswertung & Getter
+// HILFSMETHODEN
 // ============================================================================
 
-/**
- * @brief Prüft anhand der Hysterese, ob die Messung komplett abgeschlossen ist.
- */
-bool ProfileAnalyzer::isMeasurementComplete() const {
-    return m_is_measuring && (m_empty_belt_counter >= m_empty_count_limit);
+void ProfileAnalyzer::evaluationFinished(uint16_t finalTypeOrValue) {
+    uint32_t payload = ipc::encodeHalPayload(ipc::SensorID::HEIGHT, finalTypeOrValue);
+    MsgSendPulse(m_coid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::HAL_INPUT, payload);
 }
 
-/**
- * @brief Fällt das finale Urteil über den Werkstücktyp anhand des gesammelten Profils.
- */
-WpType ProfileAnalyzer::determineFinalType() const {
-    WpType final_type = WpType::UNKNOWN;
+void ProfileAnalyzer::updateCalibrationThresholds(uint16_t calib_mode, uint16_t calib_value) {
+    m_thresholds[calib_mode] = calib_value;
 
-    // 1. Ist der Gipfel im Flach-Bereich?
-    if (m_current_peak_height >= m_flat_min && m_current_peak_height <= m_flat_max) {
-        final_type = WpType::FLAT;
+    std::cout << "[Analyzer] Threshold aktualisiert: Mode=" << calib_mode
+              << " Value=" << calib_value << std::endl;
+
+    if (calib_mode == static_cast<uint16_t>(ipc::CalibMode::FLAT_WP)) {
+        recalculateTypeThresholds(calib_value);
     }
-    // 2. Ist der Gipfel im Hoch-Bereich?
-    else if (m_current_peak_height >= m_tall_min && m_current_peak_height <= m_tall_max) {
-        // Wurde zusätzlich ein Tal (Bohrung) gefunden?
-        if (m_hole_detected) {
-            final_type = WpType::TALL_DRILLED;
-        } else {
-            final_type = WpType::TALL;
+}
+
+void ProfileAnalyzer::recalculateTypeThresholds(uint16_t flatCenter) {
+    using CM = ipc::CalibMode;
+
+    m_thresholds[static_cast<uint16_t>(CM::FLAT_MIN)]    = flatCenter - 50;
+    m_thresholds[static_cast<uint16_t>(CM::FLAT_MAX)]    = flatCenter + 50;
+
+    m_thresholds[static_cast<uint16_t>(CM::TALL_MIN)]    = flatCenter - 350;
+    m_thresholds[static_cast<uint16_t>(CM::TALL_MAX)]    = flatCenter - 200;
+
+    m_thresholds[static_cast<uint16_t>(CM::DRILLED_MIN)] = flatCenter - 850;
+    m_thresholds[static_cast<uint16_t>(CM::DRILLED_MAX)] = flatCenter - 650;
+
+    m_thresholds[static_cast<uint16_t>(CM::MAX_HEIGHT)]  = flatCenter - 300;
+
+    std::cout << "[Analyzer] Schwellenwerte via Enum Class berechnet." << std::endl;
+}
+
+uint16_t ProfileAnalyzer::determineSegmentType(const std::vector<uint16_t>& segmentSamples) {
+    if (segmentSamples.empty()) return static_cast<uint16_t>(WpType::UNKNOWN);
+
+    using CM = ipc::CalibMode;
+
+    uint16_t segmentPeak = 4095;
+    for (uint16_t val : segmentSamples) {
+        if (val < segmentPeak) {
+            segmentPeak = val;
         }
     }
 
-    return final_type;
+    uint16_t flatMin    = m_thresholds[static_cast<uint16_t>(CM::FLAT_MIN)];
+    uint16_t flatMax    = m_thresholds[static_cast<uint16_t>(CM::FLAT_MAX)];
+    uint16_t tallMin    = m_thresholds[static_cast<uint16_t>(CM::TALL_MIN)];
+    uint16_t tallMax    = m_thresholds[static_cast<uint16_t>(CM::TALL_MAX)];
+    uint16_t drilledMin = m_thresholds[static_cast<uint16_t>(CM::DRILLED_MIN)];
+    uint16_t drilledMax = m_thresholds[static_cast<uint16_t>(CM::DRILLED_MAX)];
+
+    if (segmentPeak >= drilledMin && segmentPeak <= drilledMax) {
+        return static_cast<uint16_t>(WpType::TALL_DRILLED);
+    }
+    if (segmentPeak >= tallMin && segmentPeak <= tallMax) {
+        return static_cast<uint16_t>(WpType::TALL);
+    }
+    if (segmentPeak >= flatMin && segmentPeak <= flatMax) {
+        return static_cast<uint16_t>(WpType::FLAT);
+    }
+
+    return static_cast<uint16_t>(WpType::UNKNOWN);
+}
+
+uint16_t ProfileAnalyzer::determineFinalWorkpieceType() {
+    using WT = WpType;
+
+    bool allTall = true;
+    bool allFlat = true;
+
+    for (size_t i = 0; i < NUM_PROFILE_CLASSES; ++i) {
+        if (m_segmentTypes[i] != static_cast<uint16_t>(WT::TALL)) {
+            allTall = false;
+        }
+        if (m_segmentTypes[i] != static_cast<uint16_t>(WT::FLAT)) {
+            allFlat = false;
+        }
+    }
+
+    if (allTall) {
+        std::cout << "[Analyzer] Profil-Muster passt exakt auf: TALL" << std::endl;
+        return static_cast<uint16_t>(WT::TALL);
+    }
+
+    if (allFlat) {
+        std::cout << "[Analyzer] Profil-Muster passt exakt auf: FLAT" << std::endl;
+        return static_cast<uint16_t>(WT::FLAT);
+    }
+
+    bool outerIsTall = (m_segmentTypes[0] == static_cast<uint16_t>(WT::TALL)) &&
+                       (m_segmentTypes[1] == static_cast<uint16_t>(WT::TALL)) &&
+                       (m_segmentTypes[9] == static_cast<uint16_t>(WT::TALL)) &&
+                       (m_segmentTypes[10] == static_cast<uint16_t>(WT::TALL));
+
+    bool centerIsDrilled = (m_segmentTypes[5] == static_cast<uint16_t>(WT::TALL_DRILLED)) &&
+                           (m_segmentTypes[6] == static_cast<uint16_t>(WT::TALL_DRILLED));
+
+    if (outerIsTall && centerIsDrilled) {
+        std::cout << "[Analyzer] Profil-Muster passt exakt auf: TALL_DRILLED" << std::endl;
+        return static_cast<uint16_t>(WT::TALL_DRILLED);
+    }
+
+    std::cout << "[Analyzer] Warnung: Unbekanntes Profil-Muster!" << std::endl;
+    return static_cast<uint16_t>(WT::UNKNOWN);
 }

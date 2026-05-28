@@ -10,12 +10,16 @@
 #define DISPATCHER_HPP
 
 #include <sys/neutrino.h>
+#include <sys/iomsg.h>
+#include <sys/dispatch.h>
 #include <iostream>
 #include <cstdint>
 #include <string>
 #include <atomic>
+#include <map>
 
-// Eigene Includes
+// Eigene Interfaces und Typen
+#include "I_Dispatcher.hpp"
 #include "shared/ipc_definitions.hpp"
 #include "shared/types.hpp"
 #include "hal/i_Actuators.hpp"
@@ -23,22 +27,13 @@
 #include "connectionManager/I_Connection.hpp"
 #include "timer/i_Timer.hpp"
 #include "logik/i_logik.hpp"
+#include "calibrationManager/I_CalibrationManager.hpp" // Sicherstellen, dass das geladen wird
 
-// NEU: Das Interface inkludieren!
-#include "I_Dispatcher.hpp"
-
-#include <sys/iomsg.h>
-#include <sys/dispatch.h>
-
-// Vorwärtsdeklaration für Logik, falls der Include noch auskommentiert ist
-// ============================================================================
-// VERERBUNG: Dispatcher implementiert nun I_Dispatcher
-// ============================================================================
 class Dispatcher : public I_Dispatcher {
 private:
     // ========================================================================
-    // 1. QNX Ressourcen & Netzwerk
-    // =======================================================================
+    // 1. QNX Ressourcen & Netzwerk-Handles
+    // ========================================================================
     int m_chid;             // Channel ID: Der "Briefkasten" dieses Dispatchers
     int m_localCoid;        // Connection ID zu SICH SELBST
     int m_partnerCoid;      // Connection ID zum Partner (-1 wenn nicht verbunden)
@@ -47,10 +42,11 @@ private:
     AnlagenPosition m_position;
     std::atomic<bool> m_running;
 
-    // Komponenten-Pointer
+    // Komponenten-Pointer (Dependency Injection)
     i_Actuators* m_actuators;
     i_Sensors* m_sensors;
-    i_Connection* m_connection;
+    i_Connection* m_connection;          // KORRIGIERT: Eigenes Handle fürs Netzwerk
+    i_CalibrationManager* m_calibrationManager;   // KORRIGIERT: Korrekter Typ für Kalibrierungs-Dateien
     i_Timer* m_timer;
     i_Logik* m_logik;
 
@@ -74,7 +70,15 @@ public:
     void stop() override;
 
     // ========================================================================
-    // Eigene Getter (nicht im Interface, aber wichtig für main.cpp)
+    // KALIBRIERUNGS-SCHNITTSTELLE (Aus Interface implementiert)
+    // ========================================================================
+    void saveCompleteCalibrationMap(const std::map<std::string, int>& calibData) override;
+
+
+
+
+    // ========================================================================
+    // Eigene Getter (Wichtig für die main.cpp)
     // ========================================================================
     int getMyChannelId() const { return m_chid; }
     int getMyLocalCoid() const { return m_localCoid; }
@@ -87,24 +91,20 @@ public:
     // ========================================================================
     void setActuators(i_Actuators* actuators) override { m_actuators = actuators; }
     void setSensor(i_Sensors* sensor) override { m_sensors = sensor; }
+    void setCalibrationManager(i_CalibrationManager* calib) { m_calibrationManager = calib; }
     void setConnectionManager(i_Connection* connection) override { m_connection = connection; }
     void setTimer(i_Timer* timer) override { m_timer = timer; }
     void setLogik(i_Logik* logik) override { m_logik = logik; }
 
     // ========================================================================
-    // DURCHREICHE-METHODEN (Fassade aus Interface implementieren)
+    // DURCHREICHE-METHODEN (Fassade aus Netzwerk-Interface)
     // ========================================================================
-
-    // Timer
-    void startBeltClock(int ms) override;
-
-    // Netzwerk
     void workpieceInfo(int id, WpType type) override;
     void RequestToReceiveWp() override;
     void readyToReceiveWp() override;
     void updateWpListe(WpType type) override;
 
-   // ========================================================================
+    // ========================================================================
     // AKTORIK - Durchreiche-Methoden (Inline)
     // ========================================================================
 
