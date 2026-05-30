@@ -112,7 +112,7 @@ void EStopUnlockedState::handle(Event e) {
         case Event::RESET_PRESSED:
             // 1. Dem Partner aktiv sagen: "Ich habe hier gerade Reset gedrückt!"
             if (auto d = m_context->getDispatcher()) {
-                d->sendPartnerResetPressed();
+               d->sendPartnerResetPressed();
             }
 
             // 2. Für uns selbst merken: Lokaler Knopf ist gedrückt

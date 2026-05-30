@@ -101,6 +101,7 @@ public:
     void readyToReceiveWp() override;
     void updateWpListe(WpType type) override;
 
+    void sendPartnerResetPressed();
     // ========================================================================
     // AKTORIK - Durchreiche-Methoden (Inline)
     // ========================================================================

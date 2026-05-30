@@ -349,7 +349,7 @@ void Dispatcher::updateWpListe(WpType type) {
 // ============================================================================
 // SYNCHRONISIERTER RESET (Master-Master Brücke)
 // ============================================================================
-void Dispatcher::sendPartnerResetPressed() {
+void Dispatcher::sendPartnerResetPressed(){
     if (m_partnerCoid != -1) {
         // Wir verpacken die Sensor-ID (BTN_RESET) und einen eindeutigen Netzwerk-Zustand.
         // Dafür nutzen wir das bestehende PARTNER_MSG System.
