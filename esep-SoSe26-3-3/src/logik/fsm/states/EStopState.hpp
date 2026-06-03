@@ -1,4 +1,4 @@
-#ifndef ESTOP_STATE_HPP
+/*#ifndef ESTOP_STATE_HPP
 #define ESTOP_STATE_HPP
 
 #include "BaseState.hpp"
@@ -18,3 +18,4 @@ public:
 } // namespace logik
 
 #endif // ESTOP_STATE_HPP
+*/

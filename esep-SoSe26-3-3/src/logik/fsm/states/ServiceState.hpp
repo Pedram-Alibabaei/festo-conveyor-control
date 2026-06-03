@@ -1,4 +1,4 @@
-#ifndef SERVICE_STATE_HPP
+/*#ifndef SERVICE_STATE_HPP
 #define SERVICE_STATE_HPP
 
 #include "BaseState.hpp"
@@ -15,3 +15,4 @@ public:
 } // namespace logik
 
 #endif // SERVICE_STATE_HPP
+*/

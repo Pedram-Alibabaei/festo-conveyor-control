@@ -1,4 +1,4 @@
-#include "IdleState.hpp"
+/*#include "IdleState.hpp"
 #include "EStopState.hpp"
 #include "RunningState.hpp"
 #include "ServiceState.hpp"
@@ -70,3 +70,4 @@ void IdleState::handle(Event e) {
 }
 
 } // namespace logik
+*/

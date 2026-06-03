@@ -36,7 +36,7 @@ namespace logik {
         // Implementierung der Methoden aus dem Interface:
         void init(AnlagenPosition pos) override;
         void processEvent(logik::Event e) override;
-        void workpieceTypeFromHS(WpType type) override;
+       void workpieceTypeFromHS(WpType type) override;
         void workpieceInfo(int id, WpType type) override;
         void updateWpListe(WpType type) override;
         void tackt() override;
@@ -44,6 +44,7 @@ namespace logik {
         // Erfüllung der Kalibrierungs-Schnittstellen aus dem Interface
         void setTrackedSegmentTicks(uint16_t calibMode, uint16_t tickValue) override;
         void receiveRawCalibrationData(uint16_t calibMode, uint16_t adcValue) override;
+        void setPartnerChuteStatus(bool isFull) override;
     };
 
 } // namespace logik

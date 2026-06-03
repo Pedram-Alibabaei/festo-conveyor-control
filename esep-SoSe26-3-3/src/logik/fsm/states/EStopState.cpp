@@ -1,4 +1,4 @@
-#include "EStopState.hpp"
+/*#include "EStopState.hpp"
 #include "IdleState.hpp"
 #include "logik/logik.hpp"
 #include "dispatcher/dispatcher.hpp"
@@ -57,3 +57,4 @@ void EStopState::handle(Event e) {
 }
 
 } // namespace logik
+*/

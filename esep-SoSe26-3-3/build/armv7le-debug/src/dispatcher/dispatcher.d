@@ -5,4 +5,4 @@ build/armv7le-debug/src/dispatcher/dispatcher.o: \
  src/connectionManager/I_Connection.hpp src/timer/i_Timer.hpp \
  src/logik/i_logik.hpp src/shared/logikEvent.hpp \
  src/calibrationManager/I_CalibrationManager.hpp src/logik/i_Logik.hpp \
- src/logik/logik.hpp src/logik/i_logik.hpp
+ src/logik/logik.hpp src/logik/i_Logik.hpp

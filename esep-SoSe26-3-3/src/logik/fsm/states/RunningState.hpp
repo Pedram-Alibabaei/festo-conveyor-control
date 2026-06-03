@@ -1,4 +1,4 @@
-#ifndef RUNNING_STATE_HPP
+/*#ifndef RUNNING_STATE_HPP
 #define RUNNING_STATE_HPP
 
 #include "BaseState.hpp"
@@ -14,3 +14,4 @@ public:
 } // namespace logik
 
 #endif // RUNNING_STATE_HPP
+*/

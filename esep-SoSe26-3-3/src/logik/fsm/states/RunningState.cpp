@@ -1,4 +1,4 @@
-#include "RunningState.hpp"
+/*#include "RunningState.hpp"
 #include "EStopState.hpp"
 #include "IdleState.hpp"
 #include "dispatcher/dispatcher.hpp" // WICHTIG: Dispatcher Include hinzugefuegt!
@@ -66,3 +66,4 @@ void RunningState::handle(Event e) {
 }
 
 } // namespace logik
+*/

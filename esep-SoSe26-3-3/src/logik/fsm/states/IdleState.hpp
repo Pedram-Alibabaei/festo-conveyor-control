@@ -1,4 +1,4 @@
-#ifndef IDLE_STATE_HPP
+/*#ifndef IDLE_STATE_HPP
 #define IDLE_STATE_HPP
 
 #include "BaseState.hpp"
@@ -19,3 +19,4 @@ public:
 
 
 #endif // IDLE_STATE_HPP
+*/

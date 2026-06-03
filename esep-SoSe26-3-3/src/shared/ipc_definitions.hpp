@@ -103,15 +103,18 @@ namespace ipc {
     enum NetworkMessage : uint32_t {
         REQ_RECEIVE           = _PULSE_CODE_MINAVAIL + 1, // Darf ich übergeben?
         READY_RECEIVE         = _PULSE_CODE_MINAVAIL + 2, // Ja, ich bin bereit!
-        HANDOVER_SUCCESSFUL   = _PULSE_CODE_MINAVAIL + 3  ,                          // Anlage 2: "Habe es erhalten, du kannst stoppen"
-    };
+        HANDOVER_SUCCESSFUL   = _PULSE_CODE_MINAVAIL + 3,                          // Anlage 2: "Habe es erhalten, du kannst stoppen"
+        CHUTE                 = _PULSE_CODE_MINAVAIL + 4,
+ };
 
     enum State:uint16_t{
         BLOCKED    = _PULSE_CODE_MINAVAIL + 1,
         CLEARED    = _PULSE_CODE_MINAVAIL + 2,
         PRESSED    = _PULSE_CODE_MINAVAIL + 3,
         RELEASED   = _PULSE_CODE_MINAVAIL + 4,
-		//HIGHT_TYPE   = _PULSE_CODE_MINAVAIL + 5,
+        VOLL       = _PULSE_CODE_MINAVAIL + 5,
+        EMPTY      = _PULSE_CODE_MINAVAIL + 6,
+
 
         HIGH_ERROR = _PULSE_CODE_MINAVAIL + 10,
 
@@ -133,12 +136,14 @@ namespace ipc {
         MAX_HEIGHT                  =10,
 
         // 2. Wegstrecken (Ticks)
-        TICK_ENTRY_C_TO_HEIGHT_B    = 11,
-        TICK_HEIGHT_B_TO_HEIGHT_C   = 12,
-        TICK_HEIGHT_C_TO_EJECTOR_B  = 13,
-        TICK_EJECTOR_B_TO_EJECTOR_C = 14,
-        TICK_EJECTOR_C_TO_END_B     = 15,
-        TICK_END_B_TO_END_C         = 16
+        TICK_ENTRY_C_TO_HEIGHT_B_SLOW       = 11,
+        TICK_HEIGHT_B_TO_HEIGHT_C_SLOW      = 12,
+        TICK_ENTRY_C_TO_HEIGHT_B_NORMAL     = 13,
+        TICK_HEIGHT_B_TO_HEIGHT_C_NORMAL    = 14,
+        TICK_HEIGHT_C_TO_EJECTOR_B_NORMAL   = 15,
+        TICK_EJECTOR_B_TO_EJECTOR_C_NORMAL  = 16,
+        TICK_EJECTOR_C_TO_END_B_NORMAL      = 17,
+        TICK_END_B_TO_END_C_NORMAL          = 18
     };
 
 

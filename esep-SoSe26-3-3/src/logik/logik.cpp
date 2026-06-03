@@ -155,5 +155,7 @@ void Logik::workpieceInfo(int id, WpType type) {}
 void Logik::updateWpListe(WpType type) {}
 void Logik::setTrackedSegmentTicks(uint16_t calibMode, uint16_t tickValue) {}
 void Logik::receiveRawCalibrationData(uint16_t calibMode, uint16_t adcValue) {}
-
+void Logik::setPartnerChuteStatus(bool isFull) {
+       // m_errorHandler->setPartnerChuteStatus(isFull);
+ }
 } // namespace logik

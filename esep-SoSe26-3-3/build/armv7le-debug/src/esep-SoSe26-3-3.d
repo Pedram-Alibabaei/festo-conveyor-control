@@ -21,4 +21,4 @@ build/armv7le-debug/src/esep-SoSe26-3-3.o: src/esep-SoSe26-3-3.cpp \
  src/calibrationManager/CalibrationManager.hpp \
  src/calibrationManager/I_CalibrationManager.hpp \
  src/calibrationManager/I_CalibrationManager.hpp src/logik/logik.hpp \
- src/logik/i_logik.hpp src/timer/timer.hpp src/timer/i_Timer.hpp
+ src/logik/i_Logik.hpp src/timer/timer.hpp src/timer/i_Timer.hpp

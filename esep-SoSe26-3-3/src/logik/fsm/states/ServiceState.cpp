@@ -1,4 +1,4 @@
-#include "ServiceState.hpp"
+/*#include "ServiceState.hpp"
 #include "EStopState.hpp"
 #include "IdleState.hpp"
 #include "dispatcher/dispatcher.hpp" // WICHTIG: Dispatcher Include hinzugefuegt!
@@ -37,3 +37,4 @@ void ServiceState::handle(Event e) {
 }
 
 } // namespace logik
+*/

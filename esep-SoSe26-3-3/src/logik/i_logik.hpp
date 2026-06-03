@@ -50,6 +50,8 @@ public:
      */
     virtual void tackt() = 0;
 
+	virtual void setPartnerChuteStatus(bool isFull) = 0;
+
     // ========================================================================
     // KALIBRIERUNGS-SCHNITTSTELLEN
     // ========================================================================

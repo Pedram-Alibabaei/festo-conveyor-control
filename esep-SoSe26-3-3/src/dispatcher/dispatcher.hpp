@@ -104,6 +104,9 @@ public:
     void readyToReceiveWp() override;
     void updateWpListe(WpType type) override;
 
+    bool requestFileExists() override;
+    void sendeChuteStats(bool isVoll) override;
+
     void setAdcIdelState()override { if (m_sensors) m_sensors->setAdcIdelState();}
     void setAdcWaitigForWpState()override { if (m_sensors) m_sensors->setAdcWaitigForWpState();}
     void setAdcCalibrationsState() override{if (m_sensors) m_sensors->setAdcCalibrationsState();}

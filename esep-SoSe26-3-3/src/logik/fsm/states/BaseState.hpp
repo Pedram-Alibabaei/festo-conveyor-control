@@ -1,3 +1,4 @@
+/*
 #ifndef BASE_STATE_HPP
 #define BASE_STATE_HPP
 
@@ -29,3 +30,4 @@ public:
 } // namespace logik
 
 #endif // BASE_STATE_HPP
+*/
