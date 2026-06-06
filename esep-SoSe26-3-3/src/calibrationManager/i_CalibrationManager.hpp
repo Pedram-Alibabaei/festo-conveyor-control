@@ -20,12 +20,14 @@ namespace calib {
     const std::string MIN_SAMPLES_FOR_CLASS      = "Limit_MinSamplesForClass";
 
     // 2. ZEIT-TRACKING (Logische Band-Takte / Ticks)
-    const std::string TICKS_ENTRY_C_TO_HEIGHT_B   = "Ticks_EntryCleared_to_HeightBlocked";
-    const std::string TICKS_HEIGHT_B_TO_HEIGHT_C  = "Ticks_HeightBlocked_to_HeightCleared";
-    const std::string TICKS_HEIGHT_C_TO_EJECTOR_B = "Ticks_HeightCleared_to_EjectorBlocked";
-    const std::string TICKS_EJECTOR_B_TO_EJECTOR_C = "Ticks_EjectorBlocked_to_EjectorCleared";
-    const std::string TICKS_EJECTOR_C_TO_END_B    = "Ticks_EjectorCleared_to_EndBlocked";
-    const std::string TICKS_END_B_TO_END_C        = "Ticks_EndBlocked_to_EndCleared";
+    const std::string TICKS_ENTRY_C_TO_HEIGHT_B_SLOW   = "Ticks_EntryCleared_to_HeightBlocked";
+    const std::string TICKS_HEIGHT_B_TO_HEIGHT_C_SLOW  = "Ticks_HeightBlocked_to_HeightCleared";
+    const std::string TICKS_ENTRY_C_TO_HEIGHT_B_NORMAL   = "Ticks_EntryCleared_to_HeightBlocked";
+    const std::string TICKS_HEIGHT_B_TO_HEIGHT_C_NORMAL  = "Ticks_HeightBlocked_to_HeightCleared";
+    const std::string TICKS_HEIGHT_C_TO_EJECTOR_B_NORMAL = "Ticks_HeightCleared_to_EjectorBlocked";
+    const std::string TICKS_EJECTOR_B_TO_EJECTOR_C_NORMAL = "Ticks_EjectorBlocked_to_EjectorCleared";
+    const std::string TICKS_EJECTOR_C_TO_END_B_NORMAL    = "Ticks_EjectorCleared_to_EndBlocked";
+    const std::string TICKS_END_B_TO_END_C_NORMAL        = "Ticks_EndBlocked_to_EndCleared";
 }
 
 class i_CalibrationManager {
@@ -44,7 +46,7 @@ public:
     /**
      * @brief Speichert alle aktuellen Key-Value-Paare permanent auf den Standardpfad.
      */
-    virtual void save() = 0;
+    virtual void
 
     /**
      * @brief Prueft, ob eine Kalibrierungsdatei auf dem Standardpfad existiert.

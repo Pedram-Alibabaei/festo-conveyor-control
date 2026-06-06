@@ -257,7 +257,9 @@ void Dispatcher::handleHalPulse(uint32_t payload) {
             m_logik->processEvent(logik::Event::HEIGHT_CLEARED);
         } else if (sensor_state == ipc::State::HIGH_ERROR) {
             m_logik->processEvent(logik::Event::HEIGHT_ERROR);
-        }
+        }else {
+        	m_logik->workpieceTypeFromHS(static_cast<WpType>(sensor_state));
+		}
     }
     else if (sensor_id == ipc::SENSOR_METAL) {
         m_logik->processEvent(sensor_state == ipc::State::BLOCKED ? logik::Event::METAL_DETECTED : logik::Event::METAL_CLEARED);
@@ -283,11 +285,19 @@ void Dispatcher::handleNetworkPulse(uint32_t payload) {
     if (sensor_id == ipc::BTN_START) {
         m_logik->processEvent(message_type == ipc::State::PRESSED ? logik::Event::PARTNER_START_PRESSED : logik::Event::PARTNER_START_RELEASED);
     }
-    else if (message_type == ipc::NetworkMessage::REQ_RECEIVE) {
+    else if (sensor_id == ipc::NetworkMessage::REQ_RECEIVE) {
         m_logik->processEvent(logik::Event::REQ_TO_GIVE_WP);
     }
-    else if (message_type == ipc::NetworkMessage::READY_RECEIVE) {
+    else if (sensor_id == ipc::NetworkMessage::READY_RECEIVE) {
         m_logik->processEvent(logik::Event::READY_TO_RECEIVE_WP);
+    }
+    else if (sensor_id == ipc::NetworkMessage::CHUTE){
+
+        bool isFull = (message_type == ipc::VOLL);
+        if (m_logik != nullptr) {
+            m_logik->setPartnerChuteStatus(isFull);
+        }
+
     }
 }
 
@@ -377,4 +387,21 @@ void Dispatcher::saveCompleteCalibrationMap(const std::map<std::string, int>& ca
     m_calibrationManager->save();
 
     std::cout << "[Dispatcher] Komplette Kalibrierungs-Map an Manager uebergeben und gespeichert." << std::endl;
+}
+
+
+/**
+ * @brief Prueft über den CalibrationManager, ob die XML/Text-Datei mit den
+ * gelernten Ticks und ADC-Fenstern auf der Festplatte existiert.
+ */
+bool Dispatcher::requestFileExists() {
+    return m_calibrationManager->fileExists();
+    return false;
+}
+
+void Dispatcher::sendeChuteStats(bool isVoll) {
+    if (m_partnerCoid == -1) {return;}
+    ipc::State state = isVoll ? ipc::VOLL : ipc::EMPTY;
+    uint32_t payload = ipc::encodeHalPayload(ipc::NetworkMessage::CHUTE, state);
+    MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_MSG, payload);
 }

@@ -71,7 +71,7 @@ int main(int argc, char *argv[]) {
 
         // SICHERHEITS-CHECK: Verhindert den Start, wenn der Not-Halt physisch eingedrückt ist
         if (sensors.isEstopPressed()) {
-            std::cerr << "ACHTUNG: E-Stop ist gedrueckt! Bitte entriegeln und neu starten." << std::endl;
+            std::cerr << "ACHTUNG: E-Stop ist gedrueckt! Bitte entriegeln." << std::endl;
             return EXIT_FAILURE;
         }
 

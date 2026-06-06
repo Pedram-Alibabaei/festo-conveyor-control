@@ -143,11 +143,11 @@ void Gpio0Interrupt::configure_interrupt() const noexcept
         Ejector::config_interrupt_rising();
         Ejector::config_interrupt_falling();
 
-        Height::config_as_input();
-        Height::enable_interrupt();
-        Height::config_interrupt_rising();
-        Height::config_interrupt_falling();
-        Height::enable_debounce();
+       // Height::config_as_input();
+       // Height::enable_interrupt();
+       // Height::config_interrupt_rising();
+       // Height::config_interrupt_falling();
+       // Height::enable_debounce();
     }
 }
 
@@ -172,7 +172,7 @@ void Gpio0Interrupt::handle_interrupt() const noexcept
     ip::Entry::clear_interrupt_status();
     ip::Metal::clear_interrupt_status();
     is::Ejector::clear_interrupt_status();
-    is::Height::clear_interrupt_status();
+    //is::Height::clear_interrupt_status();
 
     // Struktur für die Pin-Auswertung
     struct PinInfo
@@ -194,8 +194,8 @@ void Gpio0Interrupt::handle_interrupt() const noexcept
         { ipc::LS_ENTRY,      false, ip::Entry::is_data_set(),   ip::pin_mask_entry },
         { ipc::LS_END,        false, ip::End::is_data_set(),     ip::pin_mask_end },
         { ipc::SENSOR_METAL,  false, ip::Metal::is_data_set(),   ip::pin_mask_metal },
-        { ipc::EJECTOR,    false, is::Ejector::is_data_set(), is::pin_mask_ejector },
-        { ipc::HEIGHT,     false, is::Height::is_data_set(),  is::pin_mask_height }
+        { ipc::EJECTOR,    false, is::Ejector::is_data_set(), is::pin_mask_ejector }
+        //{ ipc::LS_HEIGHT,     false, is::Height::is_data_set(),  is::pin_mask_height }
     };
 
     // 3. Alle Pins durchgehen und prüfen, welcher Pin den Interrupt ausgelöst hat

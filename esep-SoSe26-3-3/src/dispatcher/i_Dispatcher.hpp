@@ -65,10 +65,25 @@ public:
     virtual void RequestToReceiveWp() = 0;
     virtual void readyToReceiveWp() = 0;
     virtual void updateWpListe(WpType type) = 0;
+    virtual void sendeChuteStats(bool isVoll)=0;
 
     // ========================================================================
-    // (Weiterleitung an HAL - Aktorik)
+    // (Weiterleitung an HAL - ADC Zustand)
     // ========================================================================
+    /** @brief Setzt den ADC-Zustand auf IDLE (Keine Messung aktiv, Band leer). */
+    virtual void setAdcIdelState() = 0;
+
+    /** @brief Bereitet den ADC auf ein ankommendes Werkstueck vor. */
+    virtual void setAdcWaitigForWpState() = 0;
+
+    /** @brief Versetzt den Profilanalysator in den Kalibrierungs-Modus. */
+    virtual void setAdcCalibrationsState() = 0;
+
+    virtual bool requestFileExists()= 0;
+
+ // ========================================================================
+ // (Weiterleitung an HAL - Aktorik)
+ // ========================================================================
 
     // Motorsteuerung
     virtual void driveRight() = 0;

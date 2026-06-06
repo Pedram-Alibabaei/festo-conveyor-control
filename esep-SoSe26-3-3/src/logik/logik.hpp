@@ -1,15 +1,15 @@
+//
+// Created by bahoz on 23.05.2026.
+//
+
 #ifndef LOGIK_HPP
 #define LOGIK_HPP
 
-#include "i_logik.hpp" // KORREKT: In QNX immer strikt auf Gross-/Kleinschreibung achten!
+#include "i_Logik.hpp" // Header-Namen angepasst (kleines i)
 #include "shared/types.hpp"
 #include "shared/logikEvent.hpp"
 
-// Vorwärtsdeklarationen, um Include-Kreisläufe zu verhindern
-class Dispatcher;
-
-namespace logik {
-    class BaseState; // Vorwärtsdeklaration für das State Pattern
+namespace logik { // In den Namespace eingebettet für main.cpp Compatibility
 
     class Logik : public i_Logik {
     private:
@@ -18,45 +18,20 @@ namespace logik {
         Dispatcher* m_dispatcher;  // Pointer auf den Dispatcher (Postbote)
 
     public:
-        Logik();
-        ~Logik() override;
+        Logik() = default;
+        ~Logik() override = default;
 
         // ====================================================================
         // INITIALISIERUNG & SETTER
         // ====================================================================
         void init(AnlagenPosition pos) override;
-
-        // NEU: Setter für den Dispatcher (wird in der main.cpp aufgerufen)
-        void setDispatcher(Dispatcher* dispatcher) {
-            m_dispatcher = dispatcher;
-        }
-
-        // NEU: Getter für die States, damit diese Aktoren schalten können
-        Dispatcher* getDispatcher() {
-            return m_dispatcher;
-        }
-
-        AnlagenPosition getPosition() const {
-                    return m_position;
-                }
-
-        // ====================================================================
-        // STATE PATTERN (GoF) KERNFUNKTIONEN
-        // ====================================================================
-
-        // Wechselt den Zustand. Löscht den alten und startet den neuen.
-        void transitionTo(BaseState* newState);
-
-        // Die wichtigste Methode: Überschreibt das alte switch-case!
         void processEvent(logik::Event e) override;
-
-        // ====================================================================
-        // LOGIK-INTERFACE IMPLEMENTIERUNG
-        // ====================================================================
         void workpieceTypeFromHS(WpType type) override;
         void workpieceInfo(int id, WpType type) override;
         void updateWpListe(WpType type) override;
         void tackt() override;
+
+        // Erfüllung der Kalibrierungs-Schnittstellen aus dem Interface
         void setTrackedSegmentTicks(uint16_t calibMode, uint16_t tickValue) override;
         void receiveRawCalibrationData(uint16_t calibMode, uint16_t adcValue) override;
 

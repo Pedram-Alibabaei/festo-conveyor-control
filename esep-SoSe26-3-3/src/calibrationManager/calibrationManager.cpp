@@ -96,13 +96,15 @@ void CalibrationManager::distributeValues(int dispatcherCoid) {
         // Map ordnet den Text-Schlüssel direkt dem neuen CalibMode-Subtyp zu!
         using CM = ipc::CalibMode; // Kurzer Alias für die Lesbarkeit
 
-        std::map<std::string, uint16_t> tickMapping = {
-            {calib::TICKS_ENTRY_C_TO_HEIGHT_B,    static_cast<uint16_t>(CM::TICK_ENTRY_C_TO_HEIGHT_B)},
-            {calib::TICKS_HEIGHT_B_TO_HEIGHT_C,   static_cast<uint16_t>(CM::TICK_HEIGHT_B_TO_HEIGHT_C)},
-            {calib::TICKS_HEIGHT_C_TO_EJECTOR_B,  static_cast<uint16_t>(CM::TICK_HEIGHT_C_TO_EJECTOR_B)},
-            {calib::TICKS_EJECTOR_B_TO_EJECTOR_C, static_cast<uint16_t>(CM::TICK_EJECTOR_B_TO_EJECTOR_C)},
-            {calib::TICKS_EJECTOR_C_TO_END_B,     static_cast<uint16_t>(CM::TICK_EJECTOR_C_TO_END_B)},
-            {calib::TICKS_END_B_TO_END_C,         static_cast<uint16_t>(CM::TICK_END_B_TO_END_C)}
+    std::map<std::string, uint16_t> tickMapping = {
+            {calib::TICKS_ENTRY_C_TO_HEIGHT_B_SLOW,    static_cast<uint16_t>(CM::TICK_ENTRY_C_TO_HEIGHT_B_SLOW)},
+            {calib::TICKS_HEIGHT_B_TO_HEIGHT_C_SLOW,   static_cast<uint16_t>(CM::TICK_HEIGHT_B_TO_HEIGHT_C_SLOW)},
+            {calib::TICKS_ENTRY_C_TO_HEIGHT_B_NORMAL,    static_cast<uint16_t>(CM::TICK_ENTRY_C_TO_HEIGHT_B_NORMAL)},
+            {calib::TICKS_HEIGHT_B_TO_HEIGHT_C_NORMAL,   static_cast<uint16_t>(CM::TICK_HEIGHT_B_TO_HEIGHT_C_NORMAL)},
+            {calib::TICKS_HEIGHT_C_TO_EJECTOR_B_NORMAL,  static_cast<uint16_t>(CM::TICK_HEIGHT_C_TO_EJECTOR_B_NORMAL)},
+            {calib::TICKS_EJECTOR_B_TO_EJECTOR_C_NORMAL, static_cast<uint16_t>(CM::TICK_EJECTOR_B_TO_EJECTOR_C_NORMAL)},
+            {calib::TICKS_EJECTOR_C_TO_END_B_NORMAL,     static_cast<uint16_t>(CM::TICK_EJECTOR_C_TO_END_B_NORMAL)},
+            {calib::TICKS_END_B_TO_END_C_NORMAL,         static_cast<uint16_t>(CM::TICK_END_B_TO_END_C_NORMAL)}
         };
 
     for (const auto& mapping : tickMapping) {
