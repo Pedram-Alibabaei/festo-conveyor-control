@@ -2,7 +2,7 @@
 #define MOCK_LOGIK_HPP
 
 #include <gmock/gmock.h>
-#include "logik/i_logik.h"
+#include "logik/i_logik.hpp"
 
 class MockLogik : public logik::i_Logik {
 public:

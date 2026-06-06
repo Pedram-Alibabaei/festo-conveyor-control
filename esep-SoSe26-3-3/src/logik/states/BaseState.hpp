@@ -1,7 +1,7 @@
 #ifndef BASE_STATE_HPP
 #define BASE_STATE_HPP
 
-#include "i_logik.h"
+#include "i_logik.hpp"
 
 namespace logik {
 
