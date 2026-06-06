@@ -41,6 +41,8 @@ namespace logik { // In den Namespace eingebettet für main.cpp Compatibility
         // Dummy-Methoden, damit der RunningState.cpp kompilieren kann
         void addWorkpiece();
         bool dispatchSensorEventToWorkpiece(logik::Event e);
+
+
     };
 
 } // namespace logik

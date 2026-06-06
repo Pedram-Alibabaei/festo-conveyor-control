@@ -23,9 +23,6 @@ int main(int argc, char *argv[]) {
     // ========================================================================
     // [ PHASE 1 ] SYSTEMSTART & PARAMETER
     // ========================================================================
-    std::cout << "===========================================" << std::endl;
-    std::cout << "    Festo Anlage - Systemstart             " << std::endl;
-    std::cout << "===========================================" << std::endl;
 
     // Standardmäßig gehen wir davon aus, dass wir Anlage 1 sind.
     AnlagenPosition pos = AnlagenPosition::VORN_ANLAGE_1;
@@ -46,7 +43,7 @@ int main(int argc, char *argv[]) {
     // Das Programm braucht zwingend Root-Rechte, um auf die GPIO-Pins
     // des BeagleBones zugreifen zu können.
     if (ThreadCtl(_NTO_TCTL_IO, 0) == -1) {
-        std::cerr << "FEHLER: Konnte keine Hardware-Rechte anfordern (Programm mit 'sudo' gestartet?)." << std::endl;
+        //std::cerr << "FEHLER: Konnte keine Hardware-Rechte anfordern (Programm mit 'sudo' gestartet?)." << std::endl;
         return EXIT_FAILURE;
     }
 
@@ -71,7 +68,7 @@ int main(int argc, char *argv[]) {
 
         // SICHERHEITS-CHECK: Verhindert den Start, wenn der Not-Halt physisch eingedrückt ist
         if (sensors.isEstopPressed()) {
-            std::cerr << "ACHTUNG: E-Stop ist gedrueckt! Bitte entriegeln." << std::endl;
+          //  std::cerr << "ACHTUNG: E-Stop ist gedrueckt! Bitte entriegeln und neu starten." << std::endl;
             return EXIT_FAILURE;
         }
 
@@ -105,7 +102,7 @@ int main(int argc, char *argv[]) {
         // ====================================================================
         // Ab hier spaltet sich das Programm! Der Dispatcher läuft ab jetzt
         // in einem eigenen, parallelen Hintergrund-Thread und wartet auf Nachrichten.
-        std::cout << "[System] Starte Dispatcher-Reaktor-Thread..." << std::endl;
+       // std::cout << "[System] Starte Dispatcher-Reaktor-Thread..." << std::endl;
         std::thread dispatcherThread(&Dispatcher::run, &dispatcher);
 
         // Kurze Pause, damit der Thread sicher hochfahren und blockieren (MsgReceive) kann
@@ -114,25 +111,25 @@ int main(int argc, char *argv[]) {
         // ====================================================================
         // [ PHASE 6 ] KALIBRIERUNG LADEN & VERTEILEN
         // ====================================================================
-        std::cout << "[System] Pruefe persistenten Speicher auf Kalibrierungsdatei..." << std::endl;
+        //std::cout << "[System] Pruefe persistenten Speicher auf Kalibrierungsdatei..." << std::endl;
 
         if (!calib_manager.fileExists()) {
-            std::cout << "[System] HINWEIS: Kalibrierungsdatei existiert nicht (Erststart)." << std::endl;
-            std::cout << "[System] WICHTIG: Anlage muss vor dem Automatiklauf kalibriert werden!" << std::endl;
+       //     std::cout << "[System] HINWEIS: Kalibrierungsdatei existiert nicht (Erststart)." << std::endl;
+          //  std::cout << "[System] WICHTIG: Anlage muss vor dem Automatiklauf kalibriert werden!" << std::endl;
         }
         else {
             calib_manager.load();
 
             // Prüfen, ob die wichtigsten Keys (Leeres Band & Flaches Werkstück) vorhanden sind
             if (calib_manager.hasKey(calib::EMPTY_BELT) && calib_manager.hasKey(calib::FLAT_CENTER)) {
-                std::cout << "[System] Gueltige Kalibrierung gefunden! Streamen der Werte an den aktiven Reaktor..." << std::endl;
+               // std::cout << "[System] Gueltige Kalibrierung gefunden! Streamen der Werte an den aktiven Reaktor..." << std::endl;
 
                 // Da der Dispatcher-Thread jetzt läuft, können wir ihm die geladenen
                 // Werte direkt als Pulses zuschießen!
                 calib_manager.distributeValues(dis_coid);
             }
             else {
-                std::cerr << "[System] WARNUNG: Datei beschädigt oder unvollstaendig! System startet unkalibriert." << std::endl;
+              //  std::cerr << "[System] WARNUNG: Datei beschädigt oder unvollstaendig! System startet unkalibriert." << std::endl;
             }
         }
 
@@ -141,11 +138,11 @@ int main(int argc, char *argv[]) {
         // ====================================================================
         // Erst NACH der Kalibrierung die Timer starten, damit Ticks nicht die
         // Kalibrierungsnachrichten überholen (Race Conditions vermeiden).
-        timer.startHeartbeatTimer(2000); // Partner-Überwachung (Netzwerk)
-        timer.startBeltTimer(1000);      // Logik-Ticks (Förderband)
+        timer.startHeartbeatTimer(500); // Partner-Überwachung (Netzwerk)
+        timer.startBeltTimer(50);      // Logik-Ticks (Förderband)
 
-        std::cout << "Anlage ist nun VOLLSTÄNDIG BEREIT und synchronisiert!" << std::endl;
-        std::cout << "======================================================\n" << std::endl;
+       // std::cout << "Anlage ist nun VOLLSTÄNDIG BEREIT und synchronisiert!" << std::endl;
+       // std::cout << "======================================================\n" << std::endl;
 
         // ====================================================================
         // [ PHASE 8 ] MAIN-THREAD BLOCKIEREN (Lebenserhaltung)
@@ -158,7 +155,7 @@ int main(int argc, char *argv[]) {
         }
 
     } catch (const std::exception& e) {
-        std::cerr << "KRITISCHER SYSTEMFEHLER in main(): " << e.what() << std::endl;
+       // std::cerr << "KRITISCHER SYSTEMFEHLER in main(): " << e.what() << std::endl;
         return EXIT_FAILURE;
     }
 

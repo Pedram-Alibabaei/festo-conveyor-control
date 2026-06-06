@@ -52,8 +52,8 @@ void ConnectionManager::init(int localCoid,AnlagenPosition pos) {
     m_localCoid = localCoid;
     m_pos = pos;
 
-    std::cout << "[ConnMgr] Initialisiere als Anlage "
-              << (m_pos == VORN_ANLAGE_1 ? "1" : "2") << std::endl;
+    //std::cout << "[ConnMgr] Initialisiere als Anlage "
+         //     << (m_pos == VORN_ANLAGE_1 ? "1" : "2") << std::endl;
 
     // 1. Eigenen Namen zusammenbauen und bei QNX GNS anmelden
     std::string myName = (m_pos == VORN_ANLAGE_1) ? "Anlage_1" : "Anlage_2";
@@ -62,19 +62,19 @@ void ConnectionManager::init(int localCoid,AnlagenPosition pos) {
     m_attachHandle = name_attach(NULL, myName.c_str(), NAME_FLAG_ATTACH_GLOBAL);
 
     if (m_attachHandle == nullptr) {
-        std::cerr << "[ConnMgr] FEHLER: Konnte GNS-Namen " << myName << " nicht registrieren!" << std::endl;
+       // std::cerr << "[ConnMgr] FEHLER: Konnte GNS-Namen " << myName << " nicht registrieren!" << std::endl;
         return; // Abbruch bei Fehler
     }
-    std::cout << "[ConnMgr] Erfolgreich als '" << myName << "' registriert." << std::endl;
+   // std::cout << "[ConnMgr] Erfolgreich als '" << myName << "' registriert." << std::endl;
 
     // ========================================================================
     // 2. DEINE ASYMMETRISCHE START-LOGIK
     // ========================================================================
     if (m_pos == HINTEN_ANLAGE_2) {
-        std::cout << "[ConnMgr] Ich bin Anlage 2. Starte sofort die aktive Suche..." << std::endl;
+      //  std::cout << "[ConnMgr] Ich bin Anlage 2. Starte sofort die aktive Suche..." << std::endl;
         connectToPartner(); // Startet den Thread
     } else {
-        std::cout << "[ConnMgr] Ich bin Anlage 1. Warte passiv im Hintergrund." << std::endl;
+        //std::cout << "[ConnMgr] Ich bin Anlage 1. Warte passiv im Hintergrund." << std::endl;
         // Ende der Methode. Thread wird nicht gestartet!
     }
 }
@@ -83,7 +83,18 @@ void ConnectionManager::init(int localCoid,AnlagenPosition pos) {
 void ConnectionManager::connectToPartner() {
     // Sicherheits-Check: Nur starten, wenn wir nicht schon suchen oder verbunden sind
     if (!m_isSearching && !m_isConnected) {
+
+        // ====================================================================
+        // NEU: ZOMBIE-THREAD AUFRÄUMEN!
+        // Bevor wir einen neuen Thread starten, müssen wir den alten,
+        // bereits beendeten Thread sauber aus dem Speicher löschen.
+        // ====================================================================
+        if (m_connectThread.joinable()) {
+            m_connectThread.join();
+        }
+
         m_isSearching = true;
+        // Jetzt ist der Platz frei und wir können sicher einen neuen Thread starten
         m_connectThread = std::thread(&ConnectionManager::connectionTask, this);
     }
 }
@@ -93,76 +104,57 @@ void ConnectionManager::connectToPartner() {
 // ============================================================================
 
 void ConnectionManager::connectionTask() {
-    // Wen suchen wir?
-    std::string targetName = (m_pos == VORN_ANLAGE_1) ? "Anlage_2" : "Anlage_1";
+    // ====================================================================
+    // NEU: ALTE VERBINDUNG IM HINTERGRUND TRENNEN
+    // Wenn dieser Befehl jetzt 5 Sekunden blockiert, ist das völlig egal,
+    // da die Anlage bereits sicher im Not-Halt steht!
+    // ====================================================================
+    if (m_partnerCoid != -1) {
+        ConnectDetach(m_partnerCoid);
+        m_partnerCoid = -1;
+    }
 
-    // NEU: Wir bauen den echten QNX-Pfad zusammen
+    std::string targetName = (m_pos == VORN_ANLAGE_1) ? "Anlage_2" : "Anlage_1";
     std::string fullPath = "/dev/name/global/" + targetName;
 
-    std::cout << "[ConnMgr] Beginne Suche nach Partner '" << targetName << "' im Hintergrund..." << std::endl;
-
     while (m_isSearching) {
-
-        // ====================================================================
-        // PROFI-TRICK: Checken, ob der Briefkasten ueberhaupt existiert!
-        // F_OK prueft, ob die Datei im Netzwerk vorhanden ist.
-        // ====================================================================
         if (access(fullPath.c_str(), F_OK) != -1) {
-            std::cout << "........................" << std::flush;
-            // Datei ist da! Jetzt ist name_open zu 100% sicher und friert nicht ein.
             int coid = name_open(targetName.c_str(), NAME_FLAG_ATTACH_GLOBAL);
 
             if (coid != -1) {
-                // PARTNER GEFUNDEN!
                 m_partnerCoid = coid;
                 m_partner_Alive = true;
                 m_isConnected = true;
 
-                std::cout << "\n[ConnMgr] PARTNER GEFUNDEN! Verbindung steht. (Partner-COID: " << coid << ")" << std::endl;
-
-                // Dispatcher benachrichtigen
                 if (m_localCoid != -1) {
                     MsgSendPulse(m_localCoid, 1, ipc::CONNECTION_MSG, coid);
                 }
 
-                m_isSearching = false; // Suche beenden
+                m_isSearching = false;
                 break;
             }
-        } else {
-            // Die Datei gibt es noch nicht. Anlage 1 ist also noch aus.
-            // Wir drucken einen Punkt und warten.
-            std::cout << "." << std::flush;
         }
-
-        // 500ms warten, um die CPU nicht zu verbrennen.
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 }
-
 // ============================================================================
 // Hard-Realtime Kontaktueberwachung (Watchdog)
 // ============================================================================
 
 void ConnectionManager::heartbeatTackt() {
-    // Wenn gar keine Verbindung besteht, muessen wir auch nichts ueberwachen.
-    if (!m_isConnected) {
-        return;
-    }
+    if (!m_isConnected) return;
 
-    // DIE DEADLINE-PRUEFUNG: Hat der Partner seit dem letzten Takt geantwortet?
     if (m_partner_Alive == false) {
-        // DEADLINE VERPASST!
-        std::cerr << "[ConnMgr] KRITISCHER FEHLER: Heartbeat-Deadline verpasst! Loese Not-Halt aus." << std::endl;
+        m_isConnected = false;
 
-        m_isConnected = false; // System als getrennt markieren
-
-        // Not-Halt Puls an den lokalen Dispatcher abfeuern
+        // 1. Dispatcher SOFORT informieren (löst den Not-Halt im Millisekunden-Bereich aus!)
         if (m_localCoid != -1) {
             MsgSendPulse(m_localCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::DISCONNECT, 0);
         }
+
+        // 2. Hintergrund-Thread starten. Das Aufräumen von m_partnerCoid passiert jetzt dort!
+        connectToPartner();
     } else {
-        // Er hat rechtzeitig geantwortet.
-        // Wir setzen die Falle wieder scharf fuer das naechste 50ms-Fenster!
         m_partner_Alive = false;
     }
 }
