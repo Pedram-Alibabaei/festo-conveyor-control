@@ -28,9 +28,9 @@ int main(int argc, char *argv[]) {
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-s") {
-            pos = VORN_ANLAGE_1;
+            pos = AnlagenPosition::VORN_ANLAGE_1;
         } else if (arg == "-c") {
-            pos = HINTEN_ANLAGE_2;
+            pos = AnlagenPosition::HINTEN_ANLAGE_2;
         }
     }
 

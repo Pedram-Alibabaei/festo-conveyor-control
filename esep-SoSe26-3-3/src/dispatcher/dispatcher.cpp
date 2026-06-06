@@ -22,7 +22,7 @@ Dispatcher::Dispatcher()
       m_localCoid(-1),
       m_partnerCoid(-1),
       m_attachHandle(nullptr),
-      m_position(UNKNOWN_POSITION),
+      m_position(AnlagenPosition::UNKNOWN_POSITION),
       m_running(false),
       m_actuators(nullptr),
       m_sensors(nullptr),
@@ -46,7 +46,7 @@ Dispatcher::~Dispatcher() {
 // ============================================================================
 void Dispatcher::init(AnlagenPosition pos) {
     m_position = pos;
-    std::string myName = (pos == VORN_ANLAGE_1) ? "Anlage_1" : "Anlage_2";
+    std::string myName = (pos == AnlagenPosition::VORN_ANLAGE_1) ? "Anlage_1" : "Anlage_2";
 
     m_attachHandle = name_attach(NULL, myName.c_str(), NAME_FLAG_ATTACH_GLOBAL);
     if (m_attachHandle == nullptr) {
@@ -253,8 +253,9 @@ void Dispatcher::handleHalPulse(uint32_t payload) {
     else if (sensor_id == ipc::HEIGHT) {
         if (sensor_state == ipc::State::BLOCKED) {
             m_logik->processEvent(logik::Event::HEIGHT_BLOCKED);
-        } else if (sensor_state == ipc::State::CLEARED) {
-            m_logik->processEvent(logik::Event::HEIGHT_CLEARED);
+        }
+        //else if (sensor_state == ipc::State::CLEARED) {
+        //    m_logik->processEvent(logik::Event::HEIGHT_CLEARED);
         } else if (sensor_state == ipc::State::HIGH_ERROR) {
             m_logik->processEvent(logik::Event::HEIGHT_ERROR);
         }else {

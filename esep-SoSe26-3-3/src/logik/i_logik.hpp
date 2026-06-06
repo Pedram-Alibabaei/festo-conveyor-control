@@ -1,6 +1,12 @@
 /**
  * @file i_Logik.hpp
  * @brief Interface für die zentrale Steuerungs-Zustandsmaschine (Logik) der Festo-Anlage.
+ *
+ * @details Definiert die Kommunikationsschnittstelle der Logikkomponente (Schicht 1 FSM).
+ * Sie nimmt Ereignisse der HAL, Netzwerkdaten des Dispatchers sowie das fertige
+ * Kalibrierungspaket entgegen und steuert den digitalen Zwilling.
+ *
+ * Embedded Systems Engineering WiSe2025 Team 1.1
  */
 
 #ifndef I_LOGIK_HPP
@@ -16,59 +22,62 @@ public:
 
     /**
      * @brief Initialisiert die Logik-Komponente mit der physischen Position der Anlage.
-     * @param pos Die Position im System (Anlage 1 oder Anlage 2).
+     * @note Steuert die dynamische Rollenverteilung (Anlage 1 vs. Anlage 2) zur Laufzeit.
+     * @param pos Die Position im Gesamtsystem (VORN_ANLAGE_1 oder HINTEN_ANLAGE_2).
      */
     virtual void init(AnlagenPosition pos) = 0;
 
     /**
-     * @brief Nimmt ein Ereignis vom Dispatcher entgegen und triggert den Zustandsautomaten.
-     * @param e Das aufgetretene Ereignis (z.B. Lichtschranke unterbrochen).
+     * @brief Nimmt ein Ereignis von der HAL oder dem Framework entgegen und triggert die Haupt-FSM.
+     * @param e Das aufgetretene Ereignis (z.B. logik::Event::HEIGHT_BLOCKED).
      */
     virtual void processEvent(logik::Event e) = 0;
 
     /**
-     * @brief Übergibt den vom Höhenmessungs-Sensor (HS) ermittelten Typ des Werkstücks.
-     * @param type Der erkannte Typ (z.B. flach, hoch, mit Bohrung).
+     * @brief Übergibt den von der HAL (Analog-Auswertung) ermittelten Typ eines Werkstücks.
+     * @note Wird exklusiv bei Beendigung des Messvorgangs (HEIGHT_CLEARED) an die Logik gereicht.
+     * @param type Der erkannte physische Werkstücktyp.
      */
     virtual void workpieceTypeFromHS(WpType type) = 0;
 
     /**
-     * @brief Verarbeitet Werkstück-Informationen, die über das Netzwerk empfangen wurden.
-     * @param id Die eindeutige ID des Werkstücks.
-     * @param type Der Typ des Werkstücks.
+     * @brief Verarbeitet Werkstück-Informationen (ID und Typ), die via QNX-Netzwerk empfangen wurden.
+     * @note Wird auf Anlage 2 aufgerufen, um den digitalen Zwilling am Einlauf synchron zu gebären (Tracing).
+     * @param id Die von Anlage 1 vergebene, eindeutige Werkstück-ID.
+     * @param type Der bereits auf Anlage 1 vor-analysierte Werkstücktyp.
      */
     virtual void workpieceInfo(int id, WpType type) = 0;
 
     /**
-     * @brief Aktualisiert die interne Werkstück-Liste (z.B. nach einer Übergabe oder Aussortierung).
-     * @param type Der Typ des betroffenen Werkstücks.
+     * @brief Aktualisiert das Rezept der internen Werkstück-Liste nach einer Manipulation.
+     * @note Triggert auf Anlage 1 die Methode forceType(), um das Rezept absolut auf den Soll-Typen zu zwingen.
+     * @param type Der Typ des Werkstücks, auf den die Rezeptur synchronisiert werden muss.
      */
     virtual void updateWpListe(WpType type) = 0;
 
     /**
-     * @brief Takt-Signal des Bandes für interne Wegstrecken-Timer und Überwachung.
+     * @brief Der zentrale 10ms-Herzschlag des Bandes für interne Wegstrecken-Timer und Watchdogs.
+     * @note Reicht den Hardware-Timer-Interrupt direkt an das Schieberegister (takt) weiter.
      */
-    virtual void tackt() = 0;
+    virtual void takt() = 0;
 
-	virtual void setPartnerChuteStatus(bool isFull) = 0;
+    /**
+     * @brief Aktualisiert den Bereitschafts- bzw. Füllstandstatus der Rutsche der Partneranlage.
+     * @param isFull true, wenn die Rutsche blockiert/voll ist, andernfalls false.
+     */
+    virtual void setPartnerChuteStatus(bool isFull) = 0;
 
     // ========================================================================
-    // KALIBRIERUNGS-SCHNITTSTELLEN
+    // NEUE ZENTRALE KALIBRIERUNGS-SCHNITTSTELLE
     // ========================================================================
 
     /**
-     * @brief Übergibt die beim Booten geladenen Wegstrecken-Ticks an die Logik.
-     * @param calibMode Das exakte Segment aus ipc::CalibMode (z.B. TICK_ENTRY_C_TO_HEIGHT_B).
-     * @param tickValue Die geladene Anzahl an Band-Ticks für diese Strecke.
+     * @brief Übergibt die vollständigen Kalibrierungsdaten als Paket an die Logik.
+     * @note Die Logik reicht dieses Struct direkt an den WorkpieceManager weiter,
+     * welcher daraus die dynamischen Schleichfahrt-Grenzwerte berechnet.
+     * @param data Das geladene und vollständig befüllte CalibrationData-Struct.
      */
-    virtual void setTrackedSegmentTicks(uint16_t calibMode, uint16_t tickValue) = 0;
-
-    /**
-     * @brief Empfängt die rohen ADC-Kalibrierungsdaten von der HAL während des Live-Einlernens.
-     * @param calibMode Der aktuelle Kalibrierungsmodus (z.B. ipc::CalibMode::EMPTY_BELT).
-     * @param adcValue Der gemessene Rohwert vom ADC-Sensor.
-     */
-    virtual void receiveRawCalibrationData(uint16_t calibMode, uint16_t adcValue) = 0;
+    virtual void setCalibrationData(const CalibrationData& data) = 0;
 };
 
 #endif // I_LOGIK_HPP

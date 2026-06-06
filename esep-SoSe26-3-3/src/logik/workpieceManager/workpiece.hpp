@@ -1,99 +1,155 @@
 /**
  * @file Workpiece.hpp
- *
- * @brief Klassenbeschreibung: Workpiece
+ * @brief Klassenbeschreibung: Workpiece als digitaler Zwilling.
  *
  * Die Klasse Workpiece ist ein reines Datenobjekt (Data Transfer Object), das
- * ein physisches Werkstück auf der Förderanlage als digitalen Zwilling repräsentiert.
- * Sie hält ausschließlich zustandsrelevante Informationen eines Werkstücks während
- * seines Durchlaufs durch die Anlage.
+ * ein physisches Werkstück auf der Förderanlage repräsentiert. Sie hält
+ * ausschließlich zustandsrelevante Informationen während des Durchlaufs.
  *
- * @details ARCHITEKTUR-HINWEIS:
- * Diese Klasse enthält bewusst KEINE eigene Zeit- oder Timeout-Logik mehr.
- * In unserer ereignisgesteuerten (Event-Driven) QNX-Architektur übernimmt das
- * Betriebssystem (mittels Hardware-Timern und Pulses) die Überwachung von
- * verlorenen Werkstücken.
- *
- * Hauptaufgaben (Zuständigkeiten):
- * - Identifikation: Automatische Generierung einer eindeutigen ID.
- * - Eigenschaftsspeicherung: Hält den ermittelten Werkstücktyp (WPType) und die
- *   Sortierentscheidung (canPass).
- * - Zonen-Tracking: Speichert den exakten aktuellen Aufenthaltsort (WpLocation).
+ * Embedded Systems Engineering WiSe2025 Team 1.1
  */
 
 #ifndef WORKPIECE_HPP
 #define WORKPIECE_HPP
-#include <shared/types.hpp>
-// Alle physischen Zonen/Abschnitte auf dem Förderband
-enum class WpLocation {
-    AT_ENTRY,             // Gerade am Einlauf (Lichtschranke blockiert)
-    TRANSIT_TO_HEIGHT,    // Auf dem Weg zum Höhensensor
-    AT_HEIGHT_SENSOR,     // Genau unter dem Höhensensor (wird gerade vermessen)
-    TRANSIT_TO_EJECTOR,   // Auf dem Weg zur Weiche
-    AT_EJECTOR,           // An der Weiche (Entscheidungspunkt)
-    TRANSIT_TO_END,       // Auf dem Weg zum Ende (darf passieren)
-    AT_END                // Am Bandende (Übergabe-bereit an Anlage 2)
-};
+
+#include "shared/types.hpp"// Enthält WpType und WpLocation
+#include <cstdint>
 
 class Workpiece {
 private:
-    // Statische Variable, um klassenübergreifend die nächste ID zu berechnen
-    static int s_next_id;
+    // Statische Variable zur automatischen und eindeutigen ID-Vergabe auf Anlage 1
+	static int s_next_id;
 
-    // --- Private Member-Variablen (sicher gekapselt) ---
+    // --- Private Member-Variablen ---
     int m_id;
     WpType m_type;
-
     WpLocation m_location;
+
+    // --- Variablen für das logische 10ms-Takt-Schieberegister ---
+    std::uint32_t m_ticksInCurrentState;  ///< Verbrachte 10ms-Timer-Takte in der aktuellen Zone
+    std::uint32_t m_targetLimitForState;  ///< Das aktuell gültige Takt-Limit für diese Zone
+    bool m_isCorrectInSequence;           ///< Flag, ob das Teil an der aktuellen Weiche korrekt im Rezept ist
+    bool m_isExpectedFromNetwork;         ///< Flag für Anlage 2: Passte der übertragene Netzwerk-Typ zum lokalen Rezept?
 
 public:
     /**
-     * @brief Konstruktor: Vergibt automatisch die nächste freie ID und
-     * setzt das Werkstück an den Einlauf.
+     * @brief Konstruktor: Vergibt automatisch die nächste freie ID,
+     * setzt das Werkstück an den Einlauf und initialisiert die Taktzähler sowie Flags.
      */
     Workpiece() :
         m_id(s_next_id++),
         m_type(WpType::UNKNOWN),
-        m_location(WpLocation::AT_ENTRY)
+        m_location(WpLocation::AT_ENTRY),
+        m_ticksInCurrentState(0),
+        m_targetLimitForState(0),
+        m_isCorrectInSequence(true),
+        m_isExpectedFromNetwork(true)
     {}
 
-    // --- Getter für die ID ---
-    // (Kein Setter, da die ID nach der Erstellung unveränderlich ist!)
+    // --- Getter & Setter für die ID ---
+    /**
+     * @brief Liefert die eindeutige ID des Werkstücks.
+     */
     int getId() const {
         return m_id;
     }
 
+    /**
+     * @brief Überschreibt die ID des Werkstücks.
+     * @note Exklusiv wichtig für Anlage 2, um die ID von Anlage 1 via QNX-Netzwerk zu übernehmen (Tracing).
+     * @param id Die originale ID der ersten Teilanlage.
+     */
+    void setId(int id) {
+        m_id = id;
+    }
+
     // --- Getter & Setter für den Werkstücktyp ---
-    void setType(WPType type) {
+    void setType(WpType type) {
         m_type = type;
     }
 
-    WPType getType() const {
+    WpType getType() const {
         return m_type;
     }
 
-    // --- Getter & Setter für die Passier-Erlaubnis ---
-    void setCanPass(bool canPass) {
-        m_canPass = canPass;
-    }
-
-    bool getCanPass() const {
-        return m_canPass;
-    }
-
-    // --- Getter & Setter für den Aufenthaltsort ---
+    // --- Getter & Setter für den Aufenthaltsort (Zonen-Tracking) ---
+    /**
+     * @brief Aktualisiert den Aufenthaltsort des Werkstücks.
+     * @note Setzt den internen Taktzähler automatisch zurück,
+     * da jeder neue Bandabschnitt mathematisch bei Takt 0 beginnt.
+     * Das targetLimit wird vom WorkpieceManager direkt danach neu gesetzt.
+     */
     void updateLocation(WpLocation newLocation) {
         m_location = newLocation;
+        m_ticksInCurrentState = 0;
+        m_targetLimitForState = 0;
     }
 
     WpLocation getLocation() const {
         return m_location;
     }
-};
 
-// Initialisierung der statischen ID-Variable.
-// Das 'inline' (ab C++17) verhindert Multiple-Definition Fehler beim Linken,
-// da der Compiler dafür sorgt, dass diese Variable nur einmal im Speicher existiert.
-inline int Workpiece::s_next_id = 1;
+    // ====================================================================
+    // INTERFACE FÜR DAS TAKT-TRACKING (Steuerung durch den WorkpieceManager)
+    // ====================================================================
+
+    /**
+     * @brief Inkrementiert den Taktzähler um genau +1 (wird alle 10ms vom Timer aufgerufen).
+     */
+    void incrementTicks() {
+        m_ticksInCurrentState++;
+    }
+
+    /**
+     * @brief Liefert die im aktuellen Abschnitt bereits verbrachten 10ms-Takte.
+     */
+    std::uint32_t getTicks() const {
+        return m_ticksInCurrentState;
+    }
+
+    /**
+     * @brief Setzt das berechnete Takt-Limit für die aktuelle Zone fest.
+     * Wichtig bei Geschwindigkeitswechseln (z.B. Umschalten nach 200 Ticks auf Slow).
+     */
+    void setTargetLimit(std::uint32_t limit) {
+        m_targetLimitForState = limit;
+    }
+
+    /**
+     * @brief Liefert das aktuell erwartete Takt-Limit für diese Zone.
+     */
+    std::uint32_t getTargetLimit() const {
+        return m_targetLimitForState;
+    }
+
+    // --- Getter & Setter für die Rezeptur-Flags ---
+    /**
+     * @brief Setzt fest, ob das Teil laut TargetSequence an der lokalen Weiche an der Reihe ist.
+     */
+    void setIsCorrectInSequence(bool value) {
+        m_isCorrectInSequence = value;
+    }
+
+    /**
+     * @brief Gibt an, ob das Teil an der lokalen Weiche der korrekte Rezept-Typ ist.
+     */
+    bool isCorrectInSequence() const {
+        return m_isCorrectInSequence;
+    }
+
+    /**
+     * @brief Setzt fest, ob der via Netzwerk uebertragene Typ beim Eintreffen auf Anlage 2 der Sequenz entsprach.
+     */
+    void setIsExpectedFromNetwork(bool value) {
+        m_isExpectedFromNetwork = value;
+    }
+
+    /**
+     * @brief Gibt an, ob der Netzwerk-Typ des Teils beim Eintritt auf Anlage 2 zum Rezept passte.
+     */
+    bool isExpectedFromNetwork() const {
+        return m_isExpectedFromNetwork;
+    }
+};
 
 #endif // WORKPIECE_HPP

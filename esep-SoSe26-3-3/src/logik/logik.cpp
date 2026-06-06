@@ -1,101 +1,83 @@
 /**
  * @file Logik.cpp
- * @brief Vollständige Implementierung der Test-Logik mit Kalibrierung und Erkennungsmodus.
+ * @brief Implementierung des zentralen Sch Schicht-1-Controllers (Zustandsmaschine).
+ *
+ * Embedded Systems Engineering WiSe2025 Team 1.1
  */
 
 #include "Logik.hpp"
-#include "dispatcher/I_Dispatcher.hpp" // Header für Dispatcher-Aufrufe binden
 #include <iostream>
 
 namespace logik {
 
-// ============================================================================
-// KONSTRUKTOR & INITIALISIERUNG
-// ============================================================================
-
-Logik::Logik()
-    : m_position(AnlagenPosition::VORN_ANLAGE_1),
-      m_countTicks(false),
-      m_tickCounter(0),
-      m_dispatcher(nullptr),
-      m_isCalibrated(false) { // Am Start ist die Anlage noch unkalibriert
-}
-
-Logik::~Logik() {
-    // Sicherer, leerer virtueller Destruktor zur Behebung des vtable-Fehlers
+Logik::Logik(i_Dispatcher* dispatcher)
+    : m_wpManager(std::make_unique<WorkpieceManager>(this)),
+      m_dispatcher(dispatcher),
+      m_anlagenPosition(AnlagenPosition::UNKNOWN_POSITION),
+      m_isPartnerChuteFull(false)
+{
+    std::cout << "[Logik] System-Instanz erfolgreich konstruiert." << std::endl;
 }
 
 void Logik::init(AnlagenPosition pos) {
-    m_position = pos;
-    std::string posName = (pos == AnlagenPosition::VORN_ANLAGE_1) ? "Anlage 1 (Vorn)" : "Anlage 2 (Hinten)";
-    std::cout << "[Logik] Initialisiert fuer Position: " << posName << std::endl;
+    // 1. Speichere die physische Position lokal in der Hauptsteuerung
+    m_anlagenPosition = pos;
+
+    // 2. REICHE DIE POSITION AN DEN WORKPIECE-MANAGER WEITER
+    m_wpManager->setAnlagenPosition(pos);
+
+    // Ausführliche Konsolenausgabe für das Labor-Debugging beim Systemstart
+    if (pos == AnlagenPosition::VORN_ANLAGE_1) {
+        std::cout << "[Logik-Init] Instanz erfolgreich als ANLAGE 1 (VORN / MASTER) initialisiert." << std::endl;
+    } else if (pos == AnlagenPosition::HINTEN_ANLAGE_2) {
+        std::cout << "[Logik-Init] Instanz erfolgreich als ANLAGE 2 (HINTEN / SLAVE) initialisiert." << std::endl;
+    } else {
+        std::cerr << "[Logik-Init] CRITICAL: Unbekannte oder ungueltige Anlagenposition empfangen!" << std::endl;
+    }
 }
 
-// ============================================================================
-// CENTRAL EVENT PROCESSING (Zentrale Ereignis-Verarbeitung)
-// ============================================================================
-
 void Logik::processEvent(logik::Event e) {
-    if (!m_dispatcher) {
-        std::cerr << "[Logik] CRITICAL: Kein Dispatcher-Zeiger gesetzt!" << std::endl;
-        return;
-    }
+    // Hier befindet sich eure Schicht-1-Zustandsmaschine (Haupt-FSM der Anlage).
+    // Diese wertet globale Zustände wie READY, RUNNING, STOP, ERROR, E-STOP aus.
+    // Parallel dazu werden die Sensor-Events direkt an das Schieberegister weitergereicht:
 
     switch (e) {
-
-        // 1. START-TASTER: Unterscheidet zwischen Erst-Kalibrierung und Normalbetrieb
-        case logik::Event::START_PRESSED:
-
-                std::cout << "[Logik] START -> Modus: KALIBRIERUNG." << std::endl;
-				m_isCalibrated = false;
-                m_dispatcher->setAdcCalibrationsState();
+        // Events, die den globalen Anlagenzustand steuern (Beispiele für eure FSM)
+        case logik::Event::SET_STOP:
+            std::cout << "[FSM] Wechsel in Zustand: STOP. Stoppe Motoren..." << std::endl;
+            m_dispatcher->stopMotor();
             break;
 
-        // 2. EINLAUF-LICHTSCHRANKE: Werkstück wird aufgelegt
+        case logik::Event::ERROR:
+            std::cerr << "[FSM-CRITICAL] Wechsel in Zustand: ERROR! Gesamtanlage angehalten. Rote Leuchte aktiv." << std::endl;
+            m_dispatcher->stopMotor();
+            m_dispatcher->flashRedFast();
+            break;
+
+        // Alle hardwarenahen Werkstück-Sensorflanken werden an den Manager delegiert
         case logik::Event::ENTRY_BLOCKED:
-
-                m_dispatcher->driveRight();
-                m_tickCounter = 0;
-                m_countTicks = true; // Aktiviert die 200-Takt-Bremsrampe in tackt()
-            break;
-
-        case logik::Event::ENTRY_CLEARED:
-            std::cout << "[Logik] Werkstueck hat den Einlauf verlassen." << std::endl;
-            break;
-
-        case logik::Event::HEIGHT_BLOCKED:
-            std::cout << "[Logik] Werkstueck hat den Hoehensensor erreicht." << std::endl;
-            break;
-
-        case logik::Event::HEIGHT_CLEARED:
-            std::cout << "[Logik] Werkstueck hat den Hoehensensor verlassen." << std::endl;
-            break;
-
-        // 3. ZIEL-LICHTSCHRANKEN: Werkstück hat das Bandende erreicht
-        case logik::Event::END_BLOCKED:
-        case logik::Event::CHUTE_BLOCKED:
-            std::cout << "[Logik] Ziel erreicht -> Motor STOPP." << std::endl;
-            m_dispatcher->driveStop();
-
-            // Wenn wir aus der Erst-Kalibrierung kommen, schalten wir die FSM um!
-            if (!m_isCalibrated) {
-                m_isCalibrated = true;
-                std::cout << "\n==================================================" << std::endl;
-                std::cout << " [Logik] >>> KALIBRIERUNG ERFOLGREICH BEENDET! <<<" << std::endl;
-                std::cout << "==================================================\n" << std::endl;
+            // Da ENTRY_BLOCKED laut Architektur ein neues Objekt erzeugt, nutzen wir die Direktmethode:
+            if (m_anlagenPosition == AnlagenPosition::VORN_ANLAGE_1) {
+                m_wpManager->addWorkpiece();
+            } else {
+                std::cerr << "[Logik-Safety] ENTRY_BLOCKED auf Anlage 2 ignoriert! Teile muessen via Netzwerk kommen." << std::endl;
             }
             break;
 
-        // Sicherheits- und Notabschaltungen
-        case logik::Event::STOP_PRESSED:
-            std::cout << "[Logik] setAdcIdelState" << std::endl;
-            m_dispatcher->setAdcWaitigForWpState();
-            break;
-
-        case logik::Event::ESTOP_PRESSED:
-            std::cerr << "[Logik] !!! NOT-HALT AUSGELÖST -> SOFORTIGER HARDWARE-STOPP !!!" << std::endl;
-            m_dispatcher->driveStop();
-            m_countTicks = false;
+        case logik::Event::ENTRY_CLEARED:
+        case logik::Event::HEIGHT_BLOCKED:
+        case logik::Event::HEIGHT_CLEARED:
+        case logik::Event::HEIGHT_ERROR:
+        case logik::Event::METAL_DETECTED:
+        case logik::Event::METAL_CLEARED:
+        case logik::Event::EJECTOR_BLOCKED:
+        case logik::Event::EJECTOR_CLEARED:
+        case logik::Event::END_BLOCKED:
+        case logik::Event::END_CLEARED:
+        case logik::Event::CHUTE_BLOCKED:
+        case logik::Event::CHUTE_CLEARED:
+            // Standard-Sensorflanken stur an das Schieberegister durchreichen
+            m_wpManager->handleSensorSignal(e);
             break;
 
         default:
@@ -103,59 +85,71 @@ void Logik::processEvent(logik::Event e) {
     }
 }
 
-// ============================================================================
-// BAND-TAKTE / TIMING-MANAGEMENT
-// ============================================================================
-
-void Logik::tackt() {
-    // Wird vom Belt-Timer kontinuierlich (z.B. alle 10ms) aufgerufen
-
-    if (m_countTicks && m_dispatcher) {
-        m_tickCounter++;
-
-        // Nur im Kalibriermodus: Nach 200 Takten bremsen, bevor das Teil unter den Sensor rutscht
-        if (m_tickCounter >= 200) {
-
-			    if (m_isCalibrated) {
- 					std::cout << "[Logik-Kalib] set Adc Waitig For WpState." << std::endl;
-					m_dispatcher->setAdcWaitigForWpState();
-				}
-            m_dispatcher->driveSlowRight();
-
-            m_countTicks = false;
-            m_tickCounter = 0;
-        }
-    }
-}
-
-// ============================================================================
-// RÜCKMELDUNG VOM PROFILEANALYZER (Ergebnis des 12-Segment-Scans)
-// ============================================================================
-
 void Logik::workpieceTypeFromHS(WpType type) {
-    // Hier liest die Logik das Ergebnis deiner 'evaluationFinished'-Methode aus!
-    std::string name = "UNKNOWN";
-    switch (type) {
-        case WpType::FLAT:         name = "FLAT (Flach)"; break;
-        case WpType::TALL:         name = "TALL (Hoch)"; break;
-        case WpType::TALL_DRILLED: name = "TALL_DRILLED (Gebohrt)"; break;
-        default:                   name = "UNBEKANNT / FEHLER"; break;
-    }
-
-    std::cout << "\n==================================================" << std::endl;
-    std::cout << " [LOGIK-AUSWERTUNG] Werkstueck-Typ ist: " << name << std::endl;
-    std::cout << "==================================================\n" << std::endl;
+    // Die HAL hat die Analogmessung des Höhensensors abgeschlossen und liefert den Typ.
+    // Wir reichen dieses Signal mitsamt dem ermittelten Typ an den Manager weiter.
+    std::cout << "[Logik] Typmeldung von Hoehensensor empfangen (Typ-ID: " << static_cast<int>(type) << ")." << std::endl;
+    m_wpManager->handleSensorSignal(logik::Event::HEIGHT_CLEARED, type);
 }
 
-// ============================================================================
-// UNGENUTZTE INTERFACE-METHODEN (Als Stubs ausformuliert)
-// ============================================================================
+void Logik::workpieceInfo(int id, WpType type) {
+    // Diese Methode wird vom Netzwerk-Framework (Empfängerseite des Dispatchers) aufgerufen,
+    // wenn Anlage 1 ein Werkstück über die Kante schiebt.
+    if (m_anlagenPosition == AnlagenPosition::HINTEN_ANLAGE_2) {
+        std::cout << "[Netzwerk-Empfang] Digitaler Zwilling von Anlage 1 uebermittelt. ID: " << id << std::endl;
 
-void Logik::workpieceInfo(int id, WpType type) {}
-void Logik::updateWpListe(WpType type) {}
-void Logik::setTrackedSegmentTicks(uint16_t calibMode, uint16_t tickValue) {}
-void Logik::receiveRawCalibrationData(uint16_t calibMode, uint16_t adcValue) {}
+        // Gebäre das übertragene Werkstück im Schieberegister von Anlage 2
+        m_wpManager->addNetworkWorkpiece(id, type);
+    } else {
+        std::cerr << "[Logik-Netzwerk] WARNUNG: Anlage 1 hat fälschlicherweise ein workpieceInfo-Event empfangen!" << std::endl;
+    }
+}
+
+void Logik::updateWpListe(WpType type) {
+    // ========================================================================
+    // ABSOLUTE REZEPT-SYNCHRONISATION (Deine krisenfeste Fehlerkorrektur)
+    // Wenn Anlage 2 eine physische Manipulation erkennt, schickt sie diese
+    // Nachricht zurück an Anlage 1. Anlage 1 zwingt ihr Rezept hart zurück.
+    // ========================================================================
+    if (m_anlagenPosition == AnlagenPosition::VORN_ANLAGE_1) {
+        std::cout << "[Netzwerk-Event] Anlage 2 meldet physische Manipulation!" << std::endl;
+        std::cout << " -> Zwinge lokales Rezept hart zurueck auf Typ-ID: " << static_cast<int>(type) << std::endl;
+
+        // Greift über den neuen Getter der HPP direkt auf die forceType()-Methode zu
+        m_wpManager->getSequence().forceType(type);
+
+        // Da das Gesamtsystem manipuliert wurde, eskalieren wir auch auf Anlage 1 einen Fehler
+        this->processEvent(logik::Event::ERROR);
+    } else {
+        std::cerr << "[Logik-Netzwerk] Fehler: updateWpListe auf Anlage 2 aufgerufen!" << std::endl;
+    }
+}
+
+void Logik::takt() {
+    // Wird stur alle 10ms vom Hardware-Timer-Thread aufgerufen.
+    // Wir ermitteln den aktuellen Motorstatus aus eurer FSM (hier beispielhaft simuliert)
+    // und reichen den Takt an den Manager weiter, damit die Transit-Teile altern können.
+    bool isMotorSlow = false; // Sollte real aus eurem globalen FSM-Zustand gelesen werden
+
+    m_wpManager->takt(isMotorSlow);
+}
+
 void Logik::setPartnerChuteStatus(bool isFull) {
-       // m_errorHandler->setPartnerChuteStatus(isFull);
- }
+    m_isPartnerChuteFull = isFull;
+
+    // Wenn wir Anlage 1 sind und die Rutsche von Anlage 2 voll ist, müssen wir
+    // das dem WorkpieceManager mitteilen, damit die Übergabe-Sperre greift
+    if (m_anlagenPosition == AnlagenPosition::VORN_ANLAGE_1) {
+        m_wpManager->setAnlage2Ready(!isFull);
+    }
+}
+
+void Logik::setCalibrationData(const CalibrationData& data) {
+    std::cout << "[Logik] Vollstaendiges Kalibrierungspaket aus Konfigurationsdatei empfangen." << std::endl;
+    std::cout << " -> Reiche Paket geschlossen an den WorkpieceManager weiter..." << std::endl;
+
+    // Direktes Durchreichen des Structs ohne mühsame Einzelaufrufe
+    m_wpManager->setCalibrationData(data);
+}
+
 } // namespace logik

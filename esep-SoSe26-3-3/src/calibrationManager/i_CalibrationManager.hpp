@@ -46,7 +46,7 @@ public:
     /**
      * @brief Speichert alle aktuellen Key-Value-Paare permanent auf den Standardpfad.
      */
-    virtual void
+    virtual void save() =0;
 
     /**
      * @brief Prueft, ob eine Kalibrierungsdatei auf dem Standardpfad existiert.

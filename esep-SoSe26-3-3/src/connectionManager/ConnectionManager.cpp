@@ -18,7 +18,7 @@
 ConnectionManager::ConnectionManager()
     : m_localCoid(-1),
       m_partnerCoid(-1),
-      m_pos(UNKNOWN_POSITION),
+      m_pos(AnlagenPosition::UNKNOWN_POSITION),
       m_attachHandle(nullptr),
       m_partner_Alive(false),
       m_isConnected(false),
@@ -53,7 +53,7 @@ void ConnectionManager::init(int localCoid,AnlagenPosition pos) {
     m_pos = pos;
 
     std::cout << "[ConnMgr] Initialisiere als Anlage "
-              << (m_pos == VORN_ANLAGE_1 ? "1" : "2") << std::endl;
+              << (m_pos == AnlagenPosition::VORN_ANLAGE_1 ? "1" : "2") << std::endl;
 
     // 1. Eigenen Namen zusammenbauen und bei QNX GNS anmelden
     std::string myName = (m_pos == VORN_ANLAGE_1) ? "Anlage_1" : "Anlage_2";
@@ -70,7 +70,7 @@ void ConnectionManager::init(int localCoid,AnlagenPosition pos) {
     // ========================================================================
     // 2. DEINE ASYMMETRISCHE START-LOGIK
     // ========================================================================
-    if (m_pos == HINTEN_ANLAGE_2) {
+    if (m_pos == AnlagenPosition::HINTEN_ANLAGE_2) {
         std::cout << "[ConnMgr] Ich bin Anlage 2. Starte sofort die aktive Suche..." << std::endl;
         connectToPartner(); // Startet den Thread
     } else {
@@ -94,7 +94,7 @@ void ConnectionManager::connectToPartner() {
 
 void ConnectionManager::connectionTask() {
     // Wen suchen wir?
-    std::string targetName = (m_pos == VORN_ANLAGE_1) ? "Anlage_2" : "Anlage_1";
+    std::string targetName = (m_pos == AnlagenPosition::VORN_ANLAGE_1) ? "Anlage_2" : "Anlage_1";
 
     // NEU: Wir bauen den echten QNX-Pfad zusammen
     std::string fullPath = "/dev/name/global/" + targetName;

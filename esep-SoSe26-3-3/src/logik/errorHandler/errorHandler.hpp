@@ -51,7 +51,7 @@ namespace logik {
          * @brief Setzt erzwungen einen kritischen Fehler (z.B. bei WP_LOST oder CONNECTION_LOST).
          * @param error Die ID des aufgetretenen kritischen Fehlers.
          */
-        void triggerManualError(logik::ErrorID error // wo grnau kommt hier noch );
+        void triggerManualError(logik::ErrorID error );// wo grnau kommt hier noch
 
         /**
          * @brief Setzt das Fehlersystem zurück. Wird beim Drücken des RESET-Tasters aufgerufen.

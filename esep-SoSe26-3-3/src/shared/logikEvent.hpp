@@ -59,12 +59,13 @@ namespace logik {
         READY_TO_RECEIVE_WP,
 
         //aus Dispatcher_CalibrationManager
-        DATA_EXIST
-        DATA_NOT_EXIST
+        DATA_EXIST,
+
+        DATA_NOT_EXIST,
         // aus Logik selbst
-        ERROR
-        ERROR_CLEARED
-        START_SHORT_PRESSED
+        ERROR,
+        ERROR_CLEARED,
+        START_SHORT_PRESSED,
         START_LONG_PRESSED
 
     };

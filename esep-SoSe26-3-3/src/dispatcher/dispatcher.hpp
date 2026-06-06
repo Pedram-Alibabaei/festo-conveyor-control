@@ -83,7 +83,7 @@ public:
     int getMyChannelId() const { return m_chid; }
     int getMyLocalCoid() const { return m_localCoid; }
     std::string getAnlagenPositionName() const {
-        return (m_position == VORN_ANLAGE_1) ? "Anlage_1" : "Anlage_2";
+        return (m_position == AnlagenPosition::VORN_ANLAGE_1) ? "Anlage_1" : "Anlage_2";
     }
 
     // ========================================================================
