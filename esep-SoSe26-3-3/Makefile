@@ -17,7 +17,8 @@ CXX = qcc -lang-c++ -Vgcc_nto$(PLATFORM)
 LD = $(CXX)
 
 #User defined include/preprocessor flags and libraries
-INCLUDES += -I./src
+INCLUDES += -I./src -I./test
+
 
 #INCLUDES += -I/path/to/my/lib/include
 #INCLUDES += -I../mylib/public
@@ -71,6 +72,26 @@ $(TARGET):$(OBJS)
 
 #Rules section for default compilation and linking
 all: $(TARGET)
+# --- Test Configuration ---
+TEST_SRCS = $(call rwildcard, test, c cpp)
+TEST_OBJS = $(addprefix $(OUTPUT_DIR)/,$(addsuffix .o, $(basename $(TEST_SRCS))))
+MAIN_OBJ = $(OUTPUT_DIR)/src/esep-SoSe26-3-3.o
+TEST_OBJS_TO_LINK = $(filter-out $(MAIN_OBJ), $(OBJS)) $(TEST_OBJS)
+TEST_TARGET = $(OUTPUT_DIR)/$(ARTIFACT)_tests
+TEST_LIBS = -lgtest -lgmock -lgtest_main -lpthread
+
+$(OUTPUT_DIR)/test/%.o: test/%.c
+	@mkdir -p $(dir $@)
+	$(CC) -c $(DEPS) -o $@ $(INCLUDES) $(CCFLAGS_all) $(CCFLAGS) $<
+
+$(OUTPUT_DIR)/test/%.o: test/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) -c $(DEPS) -o $@ $(INCLUDES) $(CCFLAGS_all) $(CCFLAGS) $<
+
+$(TEST_TARGET): $(TEST_OBJS_TO_LINK)
+	$(LD) -o $(TEST_TARGET) $(LDFLAGS_all) $(LDFLAGS) $(TEST_OBJS_TO_LINK) $(LIBS_all) $(LIBS) $(TEST_LIBS)
+
+tests: $(TEST_TARGET)
 
 clean:
 	rm -fr $(OUTPUT_DIR)
@@ -79,3 +100,4 @@ rebuild: clean all
 
 #Inclusion of dependencies (object files to source and includes)
 -include $(OBJS:%.o=%.d)
+-include $(TEST_OBJS:%.o=%.d)
