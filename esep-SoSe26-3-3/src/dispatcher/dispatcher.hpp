@@ -50,6 +50,13 @@ private:
     i_Timer* m_timer;
     i_Logik* m_logik;
 
+    // Temporäre Variablen im Dispatcher für die Live-Messung
+    // Lokale Zwischenlage für den Einlernvorgang im Dispatcher
+    static CalibrationData s_incomingServiceData;
+    static uint16_t s_liveEmptyBelt = 0;
+    static uint16_t s_liveFlatCenter = 0;
+    static uint32_t s_liveMinSamples = 0;
+
     // ========================================================================
     // 2. Private Event-Handler & Hilfsmethoden
     // ========================================================================

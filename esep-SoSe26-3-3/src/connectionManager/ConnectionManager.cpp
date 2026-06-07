@@ -56,7 +56,7 @@ void ConnectionManager::init(int localCoid,AnlagenPosition pos) {
               << (m_pos == AnlagenPosition::VORN_ANLAGE_1 ? "1" : "2") << std::endl;
 
     // 1. Eigenen Namen zusammenbauen und bei QNX GNS anmelden
-    std::string myName = (m_pos == VORN_ANLAGE_1) ? "Anlage_1" : "Anlage_2";
+    std::string myName = (m_pos == AnlagenPosition::VORN_ANLAGE_1) ? "Anlage_1" : "Anlage_2";
 
     // NAME_FLAG_ATTACH_GLOBAL ist extrem wichtig fuer Qnet!
     m_attachHandle = name_attach(NULL, myName.c_str(), NAME_FLAG_ATTACH_GLOBAL);

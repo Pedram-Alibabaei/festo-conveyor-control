@@ -16,6 +16,7 @@
 #include "Workpiece.hpp"
 #include "TargetSequence.hpp"
 #include "shared/types.hpp"
+#include "logik/logik.hpp"
 
 namespace logik {
 
@@ -76,6 +77,7 @@ namespace logik {
          * @brief Setzt die Kalibrierungsdaten und berechnet automatisch den anlagenspezifischen Geschwindigkeitsfaktor.
          */
         void setCalibrationData(const CalibrationData& data);
+
 
         /**
          * @brief Liefert das älteste (vorderste) Werkstück an einer bestimmten Position.

@@ -20,9 +20,6 @@
 #include "timer/timer.hpp"
 
 int main(int argc, char *argv[]) {
-    std::cout << "===========================================" << std::endl;
-    std::cout << "    Festo Anlage - Systemstart             " << std::endl;
-    std::cout << "===========================================" << std::endl;
 
     AnlagenPosition pos = AnlagenPosition::VORN_ANLAGE_1;
     for (int i = 1; i < argc; ++i) {
@@ -35,7 +32,6 @@ int main(int argc, char *argv[]) {
     }
 
     if (ThreadCtl(_NTO_TCTL_IO, 0) == -1) {
-        std::cerr << "FEHLER: Konnte keine Hardware-Rechte anfordern (root?)." << std::endl;
         return EXIT_FAILURE;
     }
 
@@ -94,8 +90,7 @@ int main(int argc, char *argv[]) {
         std::cout << "[System] Pruefe persistenten Speicher auf Kalibrierungsdatei..." << std::endl;
 
         if (!calib_manager.fileExists()) {
-            std::cout << "[System] HINWEIS: Kalibrierungsdatei existiert nicht (Erststart)." << std::endl;
-            std::cout << "[System] WICHTIG: Anlage muss vor dem Automatiklauf kalibriert werden!" << std::endl;
+            //TODO send event  DATA_EXIST oder DATA_NOT_EXIST,
         }
         else {
             calib_manager.load();
@@ -114,9 +109,6 @@ int main(int argc, char *argv[]) {
         // 6. Erst NACH der Kalibrierung die Timer starten, damit Ticks nicht die Kalibrierung überholen
         timer.startHeartbeatTimer(50);
         timer.startBeltTimer(10);
-
-        std::cout << "Anlage ist nun VOLLSTÄNDIG BEREIT und synchronisiert!" << std::endl;
-        std::cout << "======================================================\n" << std::endl;
 
         // ====================================================================
         // SCHRITT 7: AUF DAS ENDE DES DISPATCHERS WARTEN

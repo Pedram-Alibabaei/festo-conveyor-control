@@ -39,16 +39,24 @@ public:
     virtual void stop() = 0;
 
     // ========================================================================
-    // KALIBRIERUNGS-SCHNITTSTELLE (NEU - Map-Übertrag)
+    // KALIBRIERUNGS-SCHNITTSTELLE
     // ========================================================================
 
     /**
-     * @brief Übergibt die vollständige Map aller live eingelernten Kalibrierungsdaten
-     * an den CalibrationManager zum permanenten Speichern.
-     * @param calibData Die Map mit Key-Value-Paaren (z.B. {"CALIB_EMPTY_BELT", 3450})
+     * @brief Sendet die im Service-Modus fertig eingelernten Kalibrierungsdaten zum Speichern.
+     * @note Wird aufgerufen, sobald der Service-Modus erfolgreich abgeschlossen und gespeichert wird.
+     * @param data Das aktualisierte Struct mit allen eingelernten Ticks und ADC-Werten.
      */
-    virtual void saveCompleteCalibrationMap(const std::map<std::string, int>& calibData) = 0;
+    virtual void sendCalibratedDataToStorage(const CalibrationData& data) = 0;
 
+    /**
+     * @brief Leitet die geladenen ADC-Schwellenwerte und Mindestsamples an die HAL (ProfileAnalyzer) weiter.
+     * @note Wird beim Systemstart aufgerufen, sobald die Konfigurationsdatei geladen wurde.
+     * @param emptyBelt Der ADC-Wert für das leere Band.
+     * @param flatCenter Der ADC-Wert für das flache Werkstück.
+     * @param minSamples Die Mindestanzahl an Samples für die Werkstücklänge.
+     */
+    virtual void forwardCalibrationToHal(std::uint16_t emptyBelt, std::uint16_t flatCenter, std::uint32_t minSamples) = 0;
     // ========================================================================
     // Dependency Injection (Setter)
     // ========================================================================

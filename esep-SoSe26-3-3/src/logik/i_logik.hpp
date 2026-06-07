@@ -72,12 +72,13 @@ public:
     // ========================================================================
 
     /**
-     * @brief Übergibt die vollständigen Kalibrierungsdaten als Paket an die Logik.
-     * @note Die Logik reicht dieses Struct direkt an den WorkpieceManager weiter,
-     * welcher daraus die dynamischen Schleichfahrt-Grenzwerte berechnet.
-     * @param data Das geladene und vollständig befüllte CalibrationData-Struct.
+     * @brief Übergibt die im Service-Modus live gemessenen ADC-Kalibrierungswerte.
+     * @note Verhindert das Überschreiben der bestehenden Wegstrecken-Ticks im Schieberegister.
+     * @param emptyBelt Der gemessene ADC-Wert für das leere Band.
+     * @param flatCenter Der gemessene ADC-Wert für ein flaches Werkstück.
+     * @param minSamples Die gemessene Mindestanzahl an Samples (Länge des Teils).
      */
-    virtual void setCalibrationData(const CalibrationData& data) = 0;
+    virtual void setLiveAdcCalibration(uint16_t emptyBelt, uint16_t flatCenter, uint32_t minSamples) = 0;
 };
 
 #endif // I_LOGIK_HPP

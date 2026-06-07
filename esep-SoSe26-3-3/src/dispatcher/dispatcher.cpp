@@ -115,29 +115,7 @@ void Dispatcher::handlePulse(const struct _pulse& pulse) {
 
         case ipc::PulseCode::HAL_ADC_CALIBRATION:
             {
-                uint16_t calib_value = (pulse.value.sival_int >> 16) & 0xFFFF;
-                uint16_t calib_mode  = pulse.value.sival_int & 0xFFFF;
-                m_logik->receiveRawCalibrationData(calib_mode, calib_value);
-            }
-            break;
-
-        case ipc::PulseCode::MANAGER_ADC_CALIBRATION:
-            // Daten kommen beim Booten aus dem CalibrationManager -> Direkt an die Sensorik (ProfileAnalyzer)
-            if (m_sensors) {
-                uint16_t calib_value = (pulse.value.sival_int >> 16) & 0xFFFF;
-                uint16_t calib_mode  = pulse.value.sival_int & 0xFFFF;
-                m_sensors->updateCalibrationThresholds(calib_mode, calib_value);
-            }
-            break;
-
-        case ipc::PulseCode::MANAGER_TICK_CALIBRATION:
-            // Ticks kommen beim Booten aus dem CalibrationManager -> Direkt an die FSM-Zeiten der Logik
-            {
-                uint16_t tick_value = (pulse.value.sival_int >> 16) & 0xFFFF;
-                uint16_t calib_mode = pulse.value.sival_int & 0xFFFF;
-
-                // Nutzt den neuen CalibMode-Subtyp (z.B. TICK_END_B_TO_END_C)
-                m_logik->setTrackedSegmentTicks(calib_mode, tick_value);
+            handleCalibrationPulse(pulse.value.sival_int);
             }
             break;
 
@@ -154,7 +132,7 @@ void Dispatcher::handlePulse(const struct _pulse& pulse) {
         // TIMER EVENTS
         // ====================================================================
         case ipc::BELT_TICK:
-            m_logik->tackt();
+            m_logik->takt();
             break;
 
         case ipc::HEARTBEATTACKT:
@@ -219,7 +197,7 @@ void Dispatcher::handlePulse(const struct _pulse& pulse) {
 void Dispatcher::handleConnectionPulse(uint32_t payload) {
     m_partnerCoid = payload;
 
-    if (m_position == HINTEN_ANLAGE_2) {
+    if (m_position == AnlagenPosition::HINTEN_ANLAGE_2) {
         MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::ANLAGE_2_CIID, 1);
     }
 }
@@ -374,6 +352,38 @@ void Dispatcher::handlePartnerEStopPulse(uint32_t payload) {
 }
 
 // ============================================================================
+// Calibration
+// ============================================================================
+void Dispatcher::handleCalibrationPulse(uint32_t payload) {
+    using CM = ipc::CalibMode;
+
+    uint16_t rawValue = 0;
+    uint16_t calibMode = 0;
+    ipc::decodeCalibPayload(payload, rawValue, calibMode);
+
+    switch (static_cast<CM>(calibMode)) {
+
+        case CM::EMPTY_BELT:
+            s_liveEmptyBelt = rawValue;
+        break;
+
+        case CM::FLAT_WP:
+            s_liveFlatCenter = rawValue;
+        break;
+
+        case CM::MIN_SAMPLES:
+            s_liveMinSamples = static_cast<uint32_t>(rawValue);
+        if (m_logik != nullptr) {
+            m_logik->setLiveAdcCalibration(s_liveEmptyBelt, s_liveFlatCenter, s_liveMinSamples);
+        }
+        break;
+
+        default:
+            break;
+    }
+}
+
+// ============================================================================
 // KALIBRIERUNGS-SCHNITTSTELLE (KORRIGIERT)
 // ============================================================================
 void Dispatcher::saveCompleteCalibrationMap(const std::map<std::string, int>& calibData) {
@@ -405,4 +415,11 @@ void Dispatcher::sendeChuteStats(bool isVoll) {
     ipc::State state = isVoll ? ipc::VOLL : ipc::EMPTY;
     uint32_t payload = ipc::encodeHalPayload(ipc::NetworkMessage::CHUTE, state);
     MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_MSG, payload);
+}
+
+
+void Dispatcher::forwardCalibrationToHal(std::uint16_t emptyBelt, std::uint16_t flatCenter, std::uint32_t minSamples) {
+    m_sensors->updateCalibrationThresholds(ipc::CalibMode::EMPTY_BELT, emptyBelt);
+    m_sensors->updateCalibrationThresholds(ipc::CalibMode::FLAT_WP, flatCenter);
+    m_sensors->updateCalibrationThresholds(ipc::CalibMode::MIN_SAMPLES, minSamples);
 }

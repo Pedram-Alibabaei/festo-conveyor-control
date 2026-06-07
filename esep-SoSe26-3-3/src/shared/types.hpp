@@ -80,6 +80,11 @@ enum class AnlagenPosition : std::uint16_t {
  */
 struct CalibrationData {
     // Direkt eingelesene Werte (Messung während des Service-Modus)
+// 1. HÖHENMESSUNG (ADC-Referenzen)
+    std::uint16_t adc_emptyBelt = 0;
+    std::uint16_t adc_flatCenter = 0;
+    std::uint32_t limit_minSamplesForClass = 0;
+
     std::uint32_t ticks_EntryC_to_HeightB_Slow = 0;
     std::uint32_t ticks_HeightB_to_HeightC_Slow = 0;
     std::uint32_t ticks_EntryC_to_HeightB_Normal = 0;

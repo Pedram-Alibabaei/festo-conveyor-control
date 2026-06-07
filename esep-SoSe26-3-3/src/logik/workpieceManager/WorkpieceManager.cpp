@@ -21,21 +21,6 @@ WorkpieceManager::WorkpieceManager(Logik* context)
 
 void WorkpieceManager::setCalibrationData(const CalibrationData& data) {
     m_calibData = data;
-
-    // Geschwindigkeitsfaktor mathematisch aus dem bekannten Segment A -> B ermitteln
-    if (m_calibData.ticks_EntryC_to_HeightB_Normal > 0) {
-        m_speedFactor = (double)m_calibData.ticks_EntryC_to_HeightB_Slow /
-                        (double)m_calibData.ticks_EntryC_to_HeightB_Normal;
-    } else {
-        m_speedFactor = 1.6667; // Sicherer empirischer Fallback für das Labor
-    }
-
-    // Fehlende Schleichfahrt-Grenzwerte für die hinteren Abschnitte hochrechnen
-    m_calibData.ticks_HeightC_to_EjectorB_Slow = m_calibData.ticks_HeightC_to_EjectorB_Normal * m_speedFactor;
-    m_calibData.ticks_EjectorC_to_EndB_Slow    = m_calibData.ticks_EjectorC_to_EndB_Normal * m_speedFactor;
-
-    std::cout << "[WP-Manager] Kalibrierungsdaten erfolgreich geladen." << std::endl;
-    std::cout << "[WP-Manager] Berechneter Geschwindigkeitsfaktor: " << m_speedFactor << std::endl;
 }
 
 void WorkpieceManager::addWorkpiece() {
