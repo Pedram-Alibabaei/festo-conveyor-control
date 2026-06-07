@@ -13,7 +13,7 @@
 #define I_CALIBRATION_MANAGER_HPP
 
 #include "shared/types.hpp" // Enthält das CalibrationData Struct
-#include "logik/i_Logik.hpp" // Erlaubt die Übergabe an die Logik-Schicht
+#include "logik/i_logik.hpp" // Erlaubt die Übergabe an die Logik-Schicht
 
 class I_CalibrationManager {
 public:

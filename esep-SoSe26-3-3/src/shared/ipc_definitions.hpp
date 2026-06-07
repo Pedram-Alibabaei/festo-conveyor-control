@@ -173,6 +173,11 @@ namespace ipc {
         return static_cast<uint16_t>(payload & 0xFFFF);
     }
 
+    inline void decodeCalibPayload(uint32_t payload, uint16_t& value, uint16_t& mode) {
+        value = static_cast<uint16_t>(payload >> 16);
+        mode = static_cast<uint16_t>(payload & 0xFFFF);
+    }
+
 
 } // namespace ipc
 

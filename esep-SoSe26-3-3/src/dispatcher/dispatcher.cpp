@@ -6,13 +6,18 @@
 #include "dispatcher.hpp"
 #include "shared/ipc_definitions.hpp"
 #include "shared/logikEvent.hpp"
-#include "logik/i_Logik.hpp"
+#include "logik/i_logik.hpp"
 #include "logik/logik.hpp"
 #include <iostream>
 #include <cerrno>
 #include <cstring>
 #include <sys/neutrino.h>
 #include <sys/dispatch.h>
+
+CalibrationData Dispatcher::s_incomingServiceData;
+uint16_t Dispatcher::s_liveEmptyBelt = 0;
+uint16_t Dispatcher::s_liveFlatCenter = 0;
+uint32_t Dispatcher::s_liveMinSamples = 0;
 
 // ============================================================================
 // KONSTRUKTOR & DESTRUKTOR
@@ -232,13 +237,15 @@ void Dispatcher::handleHalPulse(uint32_t payload) {
         if (sensor_state == ipc::State::BLOCKED) {
             m_logik->processEvent(logik::Event::HEIGHT_BLOCKED);
         }
-        //else if (sensor_state == ipc::State::CLEARED) {
-        //    m_logik->processEvent(logik::Event::HEIGHT_CLEARED);
-        } else if (sensor_state == ipc::State::HIGH_ERROR) {
+        else if (sensor_state == ipc::State::CLEARED) {
+            m_logik->processEvent(logik::Event::HEIGHT_CLEARED);
+        }
+        else if (sensor_state == ipc::State::HIGH_ERROR) {
             m_logik->processEvent(logik::Event::HEIGHT_ERROR);
-        }else {
-        	m_logik->workpieceTypeFromHS(static_cast<WpType>(sensor_state));
-		}
+        }
+        else {
+            m_logik->workpieceTypeFromHS(static_cast<WpType>(sensor_state));
+        }
     }
     else if (sensor_id == ipc::SENSOR_METAL) {
         m_logik->processEvent(sensor_state == ipc::State::BLOCKED ? logik::Event::METAL_DETECTED : logik::Event::METAL_CLEARED);
@@ -386,18 +393,12 @@ void Dispatcher::handleCalibrationPulse(uint32_t payload) {
 // ============================================================================
 // KALIBRIERUNGS-SCHNITTSTELLE (KORRIGIERT)
 // ============================================================================
-void Dispatcher::saveCompleteCalibrationMap(const std::map<std::string, int>& calibData) {
-    if (!m_calibrationManager) return; // Greift nun sauber auf das m_calibrationManager-Member zu
+void Dispatcher::sendCalibratedDataToStorage(const CalibrationData& data) {
+    if (!m_calibrationManager) return;
 
-    // 1. Alle Werte aus der Logik-Map in den CalibrationManager übertragen
-    for (const auto& pair : calibData) {
-        m_calibrationManager->setInt(pair.first, pair.second);
-    }
+    m_calibrationManager->saveCalibrationData(data);
 
-    // 2. Die Map permanent in die Textdatei schreiben
-    m_calibrationManager->save();
-
-    std::cout << "[Dispatcher] Komplette Kalibrierungs-Map an Manager uebergeben und gespeichert." << std::endl;
+    std::cout << "[Dispatcher] Kalibrierungsdaten an Manager uebergeben und gespeichert." << std::endl;
 }
 
 
@@ -406,8 +407,7 @@ void Dispatcher::saveCompleteCalibrationMap(const std::map<std::string, int>& ca
  * gelernten Ticks und ADC-Fenstern auf der Festplatte existiert.
  */
 bool Dispatcher::requestFileExists() {
-    return m_calibrationManager->fileExists();
-    return false;
+    return m_calibrationManager && m_calibrationManager->fileExists();
 }
 
 void Dispatcher::sendeChuteStats(bool isVoll) {
@@ -419,7 +419,9 @@ void Dispatcher::sendeChuteStats(bool isVoll) {
 
 
 void Dispatcher::forwardCalibrationToHal(std::uint16_t emptyBelt, std::uint16_t flatCenter, std::uint32_t minSamples) {
-    m_sensors->updateCalibrationThresholds(ipc::CalibMode::EMPTY_BELT, emptyBelt);
-    m_sensors->updateCalibrationThresholds(ipc::CalibMode::FLAT_WP, flatCenter);
-    m_sensors->updateCalibrationThresholds(ipc::CalibMode::MIN_SAMPLES, minSamples);
+    if (!m_sensors) return;
+    m_sensors->updateCalibrationThresholds(static_cast<uint16_t>(ipc::CalibMode::EMPTY_BELT), emptyBelt);
+    m_sensors->updateCalibrationThresholds(static_cast<uint16_t>(ipc::CalibMode::FLAT_WP), flatCenter);
+    m_sensors->updateCalibrationThresholds(static_cast<uint16_t>(ipc::CalibMode::MIN_SAMPLES),
+                                           static_cast<uint16_t>(minSamples));
 }

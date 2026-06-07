@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <sys/neutrino.h>
 #include <thread> // NEU: Für den Dispatcher-Thread
+#include <chrono>
 
 #include "dispatcher/dispatcher.hpp"
 #include "shared/ipc_definitions.hpp"
@@ -14,8 +15,8 @@
 #include "hal/hal_actuators.hpp"
 #include "shared/types.hpp"
 #include "connectionManager/ConnectionManager.hpp"
-#include "calibrationManager/CalibrationManager.hpp"
-#include "calibrationManager/I_CalibrationManager.hpp"
+#include "calibrationManager/calibrationManager.hpp"
+#include "calibrationManager/i_CalibrationManager.hpp"
 #include "logik/logik.hpp"
 #include "timer/timer.hpp"
 
@@ -55,8 +56,7 @@ int main(int argc, char *argv[]) {
         }
 
         CalibrationManager calib_manager;
-        logik::Logik logik_fsm;
-        logik_fsm.setDispatcher(&dispatcher);
+        logik::Logik logik_fsm(&dispatcher);
 
         Timer timer;
         timer.init(dis_coid);
@@ -68,12 +68,11 @@ int main(int argc, char *argv[]) {
         dispatcher.setTimer(&timer);
         dispatcher.setLogik(&logik_fsm);
         dispatcher.setCalibrationManager(&calib_manager);
+        logik_fsm.setCalibrationManager(&calib_manager);
+        calib_manager.setLogikContext(&logik_fsm);
 
-        // 1. Die Logik braucht den Dispatcher, damit die States Befehle senden können:
-                logik_fsm.setDispatcher(&dispatcher);
-
-                // 2. Logik initialisieren (Das startet den Zustandsautomaten -> geht in IdleState!)
-                logik_fsm.init(pos);
+        // 2. Logik initialisieren
+        logik_fsm.init(pos);
 
         // ====================================================================
         // SCHRITT 4: DISPATCHER IN EINEM THREAD STARTEN (Der Empfänger steht bereit!)
@@ -90,20 +89,11 @@ int main(int argc, char *argv[]) {
         std::cout << "[System] Pruefe persistenten Speicher auf Kalibrierungsdatei..." << std::endl;
 
         if (!calib_manager.fileExists()) {
-            //TODO send event  DATA_EXIST oder DATA_NOT_EXIST,
+            logik_fsm.processEvent(logik::Event::DATA_NOT_EXIST);
         }
         else {
-            calib_manager.load();
-
-            if (calib_manager.hasKey(calib::EMPTY_BELT) && calib_manager.hasKey(calib::FLAT_CENTER)) {
-                std::cout << "[System] Gueltige Kalibrierung gefunden! Streamen der Werte an den aktiven Reaktor..." << std::endl;
-
-                // Da der Thread läuft, werden diese Pulses JETZT live in exakt derselben Millisekunde verarbeitet!
-                calib_manager.distributeValues(dis_coid);
-            }
-            else {
-                std::cerr << "[System] WARNUNG: Datei beschädigt! System startet unkalibriert." << std::endl;
-            }
+            std::cout << "[System] Kalibrierung gefunden. Lade und verteile Werte..." << std::endl;
+            logik_fsm.loadCalibrationData();
         }
 
         // 6. Erst NACH der Kalibrierung die Timer starten, damit Ticks nicht die Kalibrierung überholen

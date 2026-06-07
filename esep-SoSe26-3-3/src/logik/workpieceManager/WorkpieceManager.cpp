@@ -5,10 +5,12 @@
  * Embedded Systems Engineering WiSe2025 Team 1.1
  */
 
-#include "WorkpieceManager.hpp"
+#include "workpieceManager.hpp"
 #include "logik/logik.hpp" // Enthält die konkrete Logik, processEvent sowie Zugriff auf den Dispatcher
 #include <algorithm>
 #include <iostream>
+
+int Workpiece::s_next_id = 1;
 
 namespace logik {
 

@@ -13,10 +13,11 @@
 #define WORKPIECE_MANAGER_HPP
 
 #include <vector>
-#include "Workpiece.hpp"
-#include "TargetSequence.hpp"
+#include <iostream>
+#include "workpiece.hpp"
+#include "targetSequence.hpp"
 #include "shared/types.hpp"
-#include "logik/logik.hpp"
+#include "shared/logikEvent.hpp"
 
 namespace logik {
 

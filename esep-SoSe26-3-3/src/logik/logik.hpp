@@ -11,13 +11,12 @@
 #ifndef LOGIK_HPP
 #define LOGIK_HPP
 
-#include "i_Logik.hpp"
+#include "i_logik.hpp"
 #include "workpieceManager/WorkpieceManager.hpp"
-#include "dispatcher/dispatcher.hpp"
+#include "dispatcher/i_Dispatcher.hpp"
+#include "calibrationManager/i_CalibrationManager.hpp"
+#include "errorHandler/errorHandler.hpp"
 #include <memory>
-
-class i_Dispatcher;
-class I_CalibrationManager; // Vorwärtsdeklaration des CalibrationManager-Interfaces
 
 namespace logik {
 
@@ -25,8 +24,9 @@ namespace logik {
     private:
         // --- Infrastruktur-Komponenten ---
         std::unique_ptr<WorkpieceManager> m_wpManager; ///< Das zeittaktbasierte Schieberegister (Digitaler Zwilling)
-        i_Dispatcher* m_dispatcher;                    ///< Zeiger auf den Dispatcher für HW-Ausgaben und Netzwerknachrichten
+        I_Dispatcher* m_dispatcher;                    ///< Zeiger auf den Dispatcher für HW-Ausgaben und Netzwerknachrichten
         I_CalibrationManager* m_calibManager;          ///< Zeiger auf den CalibrationManager für Datei-Operationen
+        ErrorHandler m_errorHandler;                   ///< Zentraler Fehler- und Warnungszustand
 
         // --- Kalibrierungsdaten (Zentral in der Logik verwaltet) ---
         CalibrationData m_calibData;                   ///< Geladene Zeit-Kalibrierungsdaten (aus types.hpp)
@@ -42,7 +42,7 @@ namespace logik {
          * @brief Konstruktor.
          * @param dispatcher Zeiger auf das Kommunikations- und Hardware-Interface.
          */
-        explicit Logik(i_Dispatcher* dispatcher);
+        explicit Logik(I_Dispatcher* dispatcher);
 
         /**
          * @brief Destruktor.
@@ -75,6 +75,7 @@ namespace logik {
          * @param e Das aufgetretene Ereignis (z.B. logik::Event::HEIGHT_BLOCKED).
          */
         void processEvent(logik::Event e) override;
+        void processFilteredEvent(logik::Event e) { processEvent(e); }
 
         /**
          * @brief Übergibt den von der HAL (Analog-Auswertung) ermittelten Typ eines Werkstücks.
@@ -145,9 +146,10 @@ namespace logik {
          * @brief Liefert den Zeiger auf das zugewiesene Dispatcher-Interface.
          * @return Zeiger auf das i_Dispatcher-Objekt.
          */
-        i_Dispatcher* getDispatcher() const { return m_dispatcher; }
+        I_Dispatcher* getDispatcher() const { return m_dispatcher; }
+        ErrorHandler* getErrorHandler() { return &m_errorHandler; }
 
-        CalibrationData* getCalibData() const { return m_calibData; }
+        const CalibrationData& getCalibData() const { return m_calibData; }
     };
 
 } // namespace logik

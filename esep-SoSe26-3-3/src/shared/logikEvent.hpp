@@ -57,6 +57,9 @@ namespace logik {
 
         REQ_TO_GIVE_WP,
         READY_TO_RECEIVE_WP,
+        LOCAL_CHUTE_FULL,
+        SET_SLOW,
+        SET_STOP,
 
         //aus Dispatcher_CalibrationManager
         DATA_EXIST,

@@ -4,14 +4,14 @@
  *
  */
 
-#include "Logik.hpp"
-#include "I_CalibrationManager.hpp" // Erlaubt Zugriff auf load/save Methoden
+#include "logik.hpp"
+#include "calibrationManager/i_CalibrationManager.hpp" // Erlaubt Zugriff auf load/save Methoden
 #include <iostream>
 
 namespace logik {
 
-Logik::Logik(i_Dispatcher* dispatcher)
-    : m_wpManager(std::make_unique<WorkpieceManager>(this)),
+Logik::Logik(I_Dispatcher* dispatcher)
+    : m_wpManager(new WorkpieceManager(this)),
       m_dispatcher(dispatcher),
       m_calibManager(nullptr),
       m_speedFactor(1.0),

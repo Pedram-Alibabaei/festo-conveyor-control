@@ -10,7 +10,7 @@
 #include <map>
 #include <string>
 #include "shared/ipc_definitions.hpp"
-#include <shared/types.hpp>
+#include "shared/types.hpp"
 
 class i_Actuators;
 class i_Sensors;

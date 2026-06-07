@@ -19,7 +19,7 @@
 #include <map>
 
 // Eigene Interfaces und Typen
-#include "I_Dispatcher.hpp"
+#include "i_Dispatcher.hpp"
 #include "shared/ipc_definitions.hpp"
 #include "shared/types.hpp"
 #include "hal/i_Actuators.hpp"
@@ -27,7 +27,7 @@
 #include "connectionManager/I_Connection.hpp"
 #include "timer/i_Timer.hpp"
 #include "logik/i_logik.hpp"
-#include "calibrationManager/I_CalibrationManager.hpp" // Sicherstellen, dass das geladen wird
+#include "calibrationManager/i_CalibrationManager.hpp" // Sicherstellen, dass das geladen wird
 
 class Dispatcher : public I_Dispatcher {
 private:
@@ -46,16 +46,16 @@ private:
     i_Actuators* m_actuators;
     i_Sensors* m_sensors;
     i_Connection* m_connection;          // KORRIGIERT: Eigenes Handle fürs Netzwerk
-    i_CalibrationManager* m_calibrationManager;   // KORRIGIERT: Korrekter Typ für Kalibrierungs-Dateien
+    I_CalibrationManager* m_calibrationManager;   // KORRIGIERT: Korrekter Typ für Kalibrierungs-Dateien
     i_Timer* m_timer;
     i_Logik* m_logik;
 
     // Temporäre Variablen im Dispatcher für die Live-Messung
     // Lokale Zwischenlage für den Einlernvorgang im Dispatcher
     static CalibrationData s_incomingServiceData;
-    static uint16_t s_liveEmptyBelt = 0;
-    static uint16_t s_liveFlatCenter = 0;
-    static uint32_t s_liveMinSamples = 0;
+    static uint16_t s_liveEmptyBelt;
+    static uint16_t s_liveFlatCenter;
+    static uint32_t s_liveMinSamples;
 
     // ========================================================================
     // 2. Private Event-Handler & Hilfsmethoden
@@ -67,6 +67,7 @@ private:
     void handleConnectionPulse(uint32_t payload);
     void handleHalEStopPulse(uint32_t payload);
     void handlePartnerEStopPulse(uint32_t payload);
+    void handleCalibrationPulse(uint32_t payload);
 
 public:
     Dispatcher();
@@ -79,10 +80,8 @@ public:
     // ========================================================================
     // KALIBRIERUNGS-SCHNITTSTELLE (Aus Interface implementiert)
     // ========================================================================
-    void saveCompleteCalibrationMap(const std::map<std::string, int>& calibData) override;
-
-
-
+    void sendCalibratedDataToStorage(const CalibrationData& data) override;
+    void forwardCalibrationToHal(std::uint16_t emptyBelt, std::uint16_t flatCenter, std::uint32_t minSamples) override;
 
     // ========================================================================
     // Eigene Getter (Wichtig für die main.cpp)
@@ -98,7 +97,7 @@ public:
     // ========================================================================
     void setActuators(i_Actuators* actuators) override { m_actuators = actuators; }
     void setSensor(i_Sensors* sensor) override { m_sensors = sensor; }
-    void setCalibrationManager(i_CalibrationManager* calib) { m_calibrationManager = calib; }
+    void setCalibrationManager(I_CalibrationManager* calib) { m_calibrationManager = calib; }
     void setConnectionManager(i_Connection* connection) override { m_connection = connection; }
     void setTimer(i_Timer* timer) override { m_timer = timer; }
     void setLogik(i_Logik* logik) override { m_logik = logik; }
