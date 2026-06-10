@@ -13,7 +13,7 @@
 #ifndef CALIBRATION_MANAGER_HPP
 #define CALIBRATION_MANAGER_HPP
 
-#include "i_CalibrationManager.hpp"
+#include "I_CalibrationManager.hpp"
 #include <string>
 
 class CalibrationManager : public I_CalibrationManager {

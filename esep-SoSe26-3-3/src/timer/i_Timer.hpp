@@ -27,11 +27,6 @@ public:
  virtual void startHeartbeatTimer(int ms) = 0;
  virtual void stopHeartbeatTimer() = 0;
 
- // ========================================================================
- //
- // ========================================================================
- virtual void startSorterTimer(int ms) = 0;
- virtual void stopSorterTimer() = 0;
  /**
   * @brief Stoppt alle laufenden Timer sofort.
   */

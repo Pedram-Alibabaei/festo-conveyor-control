@@ -16,6 +16,8 @@
 #include "shared/types.hpp"
 #include <cstdint>
 
+class I_CalibrationManager;
+
 class i_Logik {
 public:
     virtual ~i_Logik() = default;
@@ -27,6 +29,7 @@ public:
      */
     virtual void init(AnlagenPosition pos) = 0;
 
+    virtual void setCalibrationManager(I_CalibrationManager* calibManager)=0;
     /**
      * @brief Nimmt ein Ereignis von der HAL oder dem Framework entgegen und triggert die Haupt-FSM.
      * @param e Das aufgetretene Ereignis (z.B. logik::Event::HEIGHT_BLOCKED).

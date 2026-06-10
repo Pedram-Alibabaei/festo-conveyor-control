@@ -1,13 +1,14 @@
 /**
  * @file main.cpp
  * @brief Haupteinstiegspunkt der Festo Anlage mit Thread-sicherer Kalibrierung.
+ *
+ * SoSe2026 Team 3.3
  */
 
 #include <iostream>
 #include <cstdlib>
 #include <sys/neutrino.h>
-#include <thread> // NEU: Für den Dispatcher-Thread
-#include <chrono>
+#include <thread>
 
 #include "dispatcher/dispatcher.hpp"
 #include "shared/ipc_definitions.hpp"
@@ -15,14 +16,17 @@
 #include "hal/hal_actuators.hpp"
 #include "shared/types.hpp"
 #include "connectionManager/ConnectionManager.hpp"
-#include "calibrationManager/calibrationManager.hpp"
-#include "calibrationManager/i_CalibrationManager.hpp"
+#include "calibrationManager/CalibrationManager.hpp"
+#include "calibrationManager/I_CalibrationManager.hpp"
 #include "logik/logik.hpp"
 #include "timer/timer.hpp"
 
 int main(int argc, char *argv[]) {
 
-    AnlagenPosition pos = AnlagenPosition::VORN_ANLAGE_1;
+    // ====================================================================
+    // SCHRITT 1: ANLAGENPOSITION AUS DEN STARTARGUMENTEN ERMITTELN
+    // ====================================================================
+    AnlagenPosition pos = AnlagenPosition::VORN_ANLAGE_1; // Standardwert
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-s") {
@@ -32,17 +36,25 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    // QNX I/O Berechtigungen für den Thread anfordern (Zwingend für HAL-Zugriff)
     if (ThreadCtl(_NTO_TCTL_IO, 0) == -1) {
+        std::cerr << "[Main] CRITICAL: ThreadCtl fehlgeschlagen. Keine I/O Rechte!" << std::endl;
         return EXIT_FAILURE;
     }
 
     try {
-        // 1. Dispatcher erzeugen und initialisieren
+        std::cout << "[System] Starte System-Initialisierung..." << std::endl;
+
+        // ====================================================================
+        // SCHRITT 2: DISPATCHER ERZEUGEN UND INITIALISIEREN
+        // ====================================================================
         Dispatcher dispatcher;
         dispatcher.init(pos);
         int dis_coid = dispatcher.getMyLocalCoid();
 
-        // 2. Alle anderen Komponenten erzeugen
+        // ====================================================================
+        // SCHRITT 3: HARDWARE- UND SUB-KOMPONENTEN ERZEUGEN
+        // ====================================================================
         ConnectionManager c_manager;
         c_manager.init(dis_coid, pos);
 
@@ -50,60 +62,61 @@ int main(int argc, char *argv[]) {
         hal::HalActuators actuators;
         sensors.init(dis_coid);
 
+        // Sicherheitscheck beim Booten: Steht die Anlage im Not-Aus?
         if (sensors.isEstopPressed()) {
-            std::cerr << "ACHTUNG: E-Stop ist gedrueckt! Bitte entriegeln." << std::endl;
+            std::cerr << "ACHTUNG: E-Stop ist gedrueckt! Bitte entriegeln und System neu starten." << std::endl;
             return EXIT_FAILURE;
         }
 
         CalibrationManager calib_manager;
-        logik::Logik logik_fsm(&dispatcher);
+
+        // ====================================================================
+        // SCHRITT 4: LOGIK & TIMER INSTANZIIEREN (DEPENDENCY INJECTION)
+        // ====================================================================
+        logik::Logik logik(&dispatcher); // Übergibt den Zeiger auf das Kommunikations-Interface
+
+        // KORREKTUR: Pointer-Adresse von calib_manager übergeben & Dopplung entfernt
+        logik.setCalibrationManager(&calib_manager);
+        logik.init(pos); // Konfiguriert Rolle (Master/Slave) und Schieberegister
 
         Timer timer;
-        timer.init(dis_coid);
+        timer.init(dis_coid); // Registriert die OS-Timer an der Dispatcher-Coid
 
-        // 3. Dependency Injection
+        // ====================================================================
+        // SCHRITT 5: DISPATCHER-REAKTOR KOPPELN (ZWEITE DIRECTION INJECTION)
+        // ====================================================================
         dispatcher.setActuators(&actuators);
         dispatcher.setConnectionManager(&c_manager);
         dispatcher.setSensor(&sensors);
         dispatcher.setTimer(&timer);
-        dispatcher.setLogik(&logik_fsm);
+        dispatcher.setLogik(&logik);
         dispatcher.setCalibrationManager(&calib_manager);
-        logik_fsm.setCalibrationManager(&calib_manager);
-        calib_manager.setLogikContext(&logik_fsm);
-
-        // 2. Logik initialisieren
-        logik_fsm.init(pos);
 
         // ====================================================================
-        // SCHRITT 4: DISPATCHER IN EINEM THREAD STARTEN (Der Empfänger steht bereit!)
+        // SCHRITT 6: DISPATCHER IN EINEM SEPARATEN THREAD STARTEN
         // ====================================================================
         std::cout << "[System] Starte Dispatcher-Reaktor-Thread..." << std::endl;
         std::thread dispatcherThread(&Dispatcher::run, &dispatcher);
 
-        // Kurze Pause, damit der Thread sicher bei MsgReceive() angekommen ist
+        // Dem Thread kurz Zeit geben, um die native QNX MsgReceive-Schleife zu betreten
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
         // ====================================================================
-        // SCHRITT 5: JETZT DIE KALIBRIERUNG SENDEN (Absolut sicher)
+        // SCHRITT 7: CHECK DER KALIBRIERUNG & SYSTEM-START
         // ====================================================================
-        std::cout << "[System] Pruefe persistenten Speicher auf Kalibrierungsdatei..." << std::endl;
+        // Prüft, ob Datei da ist, lädt Daten und triggert DATA_EXIST / DATA_NOT_EXIST
+        logik.checkCalibrationFile();
 
-        if (!calib_manager.fileExists()) {
-            logik_fsm.processEvent(logik::Event::DATA_NOT_EXIST);
-        }
-        else {
-            std::cout << "[System] Kalibrierung gefunden. Lade und verteile Werte..." << std::endl;
-            logik_fsm.loadCalibrationData();
-        }
+        // Erst NACH dem Kalibrierungs-Setup starten wir die zyklischen Herzschläge,
+        // damit eintreffende Ticks keine uninitialisierten Zeitwerte überholen!
+        timer.startHeartbeatTimer(50); // 50ms Netzwerk-Watchdog
+        timer.startBeltTimer(10);      // 10ms Schieberegister-Takt
 
-        // 6. Erst NACH der Kalibrierung die Timer starten, damit Ticks nicht die Kalibrierung überholen
-        timer.startHeartbeatTimer(50);
-        timer.startBeltTimer(10);
+        std::cout << "[System] System erfolgreich hochgefahren. Bereit fuer Laborbetrieb." << std::endl;
 
         // ====================================================================
-        // SCHRITT 7: AUF DAS ENDE DES DISPATCHERS WARTEN
+        // SCHRITT 8: AUF DAS ENDE DES DISPATCHERS WARTEN (BLOCKIEREN DER MAIN)
         // ====================================================================
-        // Da die main() sonst sofort zu Ende wäre, "fetten" wir uns an den Thread
         if (dispatcherThread.joinable()) {
             dispatcherThread.join();
         }
@@ -113,5 +126,6 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
+    std::cout << "[System] Anwendung sauber beendet." << std::endl;
     return EXIT_SUCCESS;
 }

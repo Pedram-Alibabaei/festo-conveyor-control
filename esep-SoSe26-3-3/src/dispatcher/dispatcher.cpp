@@ -6,8 +6,9 @@
 #include "dispatcher.hpp"
 #include "shared/ipc_definitions.hpp"
 #include "shared/logikEvent.hpp"
-#include "logik/i_logik.hpp"
+#include "logik/i_Logik.hpp"
 #include "logik/logik.hpp"
+#include "calibrationManager/i_CalibrationManager.hpp"
 #include <iostream>
 #include <cerrno>
 #include <cstring>
@@ -149,10 +150,6 @@ void Dispatcher::handlePulse(const struct _pulse& pulse) {
             }
             break;
 
-        case ipc::SORTER_TIMER_TICK:
-            m_logik->processEvent(logik::Event::EJECTOR_CLEARED);
-            break;
-
         // ====================================================================
         // NETZWERK BASIS
         // ====================================================================
@@ -237,15 +234,13 @@ void Dispatcher::handleHalPulse(uint32_t payload) {
         if (sensor_state == ipc::State::BLOCKED) {
             m_logik->processEvent(logik::Event::HEIGHT_BLOCKED);
         }
-        else if (sensor_state == ipc::State::CLEARED) {
-            m_logik->processEvent(logik::Event::HEIGHT_CLEARED);
-        }
+        //else if (sensor_state == ipc::State::CLEARED) {
+        //    m_logik->processEvent(logik::Event::HEIGHT_CLEARED);
         else if (sensor_state == ipc::State::HIGH_ERROR) {
             m_logik->processEvent(logik::Event::HEIGHT_ERROR);
-        }
-        else {
-            m_logik->workpieceTypeFromHS(static_cast<WpType>(sensor_state));
-        }
+        }else {
+        	m_logik->workpieceTypeFromHS(static_cast<WpType>(sensor_state));
+		}
     }
     else if (sensor_id == ipc::SENSOR_METAL) {
         m_logik->processEvent(sensor_state == ipc::State::BLOCKED ? logik::Event::METAL_DETECTED : logik::Event::METAL_CLEARED);
@@ -290,7 +285,7 @@ void Dispatcher::handleNetworkPulse(uint32_t payload) {
 // ============================================================================
 // DURCHREICHE-METHODEN FÜR DAS NETZWERK
 // ============================================================================
-void Dispatcher::workpieceInfo(int id, WpType type) {
+void Dispatcher::sendWorkpieceInfo(int id, WpType type) {
     if (m_partnerCoid != -1) {
         uint32_t payload = (static_cast<uint32_t>(id) << 16) | static_cast<uint32_t>(type);
         MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::WP_INFO, payload);
@@ -390,18 +385,6 @@ void Dispatcher::handleCalibrationPulse(uint32_t payload) {
     }
 }
 
-// ============================================================================
-// KALIBRIERUNGS-SCHNITTSTELLE (KORRIGIERT)
-// ============================================================================
-void Dispatcher::sendCalibratedDataToStorage(const CalibrationData& data) {
-    if (!m_calibrationManager) return;
-
-    m_calibrationManager->saveCalibrationData(data);
-
-    std::cout << "[Dispatcher] Kalibrierungsdaten an Manager uebergeben und gespeichert." << std::endl;
-}
-
-
 /**
  * @brief Prueft über den CalibrationManager, ob die XML/Text-Datei mit den
  * gelernten Ticks und ADC-Fenstern auf der Festplatte existiert.
@@ -419,7 +402,6 @@ void Dispatcher::sendeChuteStats(bool isVoll) {
 
 
 void Dispatcher::forwardCalibrationToHal(std::uint16_t emptyBelt, std::uint16_t flatCenter, std::uint32_t minSamples) {
-    if (!m_sensors) return;
     m_sensors->updateCalibrationThresholds(static_cast<uint16_t>(ipc::CalibMode::EMPTY_BELT), emptyBelt);
     m_sensors->updateCalibrationThresholds(static_cast<uint16_t>(ipc::CalibMode::FLAT_WP), flatCenter);
     m_sensors->updateCalibrationThresholds(static_cast<uint16_t>(ipc::CalibMode::MIN_SAMPLES),

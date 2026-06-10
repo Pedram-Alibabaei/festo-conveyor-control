@@ -4,7 +4,7 @@
  *
  */
 
-#include "calibrationManager.hpp"
+#include "CalibrationManager.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>

@@ -32,12 +32,11 @@ public:
 
 
     // --- Sortiereinheit (GPIO 1) ---
-
-    /** @brief Öffnet die Weiche bzw. fährt den Auswerfer aus, um ein Werkstück zu sortieren. */
-    virtual void openJunction() = 0;
-
-    /** @brief Schließt die Weiche bzw. fährt den Auswerfer ein. */
-    virtual void closeJunction() = 0;
+    virtual bool isSwitch() = 0;
+    virtual void openSwitch()= 0;
+    virtual void closeSwitch()= 0;
+    virtual void pushEjector()= 0;
+    virtual void pullEjector()= 0;
 
 
     // --- Ampelsteuerung / Signalleuchten (GPIO 1) ---

@@ -19,7 +19,7 @@
 #include <map>
 
 // Eigene Interfaces und Typen
-#include "i_Dispatcher.hpp"
+#include "I_Dispatcher.hpp"
 #include "shared/ipc_definitions.hpp"
 #include "shared/types.hpp"
 #include "hal/i_Actuators.hpp"
@@ -27,7 +27,8 @@
 #include "connectionManager/I_Connection.hpp"
 #include "timer/i_Timer.hpp"
 #include "logik/i_logik.hpp"
-#include "calibrationManager/i_CalibrationManager.hpp" // Sicherstellen, dass das geladen wird
+
+class I_CalibrationManager;
 
 class Dispatcher : public I_Dispatcher {
 private:
@@ -46,7 +47,7 @@ private:
     i_Actuators* m_actuators;
     i_Sensors* m_sensors;
     i_Connection* m_connection;          // KORRIGIERT: Eigenes Handle fürs Netzwerk
-    I_CalibrationManager* m_calibrationManager;   // KORRIGIERT: Korrekter Typ für Kalibrierungs-Dateien
+    I_CalibrationManager* m_calibrationManager;
     i_Timer* m_timer;
     i_Logik* m_logik;
 
@@ -77,11 +78,8 @@ public:
     void run() override;
     void stop() override;
 
-    // ========================================================================
-    // KALIBRIERUNGS-SCHNITTSTELLE (Aus Interface implementiert)
-    // ========================================================================
-    void sendCalibratedDataToStorage(const CalibrationData& data) override;
-    void forwardCalibrationToHal(std::uint16_t emptyBelt, std::uint16_t flatCenter, std::uint32_t minSamples) override;
+
+
 
     // ========================================================================
     // Eigene Getter (Wichtig für die main.cpp)
@@ -97,7 +95,7 @@ public:
     // ========================================================================
     void setActuators(i_Actuators* actuators) override { m_actuators = actuators; }
     void setSensor(i_Sensors* sensor) override { m_sensors = sensor; }
-    void setCalibrationManager(I_CalibrationManager* calib) { m_calibrationManager = calib; }
+    void setCalibrationManager(I_CalibrationManager* calibrationManager) { m_calibrationManager = calibrationManager; }
     void setConnectionManager(i_Connection* connection) override { m_connection = connection; }
     void setTimer(i_Timer* timer) override { m_timer = timer; }
     void setLogik(i_Logik* logik) override { m_logik = logik; }
@@ -105,7 +103,8 @@ public:
     // ========================================================================
     // DURCHREICHE-METHODEN (Fassade aus Netzwerk-Interface)
     // ========================================================================
-    void workpieceInfo(int id, WpType type) override;
+    void forwardCalibrationToHal(std::uint16_t emptyBelt, std::uint16_t flatCenter, std::uint32_t minSamples) override;
+    void sendWorkpieceInfo(int id, WpType type) override;
     void RequestToReceiveWp() override;
     void readyToReceiveWp() override;
     void updateWpListe(WpType type) override;
@@ -128,8 +127,11 @@ public:
     void driveStop() override { if (m_actuators) m_actuators->driveStop(); }
 
     // Sortiereinheit
-    void openJunction() override { if (m_actuators) m_actuators->openJunction(); }
-    void closeJunction() override { if (m_actuators) m_actuators->closeJunction(); }
+    bool isSwitch()  override { return m_actuators->isSwitch(); }
+    void openSwitch() override { if (m_actuators) m_actuators->openSwitch(); };
+    void closeSwitch() override { if (m_actuators) m_actuators->closeSwitch(); }
+    void pushEjector() override { if (m_actuators) m_actuators->pushEjector(); }
+    void pullEjector() override { if (m_actuators) m_actuators->pullEjector(); }
 
     // Ampelsteuerung
     void lightGreenOn() override { if (m_actuators) m_actuators->lightGreenOn(); }

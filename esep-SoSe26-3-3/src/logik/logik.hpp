@@ -6,17 +6,20 @@
  * mit dem zeittaktbasierten Schieberegister (WorkpieceManager). Sie implementiert das
  * Interface i_Logik für die netzwerkweite Kommunikation.
  *
+ * SoSe2026 Team 3.3
  */
 
 #ifndef LOGIK_HPP
 #define LOGIK_HPP
 
-#include "i_logik.hpp"
+#include "i_Logik.hpp"
 #include "workpieceManager/WorkpieceManager.hpp"
+#include "eventManager/eventManager.hpp"
+#include "errorHandler/errorHandler.hpp" // NEU: Header für den zentralen ErrorHandler inkludieren
 #include "dispatcher/i_Dispatcher.hpp"
-#include "calibrationManager/i_CalibrationManager.hpp"
-#include "errorHandler/errorHandler.hpp"
 #include <memory>
+
+class I_CalibrationManager; // Vorwärtsdeklaration des CalibrationManager-Interfaces
 
 namespace logik {
 
@@ -24,18 +27,18 @@ namespace logik {
     private:
         // --- Infrastruktur-Komponenten ---
         std::unique_ptr<WorkpieceManager> m_wpManager; ///< Das zeittaktbasierte Schieberegister (Digitaler Zwilling)
+        std::unique_ptr<ErrorHandler> m_errorHandler;   ///< NEU: Der zentrale ErrorHandler (Wächter über Timeouts & Eskalationen)
         I_Dispatcher* m_dispatcher;                    ///< Zeiger auf den Dispatcher für HW-Ausgaben und Netzwerknachrichten
         I_CalibrationManager* m_calibManager;          ///< Zeiger auf den CalibrationManager für Datei-Operationen
-        ErrorHandler m_errorHandler;                   ///< Zentraler Fehler- und Warnungszustand
+        EventManager* m_eventManager;                  ///< Zeiger auf den EventManager (FSM-Schnittstelle)
 
         // --- Kalibrierungsdaten (Zentral in der Logik verwaltet) ---
         CalibrationData m_calibData;                   ///< Geladene Zeit-Kalibrierungsdaten (aus types.hpp)
-        double m_speedFactor;                          ///< Berechneter Proportionalitätsfaktor (Slow vs. Normal)
 
         // --- Interne Zustandsvariablen ---
         AnlagenPosition m_anlagenPosition;             ///< Die dieser Instanz zugewiesene physische Position (Anlage 1 oder 2)
         bool m_isPartnerChuteFull;                     ///< Statusflag für die Rutsche der jeweils anderen Teilanlage
-        bool m_isMotorSlow;                            ///< KORREKTUR: Als Member-Variable statt global deklariert
+        bool m_isMotorSlow;                            ///< Als Member-Variable statt global deklariert
 
     public:
         /**
@@ -57,7 +60,12 @@ namespace logik {
          * @brief Setzt den Zeiger auf die Dateiverwaltungskomponente der Kalibrierung.
          * @param calibManager Zeiger auf das I_CalibrationManager-Interface.
          */
-        void setCalibrationManager(I_CalibrationManager* calibManager) { m_calibManager = calibManager; }
+        void setCalibrationManager(I_CalibrationManager* calibManager) override{ m_calibManager = calibManager; }
+
+        /**
+         * @brief Registriert den internen EventManager in der Logik-Schaltzentrale.
+         */
+        void setEventManager(EventManager* eventManager) { m_eventManager = eventManager; }
 
         // ========================================================================
         // IMPLEMENTIERUNG DER I_LOGIK INTERFACE-METHODEN
@@ -65,50 +73,37 @@ namespace logik {
 
         /**
          * @brief Initialisiert die Logik-Komponente mit der physischen Position der Anlage.
-         * @details Weist die Rolle (Master/Slave) dynamisch zu und konfiguriert den WorkpieceManager.
-         * @param pos Die Position im Gesamtsystem (VORN_ANLAGE_1 oder HINTEN_ANLAGE_2).
          */
         void init(AnlagenPosition pos) override;
 
         /**
          * @brief Nimmt ein Ereignis von der HAL oder dem Framework entgegen und triggert die Haupt-FSM.
-         * @param e Das aufgetretene Ereignis (z.B. logik::Event::HEIGHT_BLOCKED).
          */
         void processEvent(logik::Event e) override;
-        void processFilteredEvent(logik::Event e) { processEvent(e); }
 
         /**
          * @brief Übergibt den von der HAL (Analog-Auswertung) ermittelten Typ eines Werkstücks.
-         * @details Reicht die Daten direkt an das Schieberegister weiter, um das Transit-Teil zu typisieren.
-         * @param type Der erkannte physische Werkstücktyp.
          */
         void workpieceTypeFromHS(WpType type) override;
 
         /**
          * @brief Verarbeitet Werkstück-Informationen (ID und Typ), die via QNX-Netzwerk empfangen wurden.
-         * @details Wird exklusiv auf Anlage 2 aufgerufen, um ein registriertes Teil am Einlauf zu erzeugen.
-         * @param id Die von Anlage 1 vergebene, eindeutige Werkstück-ID.
-         * @param type Der bereits auf Anlage 1 vor-analysierte Werkstücktyp.
          */
         void workpieceInfo(int id, WpType type) override;
 
         /**
          * @brief Aktualisiert das Rezept der internen Werkstück-Liste nach einer Manipulation.
-         * @details Wird von Anlage 2 über das Netzwerk aufgerufen, wenn dort eine Vertauschung erkannt wurde.
-         * Zwingt das Rezept von Anlage 1 absolut zurück auf den fehlerhaften Soll-Typen.
-         * @param type Der Typ des Werkstücks, auf den die Rezeptur synchronisiert werden muss.
          */
         void updateWpListe(WpType type) override;
 
         /**
          * @brief Der zentrale 10ms-Herzschlag des Bandes für interne Wegstrecken-Timer und Watchdogs.
-         * @details Ruft stur in jeder Periode m_wpManager->takt() auf.
+         * @details Ruft stur in jeder Periode m_wpManager->takt() sowie m_errorHandler->takt() auf.
          */
         void takt() override;
 
         /**
          * @brief Aktualisiert den Bereitschafts- bzw. Füllstandstatus der Rutsche der Partneranlage.
-         * @param isFull true, wenn die Rutsche blockiert/voll ist, andernfalls false.
          */
         void setPartnerChuteStatus(bool isFull) override;
 
@@ -119,7 +114,6 @@ namespace logik {
 
         /**
          * @brief Übergibt die im Service-Modus live gemessenen ADC-Kalibrierungswerte.
-         * @note Harmonisiert mit dem Interface-Namen i_Logik.
          */
         void setLiveAdcCalibration(uint16_t emptyBelt, uint16_t flatCenter, uint32_t minSamples) override;
 
@@ -129,7 +123,6 @@ namespace logik {
 
         /**
          * @brief Triggert die mathematische Hochrechnung der Slow-Grenzwerte manuell.
-         * @note Nützlich, wenn im Service-Modus neue Normal-Werte eingelernt wurden.
          */
         void recalculateSlowLimits();
 
@@ -142,14 +135,37 @@ namespace logik {
         // GETTER-METHODEN FÜR COMPONENT-SHARING
         // ========================================================================
 
-        /**
-         * @brief Liefert den Zeiger auf das zugewiesene Dispatcher-Interface.
-         * @return Zeiger auf das i_Dispatcher-Objekt.
-         */
         I_Dispatcher* getDispatcher() const { return m_dispatcher; }
-        ErrorHandler* getErrorHandler() { return &m_errorHandler; }
 
-        const CalibrationData& getCalibData() const { return m_calibData; }
+        CalibrationData& getCalibrationData() { return m_calibData; }
+
+        // ========================================================================
+        // GETTER FÜR DIE GESCHWISTER-KOMPONENTEN (NEU/ERWEITERT)
+        // ========================================================================
+
+        /**
+         * @brief Gibt einen unbesessenen Zeiger auf das Schieberegister heraus.
+         * @return Zeiger auf den WorkpieceManager.
+         */
+        WorkpieceManager* getWorkpieceManager() const { return m_wpManager.get(); }
+
+        /**
+         * @brief Gibt einen unbesessenen Zeiger auf den EventManager heraus.
+         * @return Zeiger auf den EventManager.
+         */
+        EventManager* getEventManager() const { return m_eventManager; }
+
+        /**
+         * @brief Gibt einen unbesessenen Zeiger auf den zentralen ErrorHandler heraus.
+         * @note KORREKTUR: Ermöglicht dem WorkpieceManager das Absetzen von handleEscalation().
+         * @return Zeiger auf den ErrorHandler.
+         */
+        ErrorHandler* getErrorHandler() const { return m_errorHandler.get(); }
+
+        /**
+        * @brief Prueft beim Systemstart, ob die Kalibrierungsdatei existiert.
+        */
+        void checkCalibrationFile();
     };
 
 } // namespace logik

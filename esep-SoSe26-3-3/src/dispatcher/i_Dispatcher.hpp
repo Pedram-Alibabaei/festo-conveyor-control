@@ -10,7 +10,7 @@
 #include <map>
 #include <string>
 #include "shared/ipc_definitions.hpp"
-#include "shared/types.hpp"
+#include <shared/types.hpp>
 
 class i_Actuators;
 class i_Sensors;
@@ -43,13 +43,6 @@ public:
     // ========================================================================
 
     /**
-     * @brief Sendet die im Service-Modus fertig eingelernten Kalibrierungsdaten zum Speichern.
-     * @note Wird aufgerufen, sobald der Service-Modus erfolgreich abgeschlossen und gespeichert wird.
-     * @param data Das aktualisierte Struct mit allen eingelernten Ticks und ADC-Werten.
-     */
-    virtual void sendCalibratedDataToStorage(const CalibrationData& data) = 0;
-
-    /**
      * @brief Leitet die geladenen ADC-Schwellenwerte und Mindestsamples an die HAL (ProfileAnalyzer) weiter.
      * @note Wird beim Systemstart aufgerufen, sobald die Konfigurationsdatei geladen wurde.
      * @param emptyBelt Der ADC-Wert für das leere Band.
@@ -69,7 +62,7 @@ public:
     // ========================================================================
     // (Weiterleitung an andere Anlage / Netzwerk )
     // ========================================================================
-    virtual void workpieceInfo(int id, WpType type) = 0;
+    virtual void sendWorkpieceInfo(int id, WpType type) = 0;
     virtual void RequestToReceiveWp() = 0;
     virtual void readyToReceiveWp() = 0;
     virtual void updateWpListe(WpType type) = 0;
@@ -89,6 +82,8 @@ public:
 
     virtual bool requestFileExists()= 0;
 
+
+
  // ========================================================================
  // (Weiterleitung an HAL - Aktorik)
  // ========================================================================
@@ -101,8 +96,11 @@ public:
     virtual void driveStop() = 0;
 
     // Sortiereinheit
-    virtual void openJunction() = 0;
-    virtual void closeJunction() = 0;
+    virtual bool isSwitch() = 0;
+    virtual void openSwitch()= 0;
+    virtual void closeSwitch()= 0;
+    virtual void pushEjector()= 0;
+    virtual void pullEjector()= 0;
 
     // Ampelsteuerung (Gruen, Gelb, Rot)
     virtual void lightGreenOn() = 0;

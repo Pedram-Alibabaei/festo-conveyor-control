@@ -57,7 +57,8 @@ enum class WpLocation : std::uint16_t {
     TRANSIT_TO_CHUTE   = _PULSE_CODE_MINAVAIL + 65, ///< Werkstück rutscht gerade die Rutsche runter
     AT_CHUTE           = _PULSE_CODE_MINAVAIL + 66, ///< Werkstück liegt physisch am Ende der Rutsche
     TRANSIT_TO_END     = _PULSE_CODE_MINAVAIL + 67, ///< Fahrt von der Weiche zum Bandende
-    AT_END             = _PULSE_CODE_MINAVAIL + 67  ///< Am Auslauf (Bereit zur Übergabe an Anlage 2)
+    AT_END             = _PULSE_CODE_MINAVAIL + 68, ///< Am Auslauf (Bereit zur Übergabe an Anlage 2)
+    UNKNOWN_LOCATION   = _PULSE_CODE_MINAVAIL + 69
 };
 
 /**

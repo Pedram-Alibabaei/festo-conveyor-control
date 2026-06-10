@@ -1,85 +1,110 @@
 /**
  * @file eventManager.hpp
  * @brief Zeitliche Filterung, Entprellung und Vorverarbeitung von Hardware-Signalen.
+ *
+ * SoSe2026 Team 3.3
  */
 
 #ifndef EVENT_MANAGER_HPP
 #define EVENT_MANAGER_HPP
 
-#include "logik/i_Logik.hpp" // Enthält das globale logik::Event-Enum
+#include "shared/types.hpp"
+#include "shared/logikEvent.hpp"
 #include <chrono>
 
 namespace logik {
 
-    class Logik;
+ class Logik;
+ class WorkpieceManager;
+ class ErrorHandler;
+ class Fsm;
 
-    class EventManager {
-    private:
-        Logik* m_context; ///< Zeiger auf die Haupt-Logik (der Context) zur Event-Weiterleitung
+ class EventManager {
+ private:
+  Logik* m_context; ///< Zeiger auf die übergeordnete Schaltzentrale (Nicht-besitzend)
 
-        // ====================================================================
-        // ZEITSTRECKEN-FILTER (RUTSCHEN-ÜBERWACHUNG)
-        // ====================================================================
-        std::chrono::steady_clock::time_point m_chuteBlockedStartTime;
-        bool m_isChuteTimerRunning;
-        const std::chrono::milliseconds CHUTE_FILTER_TIME; ///< Standard: 2000ms (2 Sekunden)
+  // --- KORREKTUR: Raw-Pointer statt unique_ptr (Ownership liegt bei der Logik-Klasse!) ---
+  WorkpieceManager* m_wpManager; ///< Adresse des Schieberegisters aus dem Logik-Kontext
+  ErrorHandler* m_errorHandler; ///< Adresse des ErrorHandlers aus dem Logik-Kontext
 
-        // ====================================================================
-        // TASTER-ZEITMESSUNG (START-TASTER: KURZ VS. LANG)
-        // ====================================================================
-        std::chrono::steady_clock::time_point m_startPressedStartTime;
-        bool m_isStartTimerRunning;
-        const std::chrono::milliseconds START_LONG_THRESHOLD; ///< Standard: 3000ms (3 Sekunden)
+  // Die FSM darf ein unique_ptr bleiben, wenn der EventManager sie exklusiv besitzt
+  // (Alternativ auch hier Raw-Pointer, falls die Logik die FSM hält)
+  // std::unique_ptr<Fsm> m_fsm;
 
-        // ====================================================================
-        // NEU: EINLAUF-ÜBERWACHUNG (ENTRY BLOCKED TIMEOUT)
-        // ====================================================================
-        std::chrono::steady_clock::time_point m_entryBlockedStartTime;
-        bool m_isEntryTimerRunning;
-        const std::chrono::milliseconds ENTRY_FILTER_TIME; ///< Standard: 2000ms (2 Sekunden)
+  // --- Motor- und Positions-Flags ---
+  bool m_isMotorOn;
+  bool m_isMotorSlow;
+  AnlagenPosition m_anlagenPosition;
 
-        // ====================================================================
-        // NEU: BANDENDE-BLOCKADE FLAG
-        // ====================================================================
-        bool m_isEndBlocked; ///< true, wenn ein Teil am Bandende steht und den Motor blockiert
+  // E-Stop Zustandssicherung
+  bool m_isEStopActive;   ///< true, wenn der Not-Aus gedrueckt ist
+  bool m_isErrorActive;   ///< true, wenn ein Anlagenfehler (z.B. Rutsche voll) aktiv ist
+  bool m_isEntryFrei;     ///< true, wenn der Bereich zwischen Einlauf und Hoehenmessung frei ist
 
-    public:
-        /**
-         * @brief Konstruktor.
-         * @param context Zeiger auf die übergeordnete Logik-Komponente.
-         */
-        explicit EventManager(Logik* context);
+  bool m_isChuteFull;         ///< true, wenn die eigene Rutsche voll ist (> 1 Sek blockiert)
+  bool m_isPartnerChuteFull;  ///< true, wenn die Rutsche der Partner-Station voll ist (vom Netzwerk)
 
-        /**
-         * @brief Standard-Destruktor.
-         */
-        ~EventManager() = default;
+  // --- Taster-Zeitmessung ---
+  std::chrono::steady_clock::time_point m_startPressedStartTime;
+  const std::chrono::milliseconds START_LONG_THRESHOLD;
 
-        /**
-         * @brief Nimmt die rohen, ungefilterten Events direkt vom Dispatcher entgegen.
-         * HIER wird nun auch das END_BLOCKED Flag geprüft, um Motorstarts zu blockieren.
-         * @param rawEvent Das rohe Event von den HAL-Sensoren.
-         */
-        void handleRawEvent(logik::Event rawEvent);
+  // --- Bandende-Schutz ---
+  bool m_isEndBlocked;
 
-        /**
-         * @brief Zyklische Update-Methode (muss im System-Timer-Takt, z.B. alle 10ms, aufgerufen werden).
-         * Überprüft Rutschen-Timeout und das neue Einlauf-Timeout.
-         */
-        void update();
+ private:
+  void routeToErrorHandler(logik::Event e);
+  void routeToWorkpieceManager(logik::Event e);
+  void routeToFsm(logik::Event e);
 
-        /**
-         * @brief Setzt alle internen Filter, Zeitstempel und Flags zurück.
-         */
-        void resetFilters();
+ public:
+  /**
+   * @brief Konstruktor.
+   * @param context Zeiger auf die uebegeordnete Logik.
+   */
+  explicit EventManager(Logik* context);
+  ~EventManager() = default;
 
-        /**
-         * @brief Getter, um abzufragen, ob das Bandende aktuell blockiert ist.
-         * Kann von der Hauptlogik oder den States direkt genutzt werden.
-         * @return true, wenn das Bandende belegt ist.
-         */
-        bool isEndBlocked() const { return m_isEndBlocked; }
-    };
+  // Verhindert Kopieren
+  EventManager(const EventManager&) = delete;
+  EventManager& operator=(const EventManager&) = delete;
+
+  /**
+   * @brief Initialisiert den EventManager und verknuepft die Geschwisterkomponenten live.
+   */
+  void init(AnlagenPosition pos);
+
+  void handleEvent(logik::Event e);
+
+  /**
+   * @brief Deine exakte, geschützte Takt-Verarbeitung für den digitalen Zwilling.
+   */
+  void handleTakt();
+
+  // --- Getters und Setters ---
+  void setMotorOn(bool on) { m_isMotorOn = on; }
+  bool isMotorOn() const { return m_isMotorOn; }
+
+  void setMotorSlow(bool slow) { m_isMotorSlow = slow; }
+  bool isMotorSlow() const { return m_isMotorSlow; }
+
+  void setEndBlocked(bool blocked) { m_isEndBlocked = blocked; }
+  bool isEndBlocked() const { return m_isEndBlocked; }
+
+  void setEStopActive(bool active) { m_isEStopActive = active; }
+  bool isEStopActive() const { return m_isEStopActive; }
+
+  void setErrorActive(bool active) { m_isErrorActive = active; }
+  bool isErrorActive() const { return m_isErrorActive; }
+
+  void setEntryFrei(bool frei) { m_isEntryFrei = frei; }
+  bool isEntryFrei() const { return m_isEntryFrei; }
+
+  void setChuteFull(bool isFull) { m_isChuteFull = isFull; }
+  bool isChuteFull() const { return m_isChuteFull; }
+
+  void setPartnerChuteStatus(bool isFull);
+  bool isPartnerChuteFull() const { return m_isPartnerChuteFull; }
+ };
 
 } // namespace logik
 
