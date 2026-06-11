@@ -40,16 +40,17 @@ public:
     virtual void stop() = 0;
 
     // ========================================================================
-    // KALIBRIERUNGS-SCHNITTSTELLE (NEU - Map-Übertrag)
+    // KALIBRIERUNGS-SCHNITTSTELLE
     // ========================================================================
 
     /**
-     * @brief Übergibt die vollständige Map aller live eingelernten Kalibrierungsdaten
-     * an den CalibrationManager zum permanenten Speichern.
-     * @param calibData Die Map mit Key-Value-Paaren (z.B. {"CALIB_EMPTY_BELT", 3450})
+     * @brief Leitet die geladenen ADC-Schwellenwerte und Mindestsamples an die HAL (ProfileAnalyzer) weiter.
+     * @note Wird beim Systemstart aufgerufen, sobald die Konfigurationsdatei geladen wurde.
+     * @param emptyBelt Der ADC-Wert für das leere Band.
+     * @param flatCenter Der ADC-Wert für das flache Werkstück.
+     * @param minSamples Die Mindestanzahl an Samples für die Werkstücklänge.
      */
-    virtual void saveCompleteCalibrationMap(const std::map<std::string, int>& calibData) = 0;
-
+    virtual void forwardCalibrationToHal(std::uint16_t emptyBelt, std::uint16_t flatCenter, std::uint32_t minSamples) = 0;
     // ========================================================================
     // Dependency Injection (Setter)
     // ========================================================================
@@ -63,7 +64,7 @@ public:
     // ========================================================================
     // (Weiterleitung an andere Anlage / Netzwerk )
     // ========================================================================
-    virtual void workpieceInfo(int id, WpType type) = 0;
+    virtual void sendWorkpieceInfo(int id, WpType type) = 0;
     virtual void RequestToReceiveWp() = 0;
     virtual void readyToReceiveWp() = 0;
     virtual void updateWpListe(WpType type) = 0;
@@ -83,6 +84,8 @@ public:
 
     virtual bool requestFileExists()= 0;
 
+
+
  // ========================================================================
  // (Weiterleitung an HAL - Aktorik)
  // ========================================================================
@@ -95,8 +98,11 @@ public:
     virtual void driveStop() = 0;
 
     // Sortiereinheit
-    virtual void openJunction() = 0;
-    virtual void closeJunction() = 0;
+    virtual bool isSwitch() = 0;
+    virtual void openSwitch()= 0;
+    virtual void closeSwitch()= 0;
+    virtual void pushEjector()= 0;
+    virtual void pullEjector()= 0;
 
     // Ampelsteuerung (Gruen, Gelb, Rot)
     virtual void lightGreenOn() = 0;

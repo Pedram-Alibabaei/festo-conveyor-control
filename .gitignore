@@ -1,0 +1,9 @@
+# QNX/Eclipse generated build outputs
+**/build/
+*.o
+*.d
+
+# Local IDE/workspace metadata
+**/.settings/
+.metadata/
+.idea/

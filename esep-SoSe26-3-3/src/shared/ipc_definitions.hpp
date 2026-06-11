@@ -47,8 +47,8 @@ namespace ipc {
         HAL_INPUT                = _PULSE_CODE_MINAVAIL + 1,  // Kommt von der eigenen Sensorik (HAL)
         HAL_ESTOP                = _PULSE_CODE_MINAVAIL + 2,  // Not-Halt-Taster
         HAL_ADC_CALIBRATION      = _PULSE_CODE_MINAVAIL + 3,  // Rohwerte von der HAL während Messung
-        MANAGER_ADC_CALIBRATION  = _PULSE_CODE_MINAVAIL + 4,  // Geladene ADC-Werte vom CalibrationManager beim Start
-        MANAGER_TICK_CALIBRATION = _PULSE_CODE_MINAVAIL + 5,  // Geladene Ticks vom CalibrationManager beim Start
+        // MANAGER_ADC_CALIBRATION  = _PULSE_CODE_MINAVAIL + 4,  // Geladene ADC-Werte vom CalibrationManager beim Start
+        // MANAGER_TICK_CALIBRATION = _PULSE_CODE_MINAVAIL + 5,  // Geladene Ticks vom CalibrationManager beim Start
         CONNECTION_MSG           = _PULSE_CODE_MINAVAIL + 6,  // Interner Handshake (ConnectionManager gefunden)
         DISCONNECT               = _PULSE_CODE_MINAVAIL + 7,  // Not-Halt oder Verbindungsabbruch
 
@@ -57,7 +57,7 @@ namespace ipc {
         // ====================================================================
         BELT_TICK         = _PULSE_CODE_MINAVAIL + 10, // Band-Uhr für Werkstückverfolgung
         HEARTBEATTACKT    = _PULSE_CODE_MINAVAIL + 11, // Watchdog-Timer für Netzwerk
-        SORTER_TIMER_TICK = _PULSE_CODE_MINAVAIL + 12, // One-Shot Timer für die Weiche/Auswerfer
+        //SORTER_TIMER_TICK = _PULSE_CODE_MINAVAIL + 12, // One-Shot Timer für die Weiche/Auswerfer
 
         // ====================================================================
         // NETZWERK BASIS (20 - 29)
@@ -156,6 +156,11 @@ namespace ipc {
      */
     inline uint32_t encodeCalibPayload(uint16_t value, uint16_t mode) {
         return (static_cast<uint32_t>(value) << 16) | static_cast<uint32_t>(mode);
+    }
+
+    inline void decodeCalibPayload(uint32_t payload, uint16_t& value, uint16_t& mode) {
+        value = static_cast<uint16_t>(payload >> 16);
+        mode = static_cast<uint16_t>(payload & 0xFFFF);
     }
 
     /** @brief Wird vom HAL genutzt, um den Pulse zu bauen */

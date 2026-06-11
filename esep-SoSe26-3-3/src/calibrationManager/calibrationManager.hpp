@@ -1,86 +1,71 @@
 /**
  * @file CalibrationManager.hpp
- * @brief Konkrete Implementierung des Key-Value Kalibrierungs-Speichers.
+ * @brief Konkrete Implementierung des CalibrationManager für das QNX-Dateisystem.
+ *
+ * @details Diese Klasse liest die Kalibrierungsdaten (ADC-Werte und Band-Ticks)
+ * zeilenweise aus einer Textdatei aus und konvertiert diese in das typsichere
+ * CalibrationData-Struct. Nach dem Service-Modus schreibt sie die geänderten
+ * Werte formatiert zurück.
+ *
+ * Embedded Systems Engineering WiSe2025 Team 1.1
  */
 
 #ifndef CALIBRATION_MANAGER_HPP
 #define CALIBRATION_MANAGER_HPP
 
 #include "I_CalibrationManager.hpp"
-#include <map>
 #include <string>
 
-class CalibrationManager : public i_CalibrationManager {
+class CalibrationManager : public I_CalibrationManager {
 private:
-    // Der intern genutzte Pfad zur Kalibrierungsdatei (z.B. auf der SD-Karte)
-    std::string m_filepath;
-
-    // Der RAM-Speicher (Key-Value Tabelle) für alle ADC- und Zeit-Schwellen
-    std::map<std::string, int> m_data;
-
-    /**
-     * @brief Hilfsmethode zum Parsen einer einzelnen Zeile ("KEY=VALUE") aus der Textdatei.
-     */
-    bool parseLine(const std::string& line, std::string& outKey, int& outValue);
+    i_Logik* m_logik;                 ///< Zeiger auf den Logik-Kontext (Dependency Injection)
+    std::string m_filePath;           ///< Der absolute Speicherpfad zur Kalibrierungsdatei
 
 public:
     /**
-     * @brief Konstruktor. Setzt den Standardpfad, der für alle Datei-Operationen genutzt wird.
-     * @param defaultFilepath Der Pfad zur Datei im QNX-System.
+     * @brief Konstruktor.
+     * @details Initialisiert den Manager und setzt den Standard-Dateipfad für die Anlage fest.
+     * @param filePath Optionaler benutzerdefinierter Pfad, standardmaessig "festo_calibration.txt".
      */
-    CalibrationManager(const std::string& defaultFilepath = "/root/festo_calibration.txt");
+    CalibrationManager(const std::string& filePath = "festo_calibration.txt");
 
+    /**
+     * @brief Destruktor.
+     */
     ~CalibrationManager() override = default;
 
     // ========================================================================
-    // DATEI-OPERATIONEN (Aus dem Interface - Pfadunabhängig)
+    // IMPLEMENTIERUNG DER I_CALIBRATION_MANAGER SCHNITTSTELLE
     // ========================================================================
 
     /**
-     * @brief Lädt die Kalibrierungsdatei vom intern gesetzten Standardpfad.
+     * @brief Setzt den Zeiger auf die Logik-Komponente.
+     * @param logik Zeiger auf das i_Logik-Interface.
      */
-    void load() override;
+    void setLogikContext(i_Logik* logik) override;
 
     /**
-     * @brief Speichert alle aktuellen RAM-Werte permanent auf den Standardpfad.
-     */
-    void save() override;
-
-    /**
-     * @brief Prüft, ob die Kalibrierungsdatei auf dem Standardpfad existiert.
+     * @brief Prueft, ob die Kalibrierungsdatei auf dem Festplattenpfad existiert.
+     * @details Nutzt intern standardisierte POSIX- oder C++-Dateipruefungen (z. B. std::ifstream).
+     * @return true, wenn die Datei physisch existiert, ansonsten false.
      */
     bool fileExists() override;
 
     /**
-     * @brief Verpackt alle geladenen Werte als spezifische Pulse und schickt sie
-     * zur Verteilung an den Dispatcher.
-     * @param dispatcherCoid Der Verbindungs-Kanal (Connection ID) zum Dispatcher.
+     * @brief Liest die Kalibrierungsdaten aus der Datei und liefert das befüllte Struct.
+     * @details Öffnet die Datei, parst die Schlüssel-Wert-Paare und befüllt das CalibrationData-Struct.
+     * Falls das Lesen fehlschlägt oder die Datei korrupt ist, werden sichere Labor-Fallback-Werte geladen.
+     * @return Das vollständig befüllte CalibrationData-Struct.
      */
-    void distributeValues(int dispatcherCoid) override;
-
-    // ========================================================================
-    // DATEN-OPERATIONEN (Aus dem Interface)
-    // ========================================================================
+    CalibrationData loadCalibrationData() override;
 
     /**
-     * @brief Prüft, ob ein bestimmter Kalibrierwert im RAM existiert.
+     * @brief Schreibt die übergebenen Kalibrierungsdaten strukturiert zurück in die Datei.
+     * @details Erstellt oder überschreibt die Datei und sichert alle Felder im Format "Schluessel=Wert".
+     * @param data Das aktuelle Datenpaket mit allen Live-ADC-Werten und gelernten Ticks.
+     * @return true, wenn der Schreibvorgang erfolgreich war, sonst false.
      */
-    bool hasKey(const std::string& key) override;
-
-    /**
-     * @brief Holt einen Kalibrierwert aus dem RAM. Falls nicht vorhanden, greift der Default-Wert.
-     */
-    int getInt(const std::string& key, int defaultValue = 0) override;
-
-    /**
-     * @brief Setzt oder aktualisiert einen Wert im RAM.
-     */
-    void setInt(const std::string& key, int value) override;
-
-    /**
-     * @brief Leert die gesamte Map im RAM.
-     */
-    void clear() override;
+    bool saveCalibrationData(const CalibrationData& data) override;
 };
 
 #endif // CALIBRATION_MANAGER_HPP

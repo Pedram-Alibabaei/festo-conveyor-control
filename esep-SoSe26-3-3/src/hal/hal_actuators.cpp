@@ -35,8 +35,12 @@ void HalActuators::driveStop()        { m_motorController.stop(); }
 // ============================================================================
 // Sortiereinheit
 // ============================================================================
-void HalActuators::openJunction()     { m_ejectorController.sortItemOut(); }
-void HalActuators::closeJunction()    { m_ejectorController.letItemPass(); }
+
+bool HalActuators::isSwitch()         { return m_ejectorController.isSwitch(); }
+void HalActuators::openSwitch()       { m_ejectorController.openSwitch(); }
+void HalActuators::closeSwitch()      { m_ejectorController.closeSwitch(); }
+void HalActuators::pushEjector()      { m_ejectorController.pushEjector(); }
+void HalActuators::pullEjector()      { m_ejectorController.closeSwitch(); }
 
 // ============================================================================
 // Ampelsteuerung
@@ -84,7 +88,8 @@ void HalActuators::turnLEDQ2BlinkSlow()     { m_panelLeds.turnLEDQ2BlinkSlow(); 
 // ============================================================================
 void HalActuators::turnAllOff() {
     driveStop();
-    closeJunction();
+    if (isSwitch()){closeSwitch();}else{pullEjector();}
+
 
     lightGreenOff();
     lightYellowOff();

@@ -1,6 +1,12 @@
 /**
 * @file errorTypes.hpp
- * @brief Definition der systemweiten Fehler- und Warnungs-IDs für die Festo-Anlage.
+ * @brief Definition der spezifischen Fehler- und Warnungstypen für die Anlagenüberwachung.
+ *
+ * Kapselt alle anlagenspezifischen Fehler- und Warnungsursachen in stark typisierten
+ * Enums, um eine präzise Diagnose und dynamische Strategiewechsel im Laborbetrieb
+ * zu ermöglichen.
+ *
+ * SoSe2026 Team 3.3
  */
 
 #ifndef ERROR_TYPES_HPP
@@ -9,16 +15,15 @@
 namespace logik {
 
     /**
-     * @enum ErrorID
-     * @brief Kritische Fehler, die zu einem harten Bandstopp (Motor STOPP)
-     * und zum Blinken der roten Ampel führen. Die FSM wechselt in den StateError.
+     * @enum ErrorType
+     * @brief Stark typisiertes Enum für die zentralisierte Fehler-Eskalation (Harter Stopp).
      */
-    enum class ErrorID {
-        NONE,               ///< Kein Fehler, System läuft normal
-        BOTH_CHUTES_FULL,   ///< Kritisch: Sowohl die lokale als auch die Partner-Rutsche sind voll
-        WP_LOST,            ///< Sequenzfehler: Ein Werkstück ist auf dem Band verschwunden (Timeout via Ticks)
-        UNEXPECTED_EVENT,      ///< Sequenzfehler: Ein unregistriertes "Geister-Werkstück" ist am Sensor aufgetaucht
-        HEIGHT_ERROR
+    enum class ErrorType {
+        BOTH_CHUTES_FULL,   ///< Kritischer Systemstopp: Eigene UND Partner-Rutsche sind komplett voll.
+        WP_LOST,            ///< Werkstück im Transit verloren: Erwartetes Teil ist physisch nicht angekommen.
+        UNEXPECTED_EVENT,   ///< Sensor-Manipulation: Ein Sensor schlägt an, obwohl laut Schieberegister kein Teil dort sein darf.
+        HEIGHT_ERROR,       ///< Physischer Höhenfehler: Werkstück besitzt falsche Maße oder liegt verkehrt herum im Lichttunnel.
+        STUCK               ///< Watchdog-Timeout: Ein Werkstück blockiert eine Lichtschranke für länger als 1 Sekunde (Stau).
     };
 
     /**
@@ -27,7 +32,7 @@ namespace logik {
      * ändert sich und die gelbe Ampelleuchte wird eingeschaltet.
      */
     enum class WarningID {
-        NONE,               ///< Keine Warnung aktiv
+        NONE,               ///< Keine Warnung aktiv (Normalbetrieb)
         LOCAL_CHUTE_FULL,   ///< Nur die eigene Rutsche ist voll (Anlage weicht auf Partner aus)
         PARTNER_CHUTE_FULL  ///< Nur die Partner-Rutsche ist voll (Anlage sortiert nur noch lokal aus)
     };

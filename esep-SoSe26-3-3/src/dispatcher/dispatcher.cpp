@@ -8,12 +8,17 @@
 #include "shared/logikEvent.hpp"
 #include "logik/i_Logik.hpp"
 #include "logik/logik.hpp"
+#include "calibrationManager/i_CalibrationManager.hpp"
 #include <iostream>
 #include <cerrno>
 #include <cstring>
 #include <sys/neutrino.h>
-#include <thread>
 #include <sys/dispatch.h>
+
+CalibrationData Dispatcher::s_incomingServiceData;
+uint16_t Dispatcher::s_liveEmptyBelt = 0;
+uint16_t Dispatcher::s_liveFlatCenter = 0;
+uint32_t Dispatcher::s_liveMinSamples = 0;
 
 // ============================================================================
 // KONSTRUKTOR & DESTRUKTOR
@@ -23,7 +28,7 @@ Dispatcher::Dispatcher()
       m_localCoid(-1),
       m_partnerCoid(-1),
       m_attachHandle(nullptr),
-      m_position(UNKNOWN_POSITION),
+      m_position(AnlagenPosition::UNKNOWN_POSITION),
       m_running(false),
       m_actuators(nullptr),
       m_sensors(nullptr),
@@ -47,11 +52,11 @@ Dispatcher::~Dispatcher() {
 // ============================================================================
 void Dispatcher::init(AnlagenPosition pos) {
     m_position = pos;
-    std::string myName = (pos == VORN_ANLAGE_1) ? "Anlage_1" : "Anlage_2";
+    std::string myName = (pos == AnlagenPosition::VORN_ANLAGE_1) ? "Anlage_1" : "Anlage_2";
 
     m_attachHandle = name_attach(NULL, myName.c_str(), NAME_FLAG_ATTACH_GLOBAL);
     if (m_attachHandle == nullptr) {
-       // std::cerr << "[Dispatcher] Fehler: name_attach fehlgeschlagen!" << std::endl;
+        std::cerr << "[Dispatcher] Fehler: name_attach fehlgeschlagen!" << std::endl;
         return;
     }
 
@@ -116,29 +121,7 @@ void Dispatcher::handlePulse(const struct _pulse& pulse) {
 
         case ipc::PulseCode::HAL_ADC_CALIBRATION:
             {
-                uint16_t calib_value = (pulse.value.sival_int >> 16) & 0xFFFF;
-                uint16_t calib_mode  = pulse.value.sival_int & 0xFFFF;
-                m_logik->receiveRawCalibrationData(calib_mode, calib_value);
-            }
-            break;
-
-        case ipc::PulseCode::MANAGER_ADC_CALIBRATION:
-            // Daten kommen beim Booten aus dem CalibrationManager -> Direkt an die Sensorik (ProfileAnalyzer)
-            if (m_sensors) {
-                uint16_t calib_value = (pulse.value.sival_int >> 16) & 0xFFFF;
-                uint16_t calib_mode  = pulse.value.sival_int & 0xFFFF;
-                m_sensors->updateCalibrationThresholds(calib_mode, calib_value);
-            }
-            break;
-
-        case ipc::PulseCode::MANAGER_TICK_CALIBRATION:
-            // Ticks kommen beim Booten aus dem CalibrationManager -> Direkt an die FSM-Zeiten der Logik
-            {
-                uint16_t tick_value = (pulse.value.sival_int >> 16) & 0xFFFF;
-                uint16_t calib_mode = pulse.value.sival_int & 0xFFFF;
-
-                // Nutzt den neuen CalibMode-Subtyp (z.B. TICK_END_B_TO_END_C)
-                m_logik->setTrackedSegmentTicks(calib_mode, tick_value);
+            handleCalibrationPulse(pulse.value.sival_int);
             }
             break;
 
@@ -147,41 +130,24 @@ void Dispatcher::handlePulse(const struct _pulse& pulse) {
             break;
 
         case ipc::DISCONNECT:
-           // std::cout << "[Dispatcher] Netzwerkverbindung verloren!" << std::endl;
-            m_partnerCoid = -1; // WICHTIG: Connection-Handle löschen, damit wir nicht ins Leere senden
-            m_logik->processEvent(logik::Event::CONNECTION_LOST);
-            break;
+                    // m_logik->processEvent(logik::Event::ESTOP_PRESSED); // <--- AUSKOMMENTIEREN!
+                    std::cout << "[Dispatcher] WARNUNG: Netzwerk weg. Ignoriert fuer Solo-Test!" << std::endl;
+                    break;
 
         // ====================================================================
         // TIMER EVENTS
         // ====================================================================
         case ipc::BELT_TICK:
-            m_logik->tackt();
+            m_logik->takt();
             break;
 
         case ipc::HEARTBEATTACKT:
             if (m_connection) {
-                // 1. Lokalen Zähler aktualisieren (prüft, ob der Partner sich gemeldet hat)
                 m_connection->heartbeatTackt();
-
-                // 2. Ping an den Partner senden, OHNE den Dispatcher zu blockieren
-                if (m_connection->isConnected() && m_partnerCoid != -1) {
-
-                    // Wir kopieren die COID, damit der Thread sie sicher nutzen kann
-                    int targetCoid = m_partnerCoid;
-
-                    // Wir starten einen "Fire-and-Forget"-Thread.
-                    // Wenn QNX diesen Thread jetzt 5 Sekunden lang einfriert,
-                    // stört das unseren Dispatcher überhaupt nicht mehr!
-                    std::thread([targetCoid]() {
-                        MsgSendPulse(targetCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::HEARTBEAT, 0);
-                    }).detach();
+                if (m_connection->isConnected()) {
+                    MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::HEARTBEAT, 0);
                 }
             }
-            break;
-
-        case ipc::SORTER_TIMER_TICK:
-            m_logik->processEvent(logik::Event::EJECTOR_CLEARED);
             break;
 
         // ====================================================================
@@ -225,7 +191,7 @@ void Dispatcher::handlePulse(const struct _pulse& pulse) {
         }
 
         default:
-           // std::cerr << "[Dispatcher] Warnung: Unbekannter Puls-Code: " << (int)pulse.code << std::endl;
+            std::cerr << "[Dispatcher] Warnung: Unbekannter Puls-Code: " << (int)pulse.code << std::endl;
             break;
 }
 }
@@ -233,12 +199,9 @@ void Dispatcher::handlePulse(const struct _pulse& pulse) {
 void Dispatcher::handleConnectionPulse(uint32_t payload) {
     m_partnerCoid = payload;
 
-    if (m_position == HINTEN_ANLAGE_2) {
+    if (m_position == AnlagenPosition::HINTEN_ANLAGE_2) {
         MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::ANLAGE_2_CIID, 1);
     }
-
-    // NEU: Dem System mitteilen, dass die Verbindung (wieder) etabliert ist
-    m_logik->processEvent(logik::Event::CONNECTION_RESTORED);
 }
 
 // ============================================================================
@@ -261,7 +224,6 @@ void Dispatcher::handleHalPulse(uint32_t payload) {
     }
     else if (sensor_id == ipc::BTN_RESET) {
         m_logik->processEvent(sensor_state == ipc::State::PRESSED ? logik::Event::RESET_PRESSED : logik::Event::RESET_RELEASED);
-        MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_MSG, payload);
     }
 
     // 2. LICHTSCHRANKEN & SENSOREN (BLOCKED / CLEARED)
@@ -271,10 +233,15 @@ void Dispatcher::handleHalPulse(uint32_t payload) {
     else if (sensor_id == ipc::HEIGHT) {
         if (sensor_state == ipc::State::BLOCKED) {
             m_logik->processEvent(logik::Event::HEIGHT_BLOCKED);
-        } else if (sensor_state == ipc::State::CLEARED) {
+        }
+        else if (sensor_state == ipc::State::CLEARED) {
             m_logik->processEvent(logik::Event::HEIGHT_CLEARED);
-        } else if (sensor_state == ipc::State::HIGH_ERROR) {
+        }
+        else if (sensor_state == ipc::State::HIGH_ERROR) {
             m_logik->processEvent(logik::Event::HEIGHT_ERROR);
+        }
+        else {
+            m_logik->workpieceTypeFromHS(static_cast<WpType>(sensor_state));
         }
     }
     else if (sensor_id == ipc::SENSOR_METAL) {
@@ -298,28 +265,29 @@ void Dispatcher::handleNetworkPulse(uint32_t payload) {
     uint16_t sensor_id = ipc::decodeSensorID(payload);
     uint16_t message_type = ipc::decodeSensorState(payload);
 
-    // Wenn der Partner START drückt oder loslässt
     if (sensor_id == ipc::BTN_START) {
         m_logik->processEvent(message_type == ipc::State::PRESSED ? logik::Event::PARTNER_START_PRESSED : logik::Event::PARTNER_START_RELEASED);
     }
-    // NEU: Wenn der Partner im EStopUnlockedState den RESET drückt
-    else if (sensor_id == ipc::BTN_RESET && message_type == ipc::State::PRESSED) {
-      //  std::cout << "[Dispatcher] Netzwerk-Event: Partner fordert synchronisierten Reset!" << std::endl;
-        m_logik->processEvent(logik::Event::PARTNER_RESET_PRESSED);
-    }
-    // Werkstückübergabe-Protokoll
-    else if (message_type == ipc::NetworkMessage::REQ_RECEIVE) {
+    else if (sensor_id == ipc::NetworkMessage::REQ_RECEIVE) {
         m_logik->processEvent(logik::Event::REQ_TO_GIVE_WP);
     }
-    else if (message_type == ipc::NetworkMessage::READY_RECEIVE) {
+    else if (sensor_id == ipc::NetworkMessage::READY_RECEIVE) {
         m_logik->processEvent(logik::Event::READY_TO_RECEIVE_WP);
+    }
+    else if (sensor_id == ipc::NetworkMessage::CHUTE){
+
+        bool isFull = (message_type == ipc::VOLL);
+        if (m_logik != nullptr) {
+            m_logik->setPartnerChuteStatus(isFull);
+        }
+
     }
 }
 
 // ============================================================================
 // DURCHREICHE-METHODEN FÜR DAS NETZWERK
 // ============================================================================
-void Dispatcher::workpieceInfo(int id, WpType type) {
+void Dispatcher::sendWorkpieceInfo(int id, WpType type) {
     if (m_partnerCoid != -1) {
         uint32_t payload = (static_cast<uint32_t>(id) << 16) | static_cast<uint32_t>(type);
         MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::WP_INFO, payload);
@@ -345,22 +313,6 @@ void Dispatcher::updateWpListe(WpType type) {
         MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::UPDATE_LIST, static_cast<uint32_t>(type));
     }
 }
-
-// ============================================================================
-// SYNCHRONISIERTER RESET (Master-Master Brücke)
-// ============================================================================
-void Dispatcher::sendPartnerResetPressed(){
-    if (m_partnerCoid != -1) {
-        // Wir verpacken die Sensor-ID (BTN_RESET) und einen eindeutigen Netzwerk-Zustand.
-        // Dafür nutzen wir das bestehende PARTNER_MSG System.
-        // Hinweis: ipc::State::PRESSED/RELEASED wird hier zweckentfremdet, um die Anfrage zu signalisieren.
-        uint32_t payload = ipc::encodeHalPayload(ipc::BTN_RESET, ipc::State::PRESSED);
-
-        MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_MSG, payload);
-      //  std::cout << "[Dispatcher] Reset-Anfrage erfolgreich an Partner gesendet." << std::endl;
-    }
-}
-
 
 // ============================================================================
 // LOKALER E-STOP
@@ -404,18 +356,56 @@ void Dispatcher::handlePartnerEStopPulse(uint32_t payload) {
 }
 
 // ============================================================================
-// KALIBRIERUNGS-SCHNITTSTELLE (KORRIGIERT)
+// Calibration
 // ============================================================================
-void Dispatcher::saveCompleteCalibrationMap(const std::map<std::string, int>& calibData) {
-    if (!m_calibrationManager) return; // Greift nun sauber auf das m_calibrationManager-Member zu
+void Dispatcher::handleCalibrationPulse(uint32_t payload) {
+    using CM = ipc::CalibMode;
 
-    // 1. Alle Werte aus der Logik-Map in den CalibrationManager übertragen
-    for (const auto& pair : calibData) {
-        m_calibrationManager->setInt(pair.first, pair.second);
+    uint16_t rawValue = 0;
+    uint16_t calibMode = 0;
+    ipc::decodeCalibPayload(payload, rawValue, calibMode);
+
+    switch (static_cast<CM>(calibMode)) {
+
+        case CM::EMPTY_BELT:
+            s_liveEmptyBelt = rawValue;
+        break;
+
+        case CM::FLAT_WP:
+            s_liveFlatCenter = rawValue;
+        break;
+
+        case CM::MIN_SAMPLES:
+            s_liveMinSamples = static_cast<uint32_t>(rawValue);
+        if (m_logik != nullptr) {
+            m_logik->setLiveAdcCalibration(s_liveEmptyBelt, s_liveFlatCenter, s_liveMinSamples);
+        }
+        break;
+
+        default:
+            break;
     }
+}
 
-    // 2. Die Map permanent in die Textdatei schreiben
-    m_calibrationManager->save();
+/**
+ * @brief Prueft über den CalibrationManager, ob die XML/Text-Datei mit den
+ * gelernten Ticks und ADC-Fenstern auf der Festplatte existiert.
+ */
+bool Dispatcher::requestFileExists() {
+    return m_calibrationManager && m_calibrationManager->fileExists();
+}
 
-   // std::cout << "[Dispatcher] Komplette Kalibrierungs-Map an Manager uebergeben und gespeichert." << std::endl;
+void Dispatcher::sendeChuteStats(bool isVoll) {
+    if (m_partnerCoid == -1) {return;}
+    ipc::State state = isVoll ? ipc::VOLL : ipc::EMPTY;
+    uint32_t payload = ipc::encodeHalPayload(ipc::NetworkMessage::CHUTE, state);
+    MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_MSG, payload);
+}
+
+
+void Dispatcher::forwardCalibrationToHal(std::uint16_t emptyBelt, std::uint16_t flatCenter, std::uint32_t minSamples) {
+    m_sensors->updateCalibrationThresholds(static_cast<uint16_t>(ipc::CalibMode::EMPTY_BELT), emptyBelt);
+    m_sensors->updateCalibrationThresholds(static_cast<uint16_t>(ipc::CalibMode::FLAT_WP), flatCenter);
+    m_sensors->updateCalibrationThresholds(static_cast<uint16_t>(ipc::CalibMode::MIN_SAMPLES),
+                                           static_cast<uint16_t>(minSamples));
 }

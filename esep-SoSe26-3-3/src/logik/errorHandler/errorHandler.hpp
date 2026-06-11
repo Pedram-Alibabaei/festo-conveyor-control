@@ -1,93 +1,85 @@
 /**
  * @file errorHandler.hpp
- * @brief Zentraler Verwalter für Fehler- und Warnungszustände der Festo-Anlage.
+ * @brief Zeitliche Überwachung von Sensoren (Watchdogs) und zentrales Fehlermanagement.
+ *
+ * Diese Komponente überwacht kritische Zeitfenster der Hardware-Sensoren und
+ * nimmt detaillierte Fehlermeldungen aus dem gesamten System entgegen, um
+ * spezifische Fehlermaßnahmen einzuleiten.
+ *
+ * SoSe2026 Team 3.3
  */
 
 #ifndef ERROR_HANDLER_HPP
 #define ERROR_HANDLER_HPP
 
-#include "errorTypes.hpp"
+#include "shared/logikEvent.hpp"
+#include "errorTypes.hpp" // Enthält das Enum class ErrorType
+#include "shared/types.hpp"
+#include <chrono>
 
 namespace logik {
 
+    class Logik; // Vorwärtsdeklaration der Haupt-Fassade zur Vermeidung von Kreisabhängigkeiten
+
     class ErrorHandler {
     private:
-        logik::ErrorID m_currentError;       ///< Aktiver kritischer Fehler (führt zu Stopp)
-        logik::WarningID m_currentWarning;   ///< Aktive Warnung (Band läuft weiter, Gelb an)
+        Logik* m_context; ///< Zeiger auf den übergeordneten Hauptkontext (Nicht-besitzend)
 
-        bool m_localChuteFull;               ///< Interner Zustand der eigenen Rutsche
-        bool m_partnerChuteFull;             ///< Interner Zustand der Partner-Rutsche
+        // --- Zeitmessung für Einlauf (Entry) ---
+        bool m_isEntryTimerRunning;
+        std::chrono::steady_clock::time_point m_entryStartTime;
 
-        /**
-         * @brief Interne Methode zur dynamischen Berechnung des Systemstatus.
-         * Hier wird entschieden, ob eine Warnung oder ein kritischer Fehler vorliegt.
-         */
-        void evaluateChuteStates();
+        // --- Zeitmessung für Rutsche (Chute) ---
+        bool m_isChuteTimerRunning;
+        std::chrono::steady_clock::time_point m_chuteStartTime;
+        bool m_isChuteWarningActive; ///< Verhindert doppeltes Senden des Warning-Events im Takt
+
+        // Konstante für das allgemeine Watchdog-Timeout (1 Sekunde)
+        const std::chrono::milliseconds TIMEOUT_THRESHOLD;
 
     public:
         /**
-         * @brief Konstruktor. Initialisiert das System im fehlerfreien Zustand.
+         * @brief Konstruktor.
+         * @param context Zeiger auf die übergeordnete Logik-Schaltzentrale.
          */
-        ErrorHandler();
+        explicit ErrorHandler(Logik* context);
 
         /**
          * @brief Standard-Destruktor.
          */
         ~ErrorHandler() = default;
 
-        /**
-         * @brief Aktualisiert den Zustand der lokalen Rutsche.
-         * @param isFull true, wenn die eigene Rutsche voll ist (Lichtschranke blockiert).
-         */
-        void setLocalChuteStatus(bool isFull);
+        // Verhindert unerlaubtes Kopieren der Überwachungskomponente
+        ErrorHandler(const ErrorHandler&) = delete;
+        ErrorHandler& operator=(const ErrorHandler&) = delete;
 
         /**
-         * @brief Aktualisiert den Zustand der Partner-Rutsche (via Netzwerk empfangen).
-         * @param isFull true, wenn die Rutsche der anderen Anlage voll ist.
+         * @brief Wird vom EventManager aufgerufen, wenn Hardware-Events eintreffen.
+         * @param e Das aufgetretene Sensor-Event (z.B. ENTRY_BLOCKED).
          */
-        void setPartnerChuteStatus(bool isFull);
+        void processEvent(logik::Event e);
 
         /**
-         * @brief Setzt erzwungen einen kritischen Fehler (z.B. bei WP_LOST oder CONNECTION_LOST).
-         * @param error Die ID des aufgetretenen kritischen Fehlers.
+         * @brief Der zentrale Herzschlag (zyklischer Aufruf alle 10ms).
+         * @details Prüft fortlaufend, ob die gestarteten Watchdog-Timer das Zeitlimit reißen.
          */
-        void triggerManualError(logik::ErrorID error // wo grnau kommt hier noch );
+        void takt();
 
+        // ========================================================================
+        // ZENTRALE ESKALATIONS-SCHNITTSTELLE
+        // ========================================================================
         /**
-         * @brief Setzt das Fehlersystem zurück. Wird beim Drücken des RESET-Tasters aufgerufen.
-         * Falls die Rutschen immer noch voll sind, wird der Fehler direkt neu berechnet.
+         * @brief Nimmt detaillierte Fehlermeldungen aus allen Systemkomponenten entgegen.
+         * @details Friert das Schieberegister ein, leitet spezifische Diagnoseausgaben
+         * ein und triggert das finale ERROR-Event an die Zustandsmaschine.
+         * * @param type Die exakte Fehlerursache (z.B. BOTH_CHUTES_FULL, WP_LOST).
+         * @param triggerEvent Das HAL-Sensor-Event, bei dem der Fehler auffiel.
+         * @param wpId Die ID des betroffenen Werkstücks (Standard: -1, falls unbekannt).
          */
-        void clearAll();
-
-        /**
-         * @brief Gibt den aktuell aktiven kritischen Fehler zurück.
-         * @return logik::ErrorID
-         */
-        logik::ErrorID getError() const;
-
-        /**
-         * @brief Gibt die aktuell aktive Warnung zurück.
-         * @return logik::WarningID
-         */
-        logik::WarningID getWarning() const;
-
-        /**
-         * @brief Prüft, ob aktuell ein kritischer Fehler das System blockiert.
-         * @return true, wenn das Band sofort stoppen muss.
-         */
-        bool hasCriticalError() const;
-
-        /**
-         * @brief Prüft, ob aktuell eine Warnung vorliegt (für die gelbe Ampel).
-         * @return true, wenn eine Warnung aktiv ist.
-         */
-        bool hasWarning() const;
-
-        /**
-         * @brief Gibt zurück, ob das System mechanisch bereit für einen Reset ist.
-         * @return true, wenn beide Rutschen leer sind und kein externer Fehler anliegt.
-         */
-        bool isSystemClear() const;
+     void handleEscalation(ErrorType type,
+                          logik::Event triggerEvent = logik::Event::UNKNOWN,
+                          WpLocation location = WpLocation::UNKNOWN_LOCATION,
+                          int wpId = -1);
     };
 
 } // namespace logik

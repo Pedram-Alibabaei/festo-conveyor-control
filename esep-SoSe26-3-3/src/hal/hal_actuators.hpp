@@ -47,6 +47,7 @@ public:
     // Implementierung des i_Actuators Vertrages (override)
     // ========================================================================
 
+
     // --- Motorsteuerung ---
     void driveRight() override;
     void driveLeft() override;
@@ -55,8 +56,11 @@ public:
     void driveStop() override;
 
     // --- Sortiereinheit ---
-    void openJunction() override;
-    void closeJunction() override;
+    bool isSwitch() override;
+    void openSwitch() override;
+    void closeSwitch() override;
+    void pushEjector() override;
+    void pullEjector() override;
 
     // --- Ampelsteuerung ---
     void lightGreenOn() override;

@@ -1,96 +1,56 @@
 /**
  * @file I_CalibrationManager.hpp
- * @brief Flexibles Interface fuer die persistente Werte-Kalibrierung (Key-Value-Store).
- * Arbeitet pfadunabhaengig ueber den im Konstruktor definierten Standardpfad.
+ * @brief Interface für die Datei-Persistierung aller Kalibrierungs- und Anlagendaten.
+ *
+ * @details Diese Komponente bildet die Abstraktionsschicht zum Dateisystem der Festo-Anlage.
+ * Sie ist exklusiv dafür zuständig, die Kalibrierungswerte (ADC-Schwellen und Band-Ticks)
+ * beim Systemstart aus einer Datei zu laden und nach dem Service-Modus wieder abzuspeichern.
+ *
+ * Embedded Systems Engineering WiSe2025 Team 1.1
  */
 
 #ifndef I_CALIBRATION_MANAGER_HPP
 #define I_CALIBRATION_MANAGER_HPP
 
-#include <string>
+#include "shared/types.hpp" // Enthält das CalibrationData Struct
+#include "logik/i_Logik.hpp" // Erlaubt die Übergabe an die Logik-Schicht
 
-namespace calib {
-    // ========================================================================
-    // ZENTRALE SCHLÜSSEL-NAMEN (Deine reduzierte, exakte Event-Kette)
-    // ========================================================================
-
-    // 1. HÖHENMESSUNG (ADC-Werte & Fenster)
-    const std::string EMPTY_BELT                 = "Adc_EmptyBelt";
-    const std::string FLAT_CENTER                = "Adc_FlatCenter";
-    const std::string MIN_SAMPLES_FOR_CLASS      = "Limit_MinSamplesForClass";
-
-    // 2. ZEIT-TRACKING (Logische Band-Takte / Ticks)
-    const std::string TICKS_ENTRY_C_TO_HEIGHT_B_SLOW   = "Ticks_EntryCleared_to_HeightBlocked";
-    const std::string TICKS_HEIGHT_B_TO_HEIGHT_C_SLOW  = "Ticks_HeightBlocked_to_HeightCleared";
-    const std::string TICKS_ENTRY_C_TO_HEIGHT_B_NORMAL   = "Ticks_EntryCleared_to_HeightBlocked";
-    const std::string TICKS_HEIGHT_B_TO_HEIGHT_C_NORMAL  = "Ticks_HeightBlocked_to_HeightCleared";
-    const std::string TICKS_HEIGHT_C_TO_EJECTOR_B_NORMAL = "Ticks_HeightCleared_to_EjectorBlocked";
-    const std::string TICKS_EJECTOR_B_TO_EJECTOR_C_NORMAL = "Ticks_EjectorBlocked_to_EjectorCleared";
-    const std::string TICKS_EJECTOR_C_TO_END_B_NORMAL    = "Ticks_EjectorCleared_to_EndBlocked";
-    const std::string TICKS_END_B_TO_END_C_NORMAL        = "Ticks_EndBlocked_to_EndCleared";
-}
-
-class i_CalibrationManager {
+class I_CalibrationManager {
 public:
-    virtual ~i_CalibrationManager() = default;
-
-    // ========================================================================
-    // DATEI-OPERATIONEN (Nutzen den intern im Konstruktor gesetzten Pfad)
-    // ========================================================================
+    virtual ~I_CalibrationManager() = default;
 
     /**
-     * @brief Laedt die Kalibrierungsdatei vom intern gesetzten Standardpfad.
+     * @brief Setzt den Zeiger auf die Logik-Komponente (Dependency Injection).
+     * @note Wichtig, damit der CalibrationManager beim Booten die geladenen Daten
+     * aktiv per setCalibrationData() an die Steuerung übergeben kann.
+     * @param logik Zeiger auf das i_Logik-Interface.
      */
-    virtual void load() = 0;
-
-    /**
-     * @brief Speichert alle aktuellen Key-Value-Paare permanent auf den Standardpfad.
-     */
-    virtual void
+    virtual void setLogikContext(i_Logik* logik) = 0;
 
     /**
      * @brief Prueft, ob eine Kalibrierungsdatei auf dem Standardpfad existiert.
+     * @note Wird direkt beim Systemstart aufgerufen, um der FSM die Events
+     * DATA_EXIST oder DATA_NOT_EXIST zu liefern.
      * @return true, wenn die Datei existiert, ansonsten false.
      */
     virtual bool fileExists() = 0;
 
     /**
-     * @brief Verpackt alle geladenen Werte als spezifische Pulse und schickt sie
-     * zur automatischen Weiterverteilung an den Dispatcher.
-     * @param dispatcherCoid Der Verbindungs-Kanal (Connection ID) zum Dispatcher.
+     * @brief Läuft beim Systemstart und liest die Kalibrierungsdaten aus der Datei.
+     * @details Holt die Text-/JSON-Daten von der QNX-Festplatte und konvertiert sie
+     * in das typsichere CalibrationData-Struct.
+     * @return Das vollständig befüllte CalibrationData-Struct. Falls keine Datei
+     * existiert, wird ein Struct mit sicheren Labor-Standardwerten zurückgegeben.
      */
-    virtual void distributeValues(int dispatcherCoid) = 0;
-
-
-    // ========================================================================
-    // DATEN-OPERATIONEN (RAM-Speicher / Key-Value-Store)
-    // ========================================================================
+    virtual CalibrationData loadCalibrationData() = 0;
 
     /**
-     * @brief Sucht nach einem bestimmten Schluessel in den geladenen RAM-Daten.
-     * @return true, wenn der Wert existiert, ansonsten false.
+     * @brief Schreibt die übergebenen Kalibrierungsdaten dauerhaft in die Datei.
+     * @note Wird am Ende des Service-Modus aufgerufen, wenn der Bediener "Speichern" drückt.
+     * @param data Das aktuelle Datenpaket mit allen Live-ADC-Werten und gelernten Ticks.
+     * @return true, wenn der Schreibvorgang auf die Festplatte erfolgreich war, sonst false.
      */
-    virtual bool hasKey(const std::string& key) = 0;
-
-    /**
-     * @brief Liest einen ganzzahligen Wert aus dem RAM aus.
-     * @param key Der eindeutige Name des Wertes aus dem calib:: Namespace.
-     * @param defaultValue Rueckgabewert, falls der Schluessel nicht existiert.
-     */
-    virtual int getInt(const std::string& key, int defaultValue = 0) = 0;
-
-    /**
-     * @brief Fuegt einen neuen Wert hinzu ODER bearbeitet einen bestehenden Wert im RAM.
-     * Aenderungen sind fluechtig, bis save() aufgerufen wird.
-     * @param key Der eindeutige Name des Wertes aus dem calib:: Namespace.
-     * @param value Der neue zu speichernde Ganzzahl-Wert.
-     */
-    virtual void setInt(const std::string& key, int value) = 0;
-
-    /**
-     * @brief Loescht alle aktuellen Werte aus dem temporaeren RAM-Speicher.
-     */
-    virtual void clear() = 0;
+    virtual bool saveCalibrationData(const CalibrationData& data) = 0;
 };
 
 #endif // I_CALIBRATION_MANAGER_HPP

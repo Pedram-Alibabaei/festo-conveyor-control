@@ -1,45 +1,62 @@
 /**
 * @file ejector_controller.hpp
- * @brief Steuerung der Sortiereinheit (Weiche oder Auswerfer).
+ * @brief Vollautonome Steuerung der Sortiereinheit mit internem Watchdog-Thread.
  *
- * Kapselt die Hardware-Unterschiede zwischen den beiden Anlagentypen
- * und erkennt beim Start automatisch, welche Hardware vorliegt.
+ * SoSe2026 Team 3.3
  */
 
 #ifndef HAL_OUTPUT_DRIVER_EJECTOR_CONTROLLER_HPP_
 #define HAL_OUTPUT_DRIVER_EJECTOR_CONTROLLER_HPP_
 
+#include <chrono>
+#include <thread>
+#include <atomic>
+#include <mutex>
+#include <condition_variable>
+
 namespace hal {
     namespace output_driver {
 
-        // Beschreibt die physikalische Beschaffenheit der Anlage
         enum class SorterHardwareType {
-            WEICHE,     // Anlage 1: Weiche (z.B. 1 = Offen/Aussortieren, 0 = Geschlossen/Durchlassen)
-            AUSWERFER   // Anlage 2: Auswerfer (Zylinder) (Logik physikalisch invertiert)
+            WEICHE,
+            AUSWERFER
         };
 
         class EjectorController {
         public:
-            /**
-             * @brief Konstruktor. Erkennt automatisch anhand des Zylinder-Sensors,
-             * ob eine Weiche oder ein Auswerfer angeschlossen ist.
-             */
             EjectorController();
             ~EjectorController();
 
-            // Verhindert Kopieren
             EjectorController(const EjectorController&) = delete;
             EjectorController& operator=(const EjectorController&) = delete;
 
-            /** @brief Sortiert das Werkstück aus (Weiche auf / Zylinder ausfahren) */
-            void sortItemOut();
+            bool isSwitch() const;
 
-            /** @brief Lässt das Werkstück passieren (Weiche zu / Zylinder einfahren) */
-            void letItemPass();
+            // --- Weichen-Steuerung ---
+            void openSwitch();
+            void closeSwitch();
+
+            // --- Auswerfer-Steuerung ---
+            void pushEjector();
+            void pullEjector();
 
         private:
+            // Die interne Thread-Schleife
+            void watchdogWorker();
+
             SorterHardwareType m_type;
-            bool m_isSortingOut; // Speichert den Zustand, um unnötige GPIO-Aufrufe zu sparen
+            bool m_isSortingOut;
+
+            // --- Thread- und Synchronisations-Schnittstellen ---
+            std::thread m_watchdogThread;
+            std::atomic<bool> m_keepRunning;      ///< Steuert das Lebensende des Threads
+            std::atomic<bool> m_isTimerActive;    ///< Zeigt an, ob die Weiche gerade offen ist
+
+            std::mutex m_mutex;
+            std::condition_variable m_cv;         ///< Zum effizienten Schlafen/Wecken des Threads
+
+            std::chrono::steady_clock::time_point m_startTime;
+            const std::chrono::milliseconds AUTOCLOSE_TIMEOUT;
         };
 
     } // namespace output_driver

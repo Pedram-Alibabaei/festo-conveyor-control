@@ -1,347 +1,832 @@
 /**
  * @file ProfileAnalyzer.cpp
- * @brief Logische Zustandsschaltung und Auswertung der ADC-Höhenprofile.
+ * @brief Logische Zustandsschaltung und Auswertung der ADC-Hoehenprofile.
  */
 
 #include "ProfileAnalyzer.hpp"
 #include "shared/ipc_definitions.hpp"
 #include "shared/types.hpp"
+
+#include <algorithm>
 #include <iostream>
 
 extern "C" {
 #include <sys/neutrino.h>
 }
 
-// ============================================================================
+namespace
+{
+constexpr uint16_t ADC_MAX_VALUE = 4095;
+
+constexpr uint16_t TRIGGER_OFFSET = 200;
+constexpr uint16_t RELEASE_OFFSET = 100;
+
+constexpr size_t BELT_REFERENCE_SAMPLE_COUNT = 100;
+constexpr size_t FLAT_REFERENCE_SAMPLE_COUNT = 100;
+constexpr size_t CALIBRATION_TRIGGER_CONFIRM_COUNT = 20;
+constexpr size_t CALIBRATION_RELEASE_CONFIRM_COUNT = 20;
+constexpr uint16_t DEFAULT_MIN_SAMPLES = 120;
+constexpr size_t MIN_MEASUREMENT_PERCENT = 80;
+constexpr size_t MAIN_CLASS_PERCENT = 50;
+constexpr size_t DRILLED_CLASS_PERCENT = 10;
+constexpr uint32_t UNKNOWN_DOMINANCE_PERCENT = 35;
+
+constexpr uint16_t FLAT_TOLERANCE = 50;
+constexpr uint16_t TALL_CENTER_OFFSET = 275;
+constexpr uint16_t TALL_TOLERANCE = 75;
+constexpr uint16_t DRILLED_CENTER_OFFSET = 750;
+constexpr uint16_t DRILLED_TOLERANCE = 100;
+constexpr uint16_t MAX_HEIGHT_MARGIN = 150;
+
+uint16_t safeSubtract(uint16_t value, uint16_t offset)
+{
+    return value > offset ? static_cast<uint16_t>(value - offset) : 0;
+}
+
+uint16_t safeAdd(uint16_t value, uint16_t offset)
+{
+    const uint32_t result = static_cast<uint32_t>(value) + offset;
+    return result > ADC_MAX_VALUE ? ADC_MAX_VALUE : static_cast<uint16_t>(result);
+}
+
+uint16_t averageAsUInt16(uint32_t sum, size_t count)
+{
+    return count == 0 ? 0 : static_cast<uint16_t>((sum + (count / 2)) / count);
+}
+
+size_t percentCeil(size_t value, size_t percent)
+{
+    return (value * percent + 99) / 100;
+}
+} // namespace
+
 // KONSTRUKTOR & INITIALISIERUNG
-// ============================================================================
 
 ProfileAnalyzer::ProfileAnalyzer()
-    : m_coid(-1),
-      m_currentState(AnalyzerState::IDLE),
-      m_currentCalibStep(CalibStep::MEASURE_BELT),
-      m_threshEmptyBelt(-1),
-      m_threshFlatWp(-1),
-      m_threshMinSamples(-1),
-      m_heightBlocked(-1),       // Sicherer Standardwert vor der ersten Messung
-      m_samplesPerSegment(-1),     // Standard-Fallback (120 / 12 = 10)
-      m_threshFlatMin(-1), m_threshFlatMax(-1),
-      m_threshTallMin(-1), m_threshTallMax(-1),
-      m_threshDrilledMin(-1), m_threshDrilledMax(-1),
-      m_threshMaxHeight(-1),
-      m_sampleCounter(-1),
-      m_fillCount(-1),
-      m_currentSegmentIndex(-1) {
+    : m_threshMinSamples(DEFAULT_MIN_SAMPLES)
+{
+    resetSmoothingBuffer();
+    resetMeasurementData();
+}
 
-    for (size_t i = 0; i < SMOOTHING_SAMPLE_COUNT; ++i) {
-        m_rawBuffer[i] = 0;
+void ProfileAnalyzer::setConnectionId(int coid)
+{
+    m_coid = coid;
+}
+
+void ProfileAnalyzer::setAdcIdelState()
+{
+    std::cout << "[Analyzer] State -> IDLE" << std::endl;
+    m_currentState = AnalyzerState::IDLE;
+    m_serviceTimingOnly = false;
+    m_nextWaitingForWpIsServiceTiming = false;
+    m_transportPaused = false;
+    m_heightErrorActive = false;
+    resetMeasurementData();
+    resetSmoothingBuffer();
+}
+
+void ProfileAnalyzer::setAdcWaitigForWpState()
+{
+    if (m_currentState == AnalyzerState::MEASURING_PAUSED ||
+        (m_currentState == AnalyzerState::MEASURING && m_transportPaused)) {
+        std::cout << "[Analyzer] WAITING_FOR_WP ignoriert: pausierte Messung bleibt erhalten." << std::endl;
+        return;
     }
-    for (size_t i = 0; i < NUM_PROFILE_CLASSES; ++i) {
-        m_segmentTypes[i] = static_cast<uint16_t>(WpType::UNKNOWN);
+
+    resetMeasurementData();
+    resetSmoothingBuffer();
+    m_serviceTimingOnly = m_nextWaitingForWpIsServiceTiming;
+    m_nextWaitingForWpIsServiceTiming = false;
+    m_transportPaused = false;
+    m_heightErrorActive = false;
+    m_currentState = AnalyzerState::WAITING_FOR_WP;
+    std::cout << "[Analyzer] State -> "
+              << (m_serviceTimingOnly ? "SERVICE_TIMING" : "WAITING_FOR_WP")
+              << std::endl;
+
+    if (!isCalibrated()) {
+        std::cerr << "[Analyzer] Warnung: WAITING_FOR_WP ohne vollstaendige ADC-Kalibrierung." << std::endl;
     }
 }
 
-void ProfileAnalyzer::setConnectionId(int coid) { m_coid = coid; }
-void ProfileAnalyzer::setAdcIdelState() { m_currentState = AnalyzerState::IDLE; }
-void ProfileAnalyzer::setAdcWaitigForWpState() { m_currentState = AnalyzerState::WAITING_FOR_WP; }
-
-void ProfileAnalyzer::setAdcCalibrationsState() {
+void ProfileAnalyzer::setAdcCalibrationsState()
+{
     m_currentState = AnalyzerState::CALIBRATION;
     m_currentCalibStep = CalibStep::MEASURE_BELT;
-    m_sampleCounter = 0;
+    m_serviceTimingOnly = false;
+    m_nextWaitingForWpIsServiceTiming = false;
+    m_transportPaused = false;
+    m_heightErrorActive = false;
+    resetSmoothingBuffer();
+    resetMeasurementData();
+    resetCalibrationData();
+    std::cout << "[Analyzer] State -> CALIBRATION" << std::endl;
 }
 
-uint32_t ProfileAnalyzer::calculateBlockAverage() {
+void ProfileAnalyzer::resetSmoothingBuffer()
+{
+    std::fill(m_rawBuffer, m_rawBuffer + SMOOTHING_SAMPLE_COUNT, 0);
+    m_fillCount = 0;
+}
+
+void ProfileAnalyzer::resetMeasurementData()
+{
+    m_transportPaused = false;
+    m_sampleCounter = 0;
+    m_flatCounter = 0;
+    m_tallCounter = 0;
+    m_drilledCounter = 0;
+    m_unknownCounter = 0;
+    m_measurementMinAdc = ADC_MAX_VALUE;
+    m_measurementMaxAdc = 0;
+    m_triggerConfirmCounter = 0;
+    m_releaseConfirmCounter = 0;
+    m_triggerCandidateBuffer.clear();
+    resetTallDrilledPattern();
+}
+
+void ProfileAnalyzer::resetCalibrationData()
+{
+    m_beltSampleSum = 0;
+    m_flatSampleSum = 0;
+    m_flatSampleCount = 0;
+    m_flatReferenceSent = false;
+}
+
+void ProfileAnalyzer::resetTallDrilledPattern()
+{
+    m_tallDrilledPatternState = TallDrilledPatternState::SEARCH_TALL_BEFORE;
+    m_isTallDrilled = false;
+    m_tallBeforeDrilledCounter = 0;
+    m_drilledPatternCounter = 0;
+    m_tallAfterDrilledCounter = 0;
+}
+
+uint32_t ProfileAnalyzer::calculateBlockAverage()
+{
     uint64_t sum = 0;
     for (size_t i = 0; i < SMOOTHING_SAMPLE_COUNT; ++i) {
         sum += m_rawBuffer[i];
     }
+
     return static_cast<uint32_t>(sum / SMOOTHING_SAMPLE_COUNT);
 }
 
-// ============================================================================
+void ProfileAnalyzer::setTransportPaused(bool paused)
+{
+    if (m_transportPaused == paused) {
+        return;
+    }
+
+    m_transportPaused = paused;
+    m_releaseConfirmCounter = 0;
+
+    if (m_transportPaused && (m_currentState == AnalyzerState::MEASURING)) {
+        m_currentState = AnalyzerState::MEASURING_PAUSED;
+        std::cout << "[Analyzer] State -> MEASURING_PAUSED" << std::endl;
+    } else if (!m_transportPaused &&
+               (m_currentState == AnalyzerState::MEASURING_PAUSED)) {
+        m_currentState = AnalyzerState::MEASURING;
+        std::cout << "[Analyzer] State -> MEASURING" << std::endl;
+        resetSmoothingBuffer();
+    } else if (!m_transportPaused) {
+        resetSmoothingBuffer();
+    }
+
+    std::cout << "[Analyzer] Transport "
+              << (m_transportPaused ? "pausiert" : "aktiv")
+              << " fuer Profilanalyse." << std::endl;
+}
+
 // SAMPLER VERARBEITUNG
-// ============================================================================
 
-void ProfileAnalyzer::processSample(uint32_t adcValue) {
-    if (m_coid == -1) return;
+void ProfileAnalyzer::processSample(uint32_t adcValue)
+{
+    if (m_coid == -1) {
+        return;
+    }
 
-    m_rawBuffer[m_fillCount] = adcValue;
-    m_fillCount++;
+    if (m_fillCount >= SMOOTHING_SAMPLE_COUNT) {
+        m_fillCount = 0;
+    }
 
-    if (m_fillCount < SMOOTHING_SAMPLE_COUNT) return;
+    m_rawBuffer[m_fillCount] = adcValue & ADC_MAX_VALUE;
+    ++m_fillCount;
 
-    uint32_t smoothedValue = calculateBlockAverage();
+    if (m_fillCount < SMOOTHING_SAMPLE_COUNT) {
+        return;
+    }
+
+    const uint16_t currentRaw = static_cast<uint16_t>(calculateBlockAverage() & ADC_MAX_VALUE);
     m_fillCount = 0;
 
-    uint16_t currentRaw = static_cast<uint16_t>(smoothedValue & 0xFFF);
-
     switch (m_currentState) {
+    case AnalyzerState::IDLE:
+        handleHeightError(currentRaw);
+        break;
 
-        case AnalyzerState::IDLE:
+    case AnalyzerState::WAITING_FOR_WP:
+        if (handleHeightError(currentRaw)) {
+            m_triggerConfirmCounter = 0;
+            m_triggerCandidateBuffer.clear();
             break;
+        }
 
-        case AnalyzerState::WAITING_FOR_WP:
+    	if (!isCalibrated()) {
+            break;
+        }
 
-            {
-                if (currentRaw < m_heightBlocked) {
-                    std::cerr << "[Analyzer] currentRaw < m_heightBlocked " << currentRaw << std::endl;
-                    m_sampleCounter = 1;
-                    m_currentSegmentIndex = 0;
-                    m_currentSegmentBuffer.clear();
+        if (currentRaw <= m_triggerValue) {
+            ++m_triggerConfirmCounter;
+            m_triggerCandidateBuffer.push_back(currentRaw);
 
-                    for (size_t i = 0; i < NUM_PROFILE_CLASSES; ++i) {
-                        m_segmentTypes[i] = static_cast<uint16_t>(WpType::UNKNOWN);
-                    }
-                    // ========================================================================
-                    // HEIGHT_BLOCKED Event an den Dispatcher senden
-                    // ========================================================================
-                    std::cout << "[Analyzer] Werkstueck an HS erkannt -> Sende HEIGHT_BLOCKED" << std::endl;
+            if (m_triggerConfirmCounter >= runningTriggerConfirmCount()) {
+                std::cout << "[Analyzer] Werkstueck an HS bestaetigt -> Sende HEIGHT_BLOCKED" << std::endl;
+                beginMeasurement();
 
-                    // Wir nutzen das HAL-Input-Payload-Encoding (Sensor-ID + Zustand)
-                    uint32_t payload = ipc::encodeHalPayload(ipc::SensorID::HEIGHT, ipc::State::BLOCKED);
-                    MsgSendPulse(m_coid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::HAL_INPUT, payload);
-                    // ========================================================================
-                    m_currentState = AnalyzerState::MEASURING;
+                for (uint16_t candidate : m_triggerCandidateBuffer) {
+                    addMeasurementSample(candidate);
                 }
+                m_triggerCandidateBuffer.clear();
             }
+        } else {
+            m_triggerConfirmCounter = 0;
+            m_triggerCandidateBuffer.clear();
+        }
+        break;
+
+    case AnalyzerState::MEASURING:
+        if (handleHeightError(currentRaw)) {
+            m_currentState = AnalyzerState::IDLE;
+            std::cout << "[Analyzer] State -> IDLE" << std::endl;
+            resetMeasurementData();
             break;
+        }
 
-        case AnalyzerState::MEASURING:
-            {
-                // HÖHEN-FEHLER CHECK
-                if (currentRaw < m_threshMaxHeight) {
-                    std::cerr << "[Analyzer] CRITICAL: Werkstueck zu hoch! ADC: " << currentRaw << std::endl;
-                    uint32_t payload = ipc::encodeHalPayload(ipc::SensorID::HEIGHT, ipc::State::HIGH_ERROR);
-                    MsgSendPulse(m_coid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::HAL_INPUT, payload);
-                    m_currentState = AnalyzerState::IDLE;
-                    break;
-                }
+        if (m_transportPaused) {
+            m_currentState = AnalyzerState::MEASURING_PAUSED;
+            std::cout << "[Analyzer] State -> MEASURING_PAUSED" << std::endl;
+            break;
+        }
 
-                // NORMALER SCAN
-                if (currentRaw < m_heightBlocked) {
-                    m_sampleCounter++;
+        if (currentRaw <= m_releaseTriggerValue) {
+            m_releaseConfirmCounter = 0;
+            addMeasurementSample(currentRaw);
+        } else {
+            ++m_releaseConfirmCounter;
 
-                    m_currentSegmentBuffer.push_back(currentRaw);
-
-                    // Wenn ein Segment voll ist, werten wir es aus und loggen das Ergebnis
-                    if (m_currentSegmentBuffer.size() >= m_samplesPerSegment && m_currentSegmentIndex < NUM_PROFILE_CLASSES) {
-
-                        // 1. Segment-Typ bestimmen
-                        uint16_t detectedType = determineSegmentType(m_currentSegmentBuffer);
-                        m_segmentTypes[m_currentSegmentIndex] = detectedType;
-
-                        // ========================================================================
-                        // LIVE-LOGGING FÜR JEDES SEGMENT
-                        // ========================================================================
-                        std::string segmentName = "?";
-                        switch (static_cast<WpType>(detectedType)) {
-                            case WpType::FLAT:         segmentName = "___Flach"; break; // Flach / Tief
-                            case WpType::TALL:         segmentName = "███Hoch"; break; // Hoch
-                            case WpType::TALL_DRILLED: segmentName = "░░░Bohrung"; break; // Bohrung (Mittelwert)
-                            default:                   segmentName = "???"; break;
-                        }
-
-                        std::cout << "[Scan] Segment [" << m_currentSegmentIndex + 1 << "/12] erkannt als: "
-                                  << segmentName << " (ID: " << detectedType << ")" << std::endl;
-                        // ========================================================================
-
-                        m_currentSegmentIndex++;
-                        m_currentSegmentBuffer.clear();
-                    }
-                }
-                else {
-                    // WERKSTÜCK HAT SENSOR VERLASSEN
-                    if (!m_currentSegmentBuffer.empty() && m_currentSegmentIndex < NUM_PROFILE_CLASSES) {
-                        m_segmentTypes[m_currentSegmentIndex] = determineSegmentType(m_currentSegmentBuffer);
-                    }
-
-                    if (m_sampleCounter >= (m_threshMinSamples * 0.7)) {
-                        uint16_t finalWpType = determineFinalWorkpieceType();
-                        evaluationFinished(finalWpType);
-                    } else {
-                        std::cout << "[Analyzer] Messung verworfen (Rauschen)." << std::endl;
-                    }
-                    m_currentState = AnalyzerState::IDLE;
-                }
+            if (m_releaseConfirmCounter >= runningReleaseConfirmCount()) {
+                finishMeasurement();
             }
+        }
+        break;
+
+    case AnalyzerState::MEASURING_PAUSED:
+        if (handleHeightError(currentRaw)) {
+            m_currentState = AnalyzerState::IDLE;
+            std::cout << "[Analyzer] State -> IDLE" << std::endl;
+            resetMeasurementData();
             break;
+        }
 
-        case AnalyzerState::CALIBRATION:
-            {
-                using CM = ipc::CalibMode;
+        // Transport steht: Messdaten bleiben erhalten, neue ADC-Werte werden ignoriert.
+        break;
 
-                switch (m_currentCalibStep) {
+    case AnalyzerState::CALIBRATION:
+        {
+            using CM = ipc::CalibMode;
 
-                    case CalibStep::MEASURE_BELT:
-                        m_sampleCounter++;
-                        if (m_sampleCounter == 1) {
-                            m_threshEmptyBelt = currentRaw;
-                        } else {
-                            m_threshEmptyBelt = (m_threshEmptyBelt + currentRaw) / 2;
-                        }
+            switch (m_currentCalibStep) {
+            case CalibStep::MEASURE_BELT:
+                m_beltSampleSum += currentRaw;
+                ++m_sampleCounter;
 
-                        if (m_sampleCounter >= 50) {
-                        	updateCalibrationThresholds(static_cast<uint16_t>(ipc::CalibMode::EMPTY_BELT), m_threshEmptyBelt);
+                if (m_sampleCounter >= BELT_REFERENCE_SAMPLE_COUNT) {
+                    m_threshEmptyBelt =
+                        averageAsUInt16(m_beltSampleSum, BELT_REFERENCE_SAMPLE_COUNT);
+                    updateCalibrationThresholds(static_cast<uint16_t>(CM::EMPTY_BELT),
+                                                m_threshEmptyBelt);
 
-                            uint32_t payload = ipc::encodeCalibPayload(m_threshEmptyBelt, static_cast<uint16_t>(CM::EMPTY_BELT));
-                            MsgSendPulse(m_coid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::HAL_ADC_CALIBRATION, payload);
+                    const uint32_t payload =
+                        ipc::encodeCalibPayload(m_threshEmptyBelt,
+                                                static_cast<uint16_t>(CM::EMPTY_BELT));
+                    MsgSendPulse(m_coid, SIGEV_PULSE_PRIO_INHERIT,
+                                 ipc::PulseCode::HAL_ADC_CALIBRATION, payload);
+                    std::cout << "[Calib] Stufe 1 fertig: EMPTY_BELT = "
+                              << m_threshEmptyBelt
+                              << " | Trigger = " << m_triggerValue
+                              << " | Release = " << m_releaseTriggerValue
+                              << ". Warte auf WP..." << std::endl;
 
-                            std::cout << "[Calib] Stufe 1 fertig: EMPTY_BELT = " << m_threshEmptyBelt
-                                      << " | m_heightBlocked = " << m_heightBlocked << ". Warte auf WP..." << std::endl;
-
-                            m_currentCalibStep = CalibStep::WAIT_FOR_WP;
-                            m_sampleCounter = 0;
-                        }
-                        break;
-
-                    case CalibStep::WAIT_FOR_WP:
-                        if (currentRaw <= m_heightBlocked) {
-                            m_sampleCounter++;
-
-                            // Erhöht auf 150 Samples für eine stabil gemittelte Werkstückplatte
-                            if (m_sampleCounter == 150) {
-                                m_threshFlatWp = currentRaw;
-                                updateCalibrationThresholds(static_cast<uint16_t>(ipc::CalibMode::FLAT_WP), m_threshFlatWp);
-                                uint32_t payload = ipc::encodeCalibPayload(m_threshFlatWp, static_cast<uint16_t>(CM::FLAT_WP));
-                                MsgSendPulse(m_coid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::HAL_ADC_CALIBRATION, payload);
-
-                                std::cout << "[Calib] Stufe 2 fertig: FLAT_WP = " << m_threshFlatWp << ". Erfasse Gesamtlänge..." << std::endl;
-
-                                m_currentCalibStep = CalibStep::WAIT_FOR_LEAVE;
-                            }
-                        }
-                        break;
-
-                    case CalibStep::WAIT_FOR_LEAVE:
-                        m_sampleCounter++;
-
-                        // Hysterese-Austritt: Verlässt das Werkstück die m_heightBlocked-Schwelle wieder nach oben?
-                        if (currentRaw >= (m_heightBlocked + 20)) {
-                            m_threshMinSamples = static_cast<uint16_t>(m_sampleCounter);
-                            updateCalibrationThresholds(static_cast<uint16_t>(ipc::CalibMode::MIN_SAMPLES), m_threshMinSamples);
-                            // Monitorausgabe aller ermittelten Variablen zur Überprüfung an der Anlage
-                            std::cout << "\n==================================================" << std::endl;
-                            std::cout << "     >>> KALIBRIERUNG ERFOLGREICH BEENDET <<<     " << std::endl;
-                            std::cout << "==================================================" << std::endl;
-                            std::cout << " [Basis] EMPTY_BELT       : " << m_threshEmptyBelt << " ADC" << std::endl;
-                            std::cout << " [Basis] FLAT_WP          : " << m_threshFlatWp << " ADC" << std::endl;
-                            std::cout << " [Basis] TRIGGER-SCHWELLE : " << m_heightBlocked << " ADC" << std::endl;
-                            std::cout << "--------------------------------------------------" << std::endl;
-                            std::cout << " [Fenster] FLAT-ZONEN     : " << m_threshFlatMin << " bis " << m_threshFlatMax << " ADC" << std::endl;
-                            std::cout << " [Fenster] TALL-ZONEN     : " << m_threshTallMin << " bis " << m_threshTallMax << " ADC" << std::endl;
-                            std::cout << " [Fenster] DRILLED-ZONEN  : " << m_threshDrilledMin << " bis " << m_threshDrilledMax << " ADC" << std::endl;
-                            std::cout << " [Fenster] MAX_HEIGHT     : < " << m_threshMaxHeight << " ADC (Fehler)" << std::endl;
-                            std::cout << "--------------------------------------------------" << std::endl;
-                            std::cout << " [Timing] MIN_SAMPLES     : " << m_threshMinSamples << " Samples" << std::endl;
-                            std::cout << " [Timing] SEGMENT-GRÖSSE  : " << m_samplesPerSegment << " Samples pro Klasse" << std::endl;
-                            std::cout << "==================================================\n" << std::endl;
-
-                            uint32_t payload = ipc::encodeCalibPayload(m_threshMinSamples, static_cast<uint16_t>(CM::MIN_SAMPLES));
-                            MsgSendPulse(m_coid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::HAL_ADC_CALIBRATION, payload);
-
-                            m_currentState = AnalyzerState::IDLE;
-                        }
-                        break;
+                    m_currentCalibStep = CalibStep::WAIT_FOR_WP;
+                    m_sampleCounter = 0;
+                    m_triggerConfirmCounter = 0;
                 }
+                break;
+
+            case CalibStep::WAIT_FOR_WP:
+                if (currentRaw <= m_triggerValue) {
+                    ++m_triggerConfirmCounter;
+                    m_flatSampleSum += currentRaw;
+                    ++m_flatSampleCount;
+
+                    if (m_triggerConfirmCounter >= CALIBRATION_TRIGGER_CONFIRM_COUNT) {
+                        std::cout << "[Calib] Flaches Referenz-WP erkannt. Erfasse FlatCenter..."
+                                  << std::endl;
+                        sendHeightState(ipc::State::BLOCKED);
+                        m_currentCalibStep = CalibStep::WAIT_FOR_LEAVE;
+                        m_sampleCounter = CALIBRATION_TRIGGER_CONFIRM_COUNT;
+                        m_releaseConfirmCounter = 0;
+                        m_flatReferenceSent = false;
+                    }
+                } else {
+                    m_triggerConfirmCounter = 0;
+                    m_flatSampleSum = 0;
+                    m_flatSampleCount = 0;
+                }
+                break;
+
+            case CalibStep::WAIT_FOR_LEAVE:
+                if (currentRaw <= m_releaseTriggerValue) {
+                    m_releaseConfirmCounter = 0;
+                    ++m_sampleCounter;
+
+                    if (m_flatSampleCount < FLAT_REFERENCE_SAMPLE_COUNT) {
+                        m_flatSampleSum += currentRaw;
+                        ++m_flatSampleCount;
+
+                        if (m_flatSampleCount >= FLAT_REFERENCE_SAMPLE_COUNT) {
+                            m_threshFlatWp =
+                                averageAsUInt16(m_flatSampleSum, m_flatSampleCount);
+                            updateCalibrationThresholds(static_cast<uint16_t>(CM::FLAT_WP),
+                                                        m_threshFlatWp);
+
+                            const uint32_t payload =
+                                ipc::encodeCalibPayload(m_threshFlatWp,
+                                                        static_cast<uint16_t>(CM::FLAT_WP));
+                            MsgSendPulse(m_coid, SIGEV_PULSE_PRIO_INHERIT,
+                                         ipc::PulseCode::HAL_ADC_CALIBRATION, payload);
+
+                            m_flatReferenceSent = true;
+                            std::cout << "[Calib] Stufe 2 fertig: FLAT_WP = "
+                                      << m_threshFlatWp
+                                      << ". Erfasse Gesamtlaenge..." << std::endl;
+                        }
+                    }
+                } else {
+                    ++m_releaseConfirmCounter;
+
+                    if (m_releaseConfirmCounter >= CALIBRATION_RELEASE_CONFIRM_COUNT) {
+                        if (!m_flatReferenceSent && m_flatSampleCount > 0) {
+                            m_threshFlatWp =
+                                averageAsUInt16(m_flatSampleSum, m_flatSampleCount);
+                            updateCalibrationThresholds(static_cast<uint16_t>(CM::FLAT_WP),
+                                                        m_threshFlatWp);
+
+                            const uint32_t flatPayload =
+                                ipc::encodeCalibPayload(m_threshFlatWp,
+                                                        static_cast<uint16_t>(CM::FLAT_WP));
+                            MsgSendPulse(m_coid, SIGEV_PULSE_PRIO_INHERIT,
+                                         ipc::PulseCode::HAL_ADC_CALIBRATION, flatPayload);
+                            m_flatReferenceSent = true;
+                        }
+
+                        m_threshMinSamples = static_cast<uint16_t>(m_sampleCounter);
+                        updateCalibrationThresholds(static_cast<uint16_t>(CM::MIN_SAMPLES),
+                                                    m_threshMinSamples);
+
+                        std::cout << "\n==================================================" << std::endl;
+                        std::cout << "     >>> KALIBRIERUNG ERFOLGREICH BEENDET <<<     " << std::endl;
+                        std::cout << "==================================================" << std::endl;
+                        std::cout << " [Basis] EMPTY_BELT       : " << m_threshEmptyBelt << " ADC" << std::endl;
+                        std::cout << " [Basis] FLAT_WP          : " << m_threshFlatWp << " ADC" << std::endl;
+                        std::cout << " [Basis] TRIGGER-SCHWELLE : " << m_triggerValue << " ADC" << std::endl;
+                        std::cout << " [Basis] RELEASE-SCHWELLE : " << m_releaseTriggerValue << " ADC" << std::endl;
+                        std::cout << "--------------------------------------------------" << std::endl;
+                        std::cout << " [Fenster] FLAT-ZONEN     : " << m_threshFlatMin << " bis " << m_threshFlatMax << " ADC" << std::endl;
+                        std::cout << " [Fenster] TALL-ZONEN     : " << m_threshTallMin << " bis " << m_threshTallMax << " ADC" << std::endl;
+                        std::cout << " [Fenster] DRILLED-ZONEN  : " << m_threshDrilledMin << " bis " << m_threshDrilledMax << " ADC" << std::endl;
+                        std::cout << " [Fenster] MAX_HEIGHT     : < " << m_threshMaxHeight << " ADC (Fehler)" << std::endl;
+                        std::cout << "--------------------------------------------------" << std::endl;
+                        std::cout << " [Timing] MIN_SAMPLES     : " << m_threshMinSamples << " Samples" << std::endl;
+                        std::cout << "==================================================\n" << std::endl;
+
+                        const uint32_t payload =
+                            ipc::encodeCalibPayload(m_threshMinSamples,
+                                                    static_cast<uint16_t>(CM::MIN_SAMPLES));
+                        MsgSendPulse(m_coid, SIGEV_PULSE_PRIO_INHERIT,
+                                     ipc::PulseCode::HAL_ADC_CALIBRATION, payload);
+
+                        sendHeightState(ipc::State::CLEARED);
+                        m_nextWaitingForWpIsServiceTiming = true;
+                        m_currentState = AnalyzerState::IDLE;
+                        resetMeasurementData();
+                        resetCalibrationData();
+                    }
+                }
+                break;
             }
-            break;
+        }
+        break;
     }
 }
 
-// ============================================================================
-// RESTLICHE METHODEN (KORRIGIERTE MATHEMATIK)
-// ============================================================================
+// MESSLAUF
 
-void ProfileAnalyzer::updateCalibrationThresholds(uint16_t calib_mode, uint16_t calib_value) {
+void ProfileAnalyzer::beginMeasurement()
+{
+    m_currentState = AnalyzerState::MEASURING;
+    std::cout << "[Analyzer] State -> MEASURING" << std::endl;
+    m_transportPaused = false;
+    m_sampleCounter = 0;
+    m_flatCounter = 0;
+    m_tallCounter = 0;
+    m_drilledCounter = 0;
+    m_unknownCounter = 0;
+    m_measurementMinAdc = ADC_MAX_VALUE;
+    m_measurementMaxAdc = 0;
+    m_releaseConfirmCounter = 0;
+    resetTallDrilledPattern();
+    sendHeightState(ipc::State::BLOCKED);
+}
+
+void ProfileAnalyzer::addMeasurementSample(uint16_t currentRaw)
+{
+    ++m_sampleCounter;
+    updateProfileCounters(currentRaw);
+}
+
+void ProfileAnalyzer::updateProfileCounters(uint16_t currentRaw)
+{
+    m_measurementMinAdc = std::min(m_measurementMinAdc, currentRaw);
+    m_measurementMaxAdc = std::max(m_measurementMaxAdc, currentRaw);
+
+    const bool isFlat = isInRange(currentRaw, m_threshFlatMin, m_threshFlatMax);
+    const bool isTall = isInRange(currentRaw, m_threshTallMin, m_threshTallMax);
+    const bool isDrilled = isInRange(currentRaw, m_threshDrilledMin, m_threshDrilledMax);
+
+    const int matches = static_cast<int>(isFlat)
+                      + static_cast<int>(isTall)
+                      + static_cast<int>(isDrilled);
+
+    if (matches != 1) {
+        ++m_unknownCounter;
+    } else if (isDrilled) {
+        ++m_drilledCounter;
+    } else if (isTall) {
+        ++m_tallCounter;
+    } else {
+        ++m_flatCounter;
+    }
+
+    updateTallDrilledPattern(currentRaw);
+}
+
+void ProfileAnalyzer::updateTallDrilledPattern(uint16_t currentRaw)
+{
+    if (m_isTallDrilled) {
+        return;
+    }
+
+    const bool isFlat = isInRange(currentRaw, m_threshFlatMin, m_threshFlatMax);
+    const bool isTall = isInRange(currentRaw, m_threshTallMin, m_threshTallMax);
+    const bool isDrilled = isInRange(currentRaw, m_threshDrilledMin, m_threshDrilledMax);
+    const size_t confirmCount = tallDrilledConfirmCount();
+
+    switch (m_tallDrilledPatternState) {
+    case TallDrilledPatternState::SEARCH_TALL_BEFORE:
+        if (isTall) {
+            ++m_tallBeforeDrilledCounter;
+
+            if (m_tallBeforeDrilledCounter >= confirmCount) {
+                m_tallDrilledPatternState =
+                    TallDrilledPatternState::SEARCH_DRILLED_AREA;
+            }
+        } else if (isFlat) {
+            m_tallBeforeDrilledCounter = 0;
+        }
+        break;
+
+    case TallDrilledPatternState::SEARCH_DRILLED_AREA:
+        if (isDrilled) {
+            ++m_drilledPatternCounter;
+
+            if (m_drilledPatternCounter >= confirmCount) {
+                m_tallDrilledPatternState =
+                    TallDrilledPatternState::SEARCH_TALL_AFTER;
+            }
+        } else if (isFlat) {
+            m_tallDrilledPatternState =
+                TallDrilledPatternState::SEARCH_TALL_BEFORE;
+            m_tallBeforeDrilledCounter = 0;
+            m_drilledPatternCounter = 0;
+        }
+        break;
+
+    case TallDrilledPatternState::SEARCH_TALL_AFTER:
+        if (isTall) {
+            ++m_tallAfterDrilledCounter;
+
+            if (m_tallAfterDrilledCounter >= confirmCount) {
+                m_isTallDrilled = true;
+                m_tallDrilledPatternState =
+                    TallDrilledPatternState::CONFIRMED;
+            }
+        } else if (isFlat) {
+            m_tallDrilledPatternState =
+                TallDrilledPatternState::SEARCH_TALL_BEFORE;
+            m_tallBeforeDrilledCounter = 0;
+            m_drilledPatternCounter = 0;
+            m_tallAfterDrilledCounter = 0;
+        }
+        break;
+
+    case TallDrilledPatternState::CONFIRMED:
+        break;
+    }
+}
+
+void ProfileAnalyzer::finishMeasurement()
+{
+    if (m_serviceTimingOnly) {
+        std::cout << "[Analyzer] Service-Timing beendet -> Sende HEIGHT_CLEARED ohne Typklassifikation." << std::endl;
+        sendHeightState(ipc::State::CLEARED);
+        m_serviceTimingOnly = false;
+        m_currentState = AnalyzerState::IDLE;
+        std::cout << "[Analyzer] State -> IDLE" << std::endl;
+        resetMeasurementData();
+        return;
+    }
+
+    const size_t minSamples = minRequiredMeasurementSamples();
+    if (m_sampleCounter < minSamples) {
+        std::cout << "[Analyzer] Messung zu kurz (" << m_sampleCounter
+                  << " Samples, Minimum " << minSamples
+                  << ") -> UNKNOWN." << std::endl;
+        evaluationFinished(static_cast<uint16_t>(WpType::UNKNOWN));
+    } else {
+        const uint16_t finalWpType = determineFinalWorkpieceType();
+        evaluationFinished(finalWpType);
+    }
+
+    m_currentState = AnalyzerState::IDLE;
+    std::cout << "[Analyzer] State -> IDLE" << std::endl;
+    resetMeasurementData();
+}
+
+// KALIBRIERUNG UND SCHWELLEN
+
+void ProfileAnalyzer::updateCalibrationThresholds(uint16_t calib_mode, uint16_t calib_value)
+{
     using CM = ipc::CalibMode;
+
     switch (static_cast<CM>(calib_mode)) {
-        case CM::EMPTY_BELT:
-            m_threshEmptyBelt = calib_value;
-            m_heightBlocked = m_threshEmptyBelt - 100; // Synchronisieren!
-            break;
-        case CM::FLAT_WP:
-            m_threshFlatWp = calib_value;
-            recalculateTypeThresholds(calib_value);
-            break;
-        case CM::MIN_SAMPLES:
-            m_threshMinSamples = calib_value;
-            m_samplesPerSegment =  calib_value / NUM_PROFILE_CLASSES;
-            break;
+    case CM::EMPTY_BELT:
+        m_threshEmptyBelt = calib_value;
+        m_triggerValue = safeSubtract(m_threshEmptyBelt, TRIGGER_OFFSET);
+        m_releaseTriggerValue = safeSubtract(m_threshEmptyBelt, RELEASE_OFFSET);
+        break;
 
-        default: break;
+    case CM::FLAT_WP:
+        m_threshFlatWp = calib_value;
+        recalculateTypeThresholds(calib_value);
+        break;
+
+    case CM::MIN_SAMPLES:
+        m_threshMinSamples = calib_value == 0 ? DEFAULT_MIN_SAMPLES : calib_value;
+        break;
+
+    case CM::FLAT_MIN:
+        m_threshFlatMin = calib_value;
+        break;
+    case CM::FLAT_MAX:
+        m_threshFlatMax = calib_value;
+        break;
+    case CM::TALL_MIN:
+        m_threshTallMin = calib_value;
+        break;
+    case CM::TALL_MAX:
+        m_threshTallMax = calib_value;
+        break;
+    case CM::DRILLED_MIN:
+        m_threshDrilledMin = calib_value;
+        break;
+    case CM::DRILLED_MAX:
+        m_threshDrilledMax = calib_value;
+        break;
+    case CM::MAX_HEIGHT:
+        m_threshMaxHeight = calib_value;
+        break;
+
+    default:
+        break;
     }
 }
 
-void ProfileAnalyzer::recalculateTypeThresholds(uint16_t flatCenter) {
-    // Toleranzbereich um die flache Platte (z.B. +/- 25 Ticks)
-    m_threshFlatMin    = flatCenter - 40;
-    m_threshFlatMax    = flatCenter + 40;
+void ProfileAnalyzer::recalculateTypeThresholds(uint16_t flatCenter)
+{
+    m_threshFlatMin = safeSubtract(flatCenter, FLAT_TOLERANCE);
+    m_threshFlatMax = safeAdd(flatCenter, FLAT_TOLERANCE);
 
-    // KORREKTUR: Echtes Toleranzfenster für hohe Werkstücke erzeugen (Invertiert!)
-    m_threshTallMin    = flatCenter - 270;
-    m_threshTallMax    = flatCenter - 220;
+    const uint16_t tallCenter = safeSubtract(flatCenter, TALL_CENTER_OFFSET);
+    m_threshTallMin = safeSubtract(tallCenter, TALL_TOLERANCE);
+    m_threshTallMax = safeAdd(tallCenter, TALL_TOLERANCE);
 
-    // KORREKTUR: Bohrungen liegen tiefer im Werkstück -> ADC-Werte steigen wieder an!
-    // Daher MUSS hier MINUS gerechnet werden, nicht plus, um das Niveau der Bohrung zu treffen.
-    m_threshDrilledMin = flatCenter + 620;
-    m_threshDrilledMax = flatCenter + 900;
+    const uint16_t drilledCenter = safeAdd(flatCenter, DRILLED_CENTER_OFFSET);
+    m_threshDrilledMin = safeSubtract(drilledCenter, DRILLED_TOLERANCE);
+    m_threshDrilledMax = safeAdd(drilledCenter, DRILLED_TOLERANCE);
 
-    // Maximal zulässige Höhe (Sicherheits-Fehlerschwelle)
-    m_threshMaxHeight  = m_threshTallMax - 100;
+    m_threshMaxHeight = safeSubtract(m_threshTallMin, MAX_HEIGHT_MARGIN);
 }
 
-uint16_t ProfileAnalyzer::determineSegmentType(const std::vector<uint16_t>& segmentSamples) {
-    if (segmentSamples.empty()) return static_cast<uint16_t>(WpType::UNKNOWN);
-    uint16_t segmentPeak = 4095;
-    for (uint16_t val : segmentSamples) {
-        if (val < segmentPeak) segmentPeak = val;
-    }
-    std::cout << "[Calib] segmentPeak = " << segmentPeak << "." << std::endl;
-    if (segmentPeak >= m_threshDrilledMin && segmentPeak <= m_threshDrilledMax) return static_cast<uint16_t>(WpType::TALL_DRILLED);
-    if (segmentPeak >= m_threshTallMin && segmentPeak <= m_threshTallMax) return static_cast<uint16_t>(WpType::TALL);
-    if (segmentPeak >= m_threshFlatMin && segmentPeak <= m_threshFlatMax) return static_cast<uint16_t>(WpType::FLAT);
-    return static_cast<uint16_t>(WpType::UNKNOWN);
-}
+// PROFILAUSWERTUNG
 
-uint16_t ProfileAnalyzer::determineFinalWorkpieceType() {
+uint16_t ProfileAnalyzer::determineFinalWorkpieceType()
+{
     using WT = WpType;
-    bool allTall = true; bool allFlat = true;
-    for (size_t i = 0; i < NUM_PROFILE_CLASSES; ++i) {
-        if (m_segmentTypes[i] != static_cast<uint16_t>(WT::TALL)) allTall = false;
-        if (m_segmentTypes[i] != static_cast<uint16_t>(WT::FLAT)) allFlat = false;
+
+    if (m_sampleCounter < minRequiredMeasurementSamples()) {
+        return static_cast<uint16_t>(WT::UNKNOWN);
     }
-    if (allTall) return static_cast<uint16_t>(WT::TALL);
-    if (allFlat) return static_cast<uint16_t>(WT::FLAT);
 
-    bool outerIsTall = (m_segmentTypes[0] == static_cast<uint16_t>(WT::TALL)) &&
-                       (m_segmentTypes[1] == static_cast<uint16_t>(WT::TALL)) &&
-                       (m_segmentTypes[9] == static_cast<uint16_t>(WT::TALL)) &&
-                       (m_segmentTypes[10] == static_cast<uint16_t>(WT::TALL));
+    const size_t mainClassThreshold = minSamplesForMainClass();
+    const size_t drilledClassThreshold = minSamplesForDrilledClass();
+    const bool flatRelevant = m_flatCounter >= mainClassThreshold;
+    const bool tallRelevant = m_tallCounter >= mainClassThreshold;
+    const bool drilledRelevant = m_drilledCounter >= drilledClassThreshold;
+    const bool tallEvidenceForDrilled =
+        m_tallCounter >= drilledClassThreshold;
+    const uint32_t strongestKnownCounter =
+        std::max(m_flatCounter, std::max(m_tallCounter, m_drilledCounter));
+    const bool knownEvidenceExists =
+        flatRelevant || tallRelevant || drilledRelevant;
+    const bool unknownDominates =
+        m_unknownCounter >= drilledClassThreshold &&
+        (m_unknownCounter * 100) >
+            (m_sampleCounter * UNKNOWN_DOMINANCE_PERCENT) &&
+        (!knownEvidenceExists ||
+         m_unknownCounter > (strongestKnownCounter * 2));
 
-    bool centerIsDrilled = (m_segmentTypes[5] == static_cast<uint16_t>(WT::TALL_DRILLED)) &&
-                           (m_segmentTypes[6] == static_cast<uint16_t>(WT::TALL_DRILLED));
+    std::cout << "[Scan] Finale Counter: flat=" << m_flatCounter
+              << " tall=" << m_tallCounter
+              << " drilled=" << m_drilledCounter
+              << " unknown=" << m_unknownCounter
+              << " samples=" << m_sampleCounter
+              << " mainClassThreshold=" << mainClassThreshold
+              << " drilledClassThreshold=" << drilledClassThreshold
+              << " tallDrilledPattern=" << (m_isTallDrilled ? "true" : "false")
+              << " min=" << m_measurementMinAdc
+              << " max=" << m_measurementMaxAdc
+              << std::endl;
 
-    if (outerIsTall && centerIsDrilled) return static_cast<uint16_t>(WT::TALL_DRILLED);
+    if (unknownDominates) {
+        return static_cast<uint16_t>(WT::UNKNOWN);
+    }
+
+    if (flatRelevant && tallEvidenceForDrilled) {
+        return static_cast<uint16_t>(WT::UNKNOWN);
+    }
+
+    if (!flatRelevant &&
+        drilledRelevant &&
+        (m_isTallDrilled || tallRelevant || tallEvidenceForDrilled)) {
+        return static_cast<uint16_t>(WT::TALL_DRILLED);
+    }
+
+    if (tallRelevant) {
+        return static_cast<uint16_t>(WT::TALL);
+    }
+
+    if (flatRelevant) {
+        return static_cast<uint16_t>(WT::FLAT);
+    }
+
     return static_cast<uint16_t>(WT::UNKNOWN);
 }
 
-void ProfileAnalyzer::evaluationFinished(uint16_t finalTypeOrValue) {
-    std::string typeName = "UNKNOWN";
-    switch (static_cast<WpType>(finalTypeOrValue)) {
-        case WpType::FLAT:         typeName = "FLAT (Flach)"; break;
-        case WpType::TALL:         typeName = "TALL (Hoch)"; break;
-        case WpType::TALL_DRILLED: typeName = "TALL_DRILLED (Gebohrt)"; break;
-        default:                   typeName = "UNKNOWN / INVALID"; break;
+// HILFSMETHODEN
+
+void ProfileAnalyzer::evaluationFinished(uint16_t finalTypeOrValue)
+{
+    std::cout << "\n[TEST-MONITOR] >>> ERKANNTES WERKSTUECK: "
+              << typeName(finalTypeOrValue) << " <<<\n" << std::endl;
+    const uint32_t typePayload =
+        ipc::encodeHalPayload(ipc::SensorID::HEIGHT, finalTypeOrValue);
+    MsgSendPulse(m_coid, SIGEV_PULSE_PRIO_INHERIT,
+                 ipc::PulseCode::HAL_INPUT, typePayload);
+}
+
+bool ProfileAnalyzer::handleHeightError(uint16_t currentRaw)
+{
+    if (m_threshMaxHeight == 0) {
+        m_heightErrorActive = false;
+        return false;
     }
-    std::cout << "\n[TEST-MONITOR] >>> ERKANNTES WERKSTUECK: " << typeName << " <<<\n" << std::endl;
 
-    //  Sende die Freigabe der Lichtschranke (landet im 'else if (sensor_state == ipc::State::CLEARED)'-Zweig)
-    uint32_t clearPayload = ipc::encodeHalPayload(ipc::SensorID::HEIGHT, ipc::State::CLEARED);
-    MsgSendPulse(m_coid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::HAL_INPUT, clearPayload);
+    const bool heightError = currentRaw < m_threshMaxHeight;
+    if (!heightError) {
+        m_heightErrorActive = false;
+        return false;
+    }
 
-    //  Sende den erkannten Typ (landet im 'else'-Zweig des Dispatchers)
-    uint32_t typePayload = ipc::encodeHalPayload(ipc::SensorID::HEIGHT, finalTypeOrValue);
-    MsgSendPulse(m_coid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::HAL_INPUT, typePayload);
+    if (!m_heightErrorActive) {
+        std::cerr << "[Analyzer] CRITICAL: Werkstueck zu hoch! ADC: "
+                  << currentRaw << std::endl;
+        sendHeightState(ipc::State::HIGH_ERROR);
+        m_heightErrorActive = true;
+    }
 
+    return true;
+}
+
+void ProfileAnalyzer::sendHeightState(uint16_t state)
+{
+    const uint32_t payload = ipc::encodeHalPayload(ipc::SensorID::HEIGHT, state);
+    MsgSendPulse(m_coid, SIGEV_PULSE_PRIO_INHERIT,
+                 ipc::PulseCode::HAL_INPUT, payload);
+}
+
+bool ProfileAnalyzer::isCalibrated() const
+{
+    return m_triggerValue > 0 &&
+           m_releaseTriggerValue > 0 &&
+           m_threshFlatMin < m_threshFlatMax &&
+           m_threshTallMin < m_threshTallMax &&
+           m_threshDrilledMin < m_threshDrilledMax &&
+           m_threshMinSamples > 0;
+}
+
+bool ProfileAnalyzer::isInRange(uint16_t value, uint16_t minValue, uint16_t maxValue) const
+{
+    if (minValue > maxValue) {
+        std::swap(minValue, maxValue);
+    }
+
+    return value >= minValue && value <= maxValue;
+}
+
+size_t ProfileAnalyzer::minRequiredMeasurementSamples() const
+{
+    const size_t calibratedSampleCount =
+        m_threshMinSamples > 0 ? m_threshMinSamples : DEFAULT_MIN_SAMPLES;
+
+    return std::max<size_t>(1,
+                            percentCeil(calibratedSampleCount,
+                                        MIN_MEASUREMENT_PERCENT));
+}
+
+size_t ProfileAnalyzer::minSamplesForMainClass() const
+{
+    const size_t sampleBasis =
+        m_sampleCounter > 0 ? m_sampleCounter : minRequiredMeasurementSamples();
+
+    return std::max<size_t>(2,
+                            percentCeil(sampleBasis, MAIN_CLASS_PERCENT));
+}
+
+size_t ProfileAnalyzer::minSamplesForDrilledClass() const
+{
+    const size_t sampleBasis =
+        m_sampleCounter > 0 ? m_sampleCounter : minRequiredMeasurementSamples();
+
+    return std::max<size_t>(2,
+                            percentCeil(sampleBasis, DRILLED_CLASS_PERCENT));
+}
+
+size_t ProfileAnalyzer::tallDrilledConfirmCount() const
+{
+    return std::max<size_t>(3, minSamplesForDrilledClass());
+}
+
+size_t ProfileAnalyzer::runningTriggerConfirmCount() const
+{
+    if (m_threshMinSamples == 0) {
+        return 3;
+    }
+
+    return std::max<size_t>(2, std::min<size_t>(5, m_threshMinSamples / 6));
+}
+
+size_t ProfileAnalyzer::runningReleaseConfirmCount() const
+{
+    return runningTriggerConfirmCount();
+}
+
+const char* ProfileAnalyzer::typeName(uint16_t type) const
+{
+    switch (static_cast<WpType>(type)) {
+    case WpType::FLAT:
+        return "FLAT (Flach)";
+    case WpType::TALL:
+        return "TALL (Hoch)";
+    case WpType::TALL_DRILLED:
+        return "TALL_DRILLED (Gebohrt)";
+    case WpType::TALL_DRILLED_METAL:
+        return "TALL_DRILLED_METAL";
+    case WpType::TALL_METAL:
+        return "TALL_METAL";
+    default:
+        return "UNKNOWN";
+    }
 }

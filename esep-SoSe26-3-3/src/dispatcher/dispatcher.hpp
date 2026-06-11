@@ -27,7 +27,8 @@
 #include "connectionManager/I_Connection.hpp"
 #include "timer/i_Timer.hpp"
 #include "logik/i_logik.hpp"
-#include "calibrationManager/I_CalibrationManager.hpp" // Sicherstellen, dass das geladen wird
+
+class I_CalibrationManager;
 
 class Dispatcher : public I_Dispatcher {
 private:
@@ -46,9 +47,16 @@ private:
     i_Actuators* m_actuators;
     i_Sensors* m_sensors;
     i_Connection* m_connection;          // KORRIGIERT: Eigenes Handle fürs Netzwerk
-    i_CalibrationManager* m_calibrationManager;   // KORRIGIERT: Korrekter Typ für Kalibrierungs-Dateien
+    I_CalibrationManager* m_calibrationManager;
     i_Timer* m_timer;
     i_Logik* m_logik;
+
+    // Temporäre Variablen im Dispatcher für die Live-Messung
+    // Lokale Zwischenlage für den Einlernvorgang im Dispatcher
+    static CalibrationData s_incomingServiceData;
+    static uint16_t s_liveEmptyBelt;
+    static uint16_t s_liveFlatCenter;
+    static uint32_t s_liveMinSamples;
 
     // ========================================================================
     // 2. Private Event-Handler & Hilfsmethoden
@@ -60,6 +68,7 @@ private:
     void handleConnectionPulse(uint32_t payload);
     void handleHalEStopPulse(uint32_t payload);
     void handlePartnerEStopPulse(uint32_t payload);
+    void handleCalibrationPulse(uint32_t payload);
 
 public:
     Dispatcher();
@@ -69,10 +78,8 @@ public:
     void run() override;
     void stop() override;
 
-    // ========================================================================
-    // KALIBRIERUNGS-SCHNITTSTELLE (Aus Interface implementiert)
-    // ========================================================================
-    void saveCompleteCalibrationMap(const std::map<std::string, int>& calibData) override;
+
+
 
     // ========================================================================
     // Eigene Getter (Wichtig für die main.cpp)
@@ -80,7 +87,7 @@ public:
     int getMyChannelId() const { return m_chid; }
     int getMyLocalCoid() const { return m_localCoid; }
     std::string getAnlagenPositionName() const {
-        return (m_position == VORN_ANLAGE_1) ? "Anlage_1" : "Anlage_2";
+        return (m_position == AnlagenPosition::VORN_ANLAGE_1) ? "Anlage_1" : "Anlage_2";
     }
 
     // ========================================================================
@@ -88,7 +95,7 @@ public:
     // ========================================================================
     void setActuators(i_Actuators* actuators) override { m_actuators = actuators; }
     void setSensor(i_Sensors* sensor) override { m_sensors = sensor; }
-    void setCalibrationManager(i_CalibrationManager* calib) { m_calibrationManager = calib; }
+    void setCalibrationManager(I_CalibrationManager* calibrationManager) { m_calibrationManager = calibrationManager; }
     void setConnectionManager(i_Connection* connection) override { m_connection = connection; }
     void setTimer(i_Timer* timer) override { m_timer = timer; }
     void setLogik(i_Logik* logik) override { m_logik = logik; }
@@ -96,12 +103,18 @@ public:
     // ========================================================================
     // DURCHREICHE-METHODEN (Fassade aus Netzwerk-Interface)
     // ========================================================================
-    void workpieceInfo(int id, WpType type) override;
+    void forwardCalibrationToHal(std::uint16_t emptyBelt, std::uint16_t flatCenter, std::uint32_t minSamples) override;
+    void sendWorkpieceInfo(int id, WpType type) override;
     void RequestToReceiveWp() override;
     void readyToReceiveWp() override;
     void updateWpListe(WpType type) override;
 
-    void sendPartnerResetPressed();
+    bool requestFileExists() override;
+    void sendeChuteStats(bool isVoll) override;
+
+    void setAdcIdelState()override { if (m_sensors) m_sensors->setAdcIdelState();}
+    void setAdcWaitigForWpState()override { if (m_sensors) m_sensors->setAdcWaitigForWpState();}
+    void setAdcCalibrationsState() override{if (m_sensors) m_sensors->setAdcCalibrationsState();}
     // ========================================================================
     // AKTORIK - Durchreiche-Methoden (Inline)
     // ========================================================================
@@ -114,8 +127,11 @@ public:
     void driveStop() override { if (m_actuators) m_actuators->driveStop(); }
 
     // Sortiereinheit
-    void openJunction() override { if (m_actuators) m_actuators->openJunction(); }
-    void closeJunction() override { if (m_actuators) m_actuators->closeJunction(); }
+    bool isSwitch()  override { return m_actuators->isSwitch(); }
+    void openSwitch() override { if (m_actuators) m_actuators->openSwitch(); };
+    void closeSwitch() override { if (m_actuators) m_actuators->closeSwitch(); }
+    void pushEjector() override { if (m_actuators) m_actuators->pushEjector(); }
+    void pullEjector() override { if (m_actuators) m_actuators->pullEjector(); }
 
     // Ampelsteuerung
     void lightGreenOn() override { if (m_actuators) m_actuators->lightGreenOn(); }

@@ -1,172 +1,109 @@
 /**
  * @file CalibrationManager.cpp
- * @brief Konkrete Implementierung des Key-Value Kalibrierungs-Speichers.
+ * @brief Implementierung des CalibrationManager für das QNX-Dateisystem.
+ *
  */
 
 #include "CalibrationManager.hpp"
-#include "shared/ipc_definitions.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include <sys/stat.h>
-#include <sys/neutrino.h>
 
-// ============================================================================
-// KONSTRUKTOR
-// ============================================================================
-CalibrationManager::CalibrationManager(const std::string& defaultFilepath)
-    : m_filepath(defaultFilepath) {
+CalibrationManager::CalibrationManager(const std::string& filePath)
+    : m_logik(nullptr),
+      m_filePath(filePath)
+{
+    std::cout << "[Calib-Manager] Instanziert mit Pfad: " << m_filePath << std::endl;
 }
 
-// ============================================================================
-// DATEI-OPERATIONEN
-// ============================================================================
+void CalibrationManager::setLogikContext(i_Logik* logik) {
+    m_logik = logik;
+}
 
 bool CalibrationManager::fileExists() {
-    struct stat buffer;
-    return (stat(m_filepath.c_str(), &buffer) == 0);
+    std::ifstream file(m_filePath);
+    return file.good(); // Liefert true, wenn die Datei geoeffnet werden kann und existiert
 }
 
-void CalibrationManager::load() {
-    clear(); // RAM vorher leeren
+CalibrationData CalibrationManager::loadCalibrationData() {
+    CalibrationData data; // Wird mit Standard-Nullen initialisiert
 
-    std::ifstream file(m_filepath);
+    std::ifstream file(m_filePath);
     if (!file.is_open()) {
-        std::cerr << "[CalibrationManager] Warnung: Datei '" << m_filepath
-                  << "' konnte nicht geoeffnet werden. Starte leer." << std::endl;
-        return;
+        std::cerr << "[Calib-Manager] ERROR: Datei konnte nicht geoeffnet werden: " << m_filePath << std::endl;
+        return data;
     }
 
     std::string line;
     while (std::getline(file, line)) {
-        std::string key;
-        int value = 0;
-        if (parseLine(line, key, value)) {
-            m_data[key] = value;
+        // Ignoriere Leerzeilen oder Kommentare
+        if (line.empty() || line[0] == '#') {
+            continue;
         }
-    }
 
-    std::cout << "[CalibrationManager] " << m_data.size() << " Werte erfolgreich geladen." << std::endl;
-}
+        std::istringstream is_line(line);
+        std::string key;
+        if (std::getline(is_line, key, '=')) {
+            std::string valueStr;
+            if (std::getline(is_line, valueStr)) {
 
-void CalibrationManager::save() {
-    std::ofstream file(m_filepath);
-    if (!file.is_open()) {
-        std::cerr << "[CalibrationManager] FEHLER: Konnte '" << m_filepath
-                  << "' nicht zum Schreiben oeffnen!" << std::endl;
-        return;
-    }
+                // Konvertierung des Strings in Zahlenwerte mittels std::stoul
+                std::uint32_t val = static_cast<std::uint32_t>(std::stoul(valueStr));
 
-    file << "# ===================================================\n";
-    file << "# FESTO MPS Station - Kalibrierungsdaten\n";
-    file << "# Automatisch generiert vom CalibrationManager\n";
-    file << "# ===================================================\n\n";
-
-    for (const auto& pair : m_data) {
-        file << pair.first << "=" << pair.second << "\n";
+                // Zuordnung zu den entsprechenden Struct-Feldern
+                if (key == "adc_emptyBelt")                       data.adc_emptyBelt = static_cast<std::uint16_t>(val);
+                else if (key == "adc_flatCenter")                 data.adc_flatCenter = static_cast<std::uint16_t>(val);
+                else if (key == "limit_minSamplesForClass")       data.limit_minSamplesForClass = val;
+                else if (key == "ticks_EntryC_to_HeightB_Slow")   data.ticks_EntryC_to_HeightB_Slow = val;
+                else if (key == "ticks_HeightB_to_HeightC_Slow")  data.ticks_HeightB_to_HeightC_Slow = val;
+                else if (key == "ticks_EntryC_to_HeightB_Normal") data.ticks_EntryC_to_HeightB_Normal = val;
+                else if (key == "ticks_HeightB_to_HeightC_Normal") data.ticks_HeightB_to_HeightC_Normal = val;
+                else if (key == "ticks_HeightC_to_EjectorB_Normal") data.ticks_HeightC_to_EjectorB_Normal = val;
+                else if (key == "ticks_EjectorB_to_EjectorC_Normal") data.ticks_EjectorB_to_EjectorC_Normal = val;
+                else if (key == "ticks_EjectorC_to_EndB_Normal")   data.ticks_EjectorC_to_EndB_Normal = val;
+                else if (key == "ticks_EndB_to_EndC_Normal")       data.ticks_EndB_to_EndC_Normal = val;
+            }
+        }
     }
 
     file.close();
-    std::cout << "[CalibrationManager] " << m_data.size() << " Werte permanent gesichert." << std::endl;
+    std::cout << "[Calib-Manager] Kalibrierungsdatei erfolgreich geparst und geladen." << std::endl;
+    return data;
 }
 
-void CalibrationManager::distributeValues(int dispatcherCoid) {
-    if (dispatcherCoid == -1) {
-        std::cerr << "[CalibrationManager] Fehler: Ungueltige Dispatcher-COID!" << std::endl;
-        return;
-    }
+bool CalibrationManager::saveCalibrationData(const CalibrationData& data) {
+    std::ofstream file(m_filePath);
 
-    // ------------------------------------------------------------------------
-    // 1. ADC-WERTE SENDEN (Nutzt MANAGER_ADC_CALIBRATION)
-    // ------------------------------------------------------------------------
-    if (hasKey(calib::EMPTY_BELT)) {
-        uint32_t p = ipc::encodeCalibPayload(m_data[calib::EMPTY_BELT], static_cast<uint16_t>(ipc::CalibMode::EMPTY_BELT));
-        MsgSendPulse(dispatcherCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::MANAGER_ADC_CALIBRATION, p);
-    }
-    if (hasKey(calib::FLAT_CENTER)) {
-        uint32_t p = ipc::encodeCalibPayload(m_data[calib::FLAT_CENTER],static_cast<uint16_t>(ipc::CalibMode::FLAT_WP));
-        MsgSendPulse(dispatcherCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::MANAGER_ADC_CALIBRATION, p);
-    }
-    if (hasKey(calib::MIN_SAMPLES_FOR_CLASS)) {
-        uint32_t p = ipc::encodeCalibPayload(m_data[calib::MIN_SAMPLES_FOR_CLASS], static_cast<uint16_t>(ipc::CalibMode::MIN_SAMPLES));
-        MsgSendPulse(dispatcherCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::MANAGER_ADC_CALIBRATION, p);
-    }
-
-    // 2. ZEIT-TICKS SENDEN (MANAGER_TICK_CALIBRATION)
-        // Map ordnet den Text-Schlüssel direkt dem neuen CalibMode-Subtyp zu!
-        using CM = ipc::CalibMode; // Kurzer Alias für die Lesbarkeit
-
-    std::map<std::string, uint16_t> tickMapping = {
-            {calib::TICKS_ENTRY_C_TO_HEIGHT_B_SLOW,    static_cast<uint16_t>(CM::TICK_ENTRY_C_TO_HEIGHT_B_SLOW)},
-            {calib::TICKS_HEIGHT_B_TO_HEIGHT_C_SLOW,   static_cast<uint16_t>(CM::TICK_HEIGHT_B_TO_HEIGHT_C_SLOW)},
-            {calib::TICKS_ENTRY_C_TO_HEIGHT_B_NORMAL,    static_cast<uint16_t>(CM::TICK_ENTRY_C_TO_HEIGHT_B_NORMAL)},
-            {calib::TICKS_HEIGHT_B_TO_HEIGHT_C_NORMAL,   static_cast<uint16_t>(CM::TICK_HEIGHT_B_TO_HEIGHT_C_NORMAL)},
-            {calib::TICKS_HEIGHT_C_TO_EJECTOR_B_NORMAL,  static_cast<uint16_t>(CM::TICK_HEIGHT_C_TO_EJECTOR_B_NORMAL)},
-            {calib::TICKS_EJECTOR_B_TO_EJECTOR_C_NORMAL, static_cast<uint16_t>(CM::TICK_EJECTOR_B_TO_EJECTOR_C_NORMAL)},
-            {calib::TICKS_EJECTOR_C_TO_END_B_NORMAL,     static_cast<uint16_t>(CM::TICK_EJECTOR_C_TO_END_B_NORMAL)},
-            {calib::TICKS_END_B_TO_END_C_NORMAL,         static_cast<uint16_t>(CM::TICK_END_B_TO_END_C_NORMAL)}
-        };
-
-    for (const auto& mapping : tickMapping) {
-        if (hasKey(mapping.first)) {
-            // [ 16 Bit: Wert in Ticks ] [ 16 Bit: Genauer Segment-Typ (CalibMode) ]
-            uint32_t p = ipc::encodeCalibPayload(m_data[mapping.first], mapping.second);
-            MsgSendPulse(dispatcherCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PulseCode::MANAGER_TICK_CALIBRATION, p);
-        }
-    }
-}
-
-// ============================================================================
-// DATEN-OPERATIONEN (RAM-Zugriff)
-// ============================================================================
-
-bool CalibrationManager::hasKey(const std::string& key) {
-    return (m_data.find(key) != m_data.end());
-}
-
-int CalibrationManager::getInt(const std::string& key, int defaultValue) {
-    auto it = m_data.find(key);
-    if (it != m_data.end()) {
-        return it->second;
-    }
-    return defaultValue;
-}
-
-void CalibrationManager::setInt(const std::string& key, int value) {
-    m_data[key] = value;
-}
-
-void CalibrationManager::clear() {
-    m_data.clear();
-}
-
-// ============================================================================
-// PRIVATE HILFSMETHODEN (Der Parser)
-// ============================================================================
-
-bool CalibrationManager::parseLine(const std::string& line, std::string& outKey, int& outValue) {
-    if (line.empty() || line[0] == '#' || line[0] == ';') {
+    if (!file.is_open()) {
+        std::cerr << "[Calib-Manager] CRITICAL: Datei zum Speichern konnte nicht erstellt werden: "
+                  << m_filePath << std::endl;
         return false;
     }
 
-    std::stringstream ss(line);
-    std::string keyStr;
-    std::string valueStr;
+    // Header für die Textdatei schreiben (erleichtert die Lesbarkeit auf dem QNX-Terminal)
+    file << "# ==================\n";
+    file << "# Kalibrierungsdaten\n";
+    file << "# SoSe2026 Team 3.3 \n";
+    file << "# ==================\n\n";
 
-    if (std::getline(ss, keyStr, '=') && std::getline(ss, valueStr)) {
-        // Whitespaces trimmen
-        keyStr.erase(0, keyStr.find_first_not_of(" \t\r\n"));
-        keyStr.erase(keyStr.find_last_not_of(" \t\r\n") + 1);
+    file << "[Analog-Thresholds]\n";
+    file << "adc_emptyBelt=" << data.adc_emptyBelt << "\n";
+    file << "adc_flatCenter=" << data.adc_flatCenter << "\n";
+    file << "limit_minSamplesForClass=" << data.limit_minSamplesForClass << "\n\n";
 
-        outKey = keyStr;
+    file << "[Normal-Speed-Ticks]\n";
+    file << "ticks_EntryC_to_HeightB_Normal=" << data.ticks_EntryC_to_HeightB_Normal << "\n";
+    file << "ticks_HeightB_to_HeightC_Normal=" << data.ticks_HeightB_to_HeightC_Normal << "\n";
+    file << "ticks_HeightC_to_EjectorB_Normal=" << data.ticks_HeightC_to_EjectorB_Normal << "\n";
+    file << "ticks_EjectorB_to_EjectorC_Normal=" << data.ticks_EjectorB_to_EjectorC_Normal << "\n";
+    file << "ticks_EjectorC_to_EndB_Normal=" << data.ticks_EjectorC_to_EndB_Normal << "\n";
+    file << "ticks_EndB_to_EndC_Normal=" << data.ticks_EndB_to_EndC_Normal << "\n\n";
 
-        try {
-            outValue = std::stoi(valueStr);
-            return true;
-        } catch (...) {
-            return false;
-        }
-    }
+    file << "[Slow-Speed-Base-Ticks]\n";
+    file << "ticks_EntryC_to_HeightB_Slow=" << data.ticks_EntryC_to_HeightB_Slow << "\n";
+    file << "ticks_HeightB_to_HeightC_Slow=" << data.ticks_HeightB_to_HeightC_Slow << "\n";
 
-    return false;
+    file.close();
+    std::cout << "[Calib-Manager] Alle Kalibrierungsdaten dauerhaft gesichert in: " << m_filePath << std::endl;
+    return true;
 }

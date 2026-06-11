@@ -62,6 +62,14 @@ public:
     virtual void setAdcCalibrationsState() = 0;
 
     /**
+     * @brief Pausiert oder reaktiviert die Profilauswertung bei stehendem Band.
+     *
+     * Die bisherigen Messdaten bleiben erhalten; nur neue ADC-Werte werden
+     * während der Pause nicht in die Profilentscheidung eingerechnet.
+     */
+    virtual void setAdcTransportPaused(bool paused) = 0;
+
+    /**
      * @brief Aktualisiert die internen Schwellenwerte des ProfileAnalyzers live.
      * * Wird beim Systemstart vom Dispatcher aufgerufen, sobald der CalibrationManager
      * die Werte erfolgreich aus der Textdatei geladen hat.

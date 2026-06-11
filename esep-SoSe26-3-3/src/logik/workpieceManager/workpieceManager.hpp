@@ -1,68 +1,134 @@
 /**
-* @file WorkpieceManager.hpp
+ * @file WorkpieceManager.hpp
+ * @brief Schieberegister zur logischen Verwaltung aller Werkstücke auf dem Förderband.
  *
- * @brief Klassenbeschreibung: WorkpieceManager
- *
- * Die Klasse WorkpieceManager ist für das Material-Tracking (Materialverfolgung)
- * innerhalb der Sortieranlage zuständig. Sie verwaltet alle Werkstücke, die sich
- * aktuell physisch auf dem Förderband befinden, nach dem FIFO-Prinzip (First In, First Out).
- *
- * Hauptaufgaben (Zuständigkeiten):
- * - Ablaufsteuerung (Tracking): Registrierung neuer Werkstücke beim Einlauf und
- *   Löschung beim Verlassen des Bandes (Auswurf oder erfolgreiche Übergabe).
- * - Datenzuordnung: Sicherstellung, dass asynchrone Sensordaten (wie die spätere
- *   Höhenmessung) exakt dem richtigen, neu eingelaufenen Werkstück zugeordnet werden.
- * - Entscheidungsbereitstellung: Bereitstellung des jeweils vordersten (ältesten)
- *   Werkstücks für die Weiche, damit die Logik rechtzeitig die canPass-Entscheidung abrufen kann.
+ * SoSe2026 Team 3.3
  */
+
 #ifndef WORKPIECE_MANAGER_HPP
 #define WORKPIECE_MANAGER_HPP
 
-#include <deque>
-#include "Workpiece.hpp"
+#include <vector>
+#include "workpiece.hpp"
+#include "targetSequence.hpp"
+#include "shared/types.hpp"
+#include "shared/logikEvent.hpp"
 
-class workpieceManager {
-private:
-    // Die Warteschlange, die alle aktuell auf dem Band befindlichen Werkstücke hält
-    std::deque<workpiece> m_queue;
+namespace logik {
 
-public:
-    // 1. Einlauf: Neues Werkstück betritt das Band (Event: LB_ENTRY_BLOCKED)
-    void addWorkpiece() {
-        // Erstellt ein neues Werkstück (ID wird automatisch vergeben) und packt es ans Ende
-        m_queue.push_back(workpiece());
-    }
+    class Logik;
 
-    // 2. Höhensensor: Trägt die gemessenen Daten in das NEUESTE Werkstück ein
-    void updateLatestWorkpiece(WPType type, bool canPass) {
-        if (!m_queue.empty()) {
-            m_queue.back().setType(type);
-            m_queue.back().setCanPass(canPass);
+    class WorkpieceManager {
+    private:
+        Logik* m_context;                           ///< Zeiger auf den Hauptkontext für Event-Feuerungen & Eskalationen
+        std::vector<Workpiece> m_activeWorkpieces;  ///< Das aktive Schieberegister (Digitaler Zwilling)
+        TargetSequence m_sequence;                  ///< Das zyklische Sortier-Rezept
+        CalibrationData m_calibData;                ///< Geladene Zeit-Kalibrierungsdaten (aus types.hpp)
+        double m_speedFactor;                       ///< Berechneter Proportionalitätsfaktor (Slow vs. Normal)
+
+        // ====================================================================
+        // ANLAGEN-POSITIONIERUNG & BEREITSCHAFT
+        // ====================================================================
+        AnlagenPosition m_myPosition;               ///< Speichert, ob dieser Manager auf Anlage 1 (VORN) oder Anlage 2 (HINTEN) läuft
+        bool m_isAnlage2Ready;                      ///< Flag: Ist Anlage 2 bereit zur Materialaufnahme?
+
+        // ====================================================================
+        // TAKT-BASIERTE AKTOR-ZEITSTEUERUNG
+        // ====================================================================
+        bool m_isSwitchOpen;                        ///< Zustandstracking, ob die Weiche gerade offen ist
+        int m_switchOpenTicks;                      ///< Zaehlt die verbleibenden 10ms-Takte fuer das Offenhalten
+        const int TICKS_ONE_SECOND;                 ///< Konstante: 100 Takte * 10ms = 1000ms (1 Sekunde)
+
+    public:
+        /**
+         * @brief Konstruktor.
+         * @param context Zeiger auf die übergeordnete Steuerungskomponente.
+         */
+        explicit WorkpieceManager(Logik* context);
+        ~WorkpieceManager() = default;
+
+        /**
+         * @brief Fügt ein neues Werkstück lokal am Einlauf hinzu (Anlage 1).
+         */
+        void addWorkpiece();
+
+        /**
+         * @brief Fügt ein Werkstück mit bereits bekannter ID und Typ am Einlauf hinzu (Anlage 2).
+         */
+        void addNetworkWorkpiece(int id, WpType type);
+
+        /**
+         * @brief Der zentrale Herzschlag des Schieberegisters (Aufruf stur alle 10ms via Hardware-Timer).
+         */
+        void takt(bool isMotorSlow);
+
+        /**
+         * @brief Verarbeitet die hardwarenahen Werkstück-Ereignisse der HAL.
+         */
+        void handleSensorSignal(logik::Event e, WpType typeFromHal = WpType::UNKNOWN);
+
+        /**
+         * @brief Setzt die Kalibrierungsdaten und berechnet automatisch den anlagenspezifischen Geschwindigkeitsfaktor.
+         */
+        void setCalibrationData(const CalibrationData& data);
+
+        /**
+         * @brief Liefert das älteste (vorderste) Werkstück an einer bestimmten Position.
+         */
+        Workpiece* getFirstWorkpieceAt(WpLocation loc);
+
+        /**
+         * @brief Löscht alle Werkstücke und setzt die Rezeptur zurück (bei STOP, E-STOP oder RESET).
+         */
+        void clearAll();
+
+        void setSpeedFactor(double factor) {m_speedFactor = factor;}
+
+        // ====================================================================
+        // NEU: SORTIER-ENTSCHEIDUNGS-METHODEN
+        // ====================================================================
+        /**
+         * @brief Werkstueck entspricht dem Rezept -> Darf passieren.
+         */
+        void canPass();
+
+        /**
+         * @brief Werkstueck ist fehlerhaft/falsch -> Wird aussortiert.
+         */
+        void canNotPass();
+
+        // ====================================================================
+        // KORREKTUR: JETZT PUBLIC FÜR DEN ERROR-HANDLER
+        // ====================================================================
+        /**
+         * @brief Hilfsmethode zum sicheren Entfernen eines Werkstücks über seine eindeutige ID.
+         * @note Von privat nach öffentlich verschoben, damit der ErrorHandler verlorene/steckengebliebene Teile löschen kann.
+         * @param id Die ID des zu löschenden Werkstücks.
+         */
+        void removeWorkpiece(int id);
+
+        // ====================================================================
+        // GETTER- UND SETTER-METHODEN FÜR DIE LOGIK-SCHICHT
+        // ====================================================================
+        TargetSequence& getSequence() { return m_sequence; }
+        void setAnlagenPosition(AnlagenPosition pos) { m_myPosition = pos; }
+
+        void setAnlage2Ready(bool ready) {
+            m_isAnlage2Ready = ready;
+            std::cout << "[WP-Manager] Status Anlage 2 aktualisiert: " << (ready ? "BEREIT" : "BLOCKIERT") << std::endl;
         }
-    }
 
-    // 3. Weiche / Auslauf: Holt das ÄLTESTE Werkstück (das gerade vorne ankommt)
-    // Wichtig: Rückgabe als Referenz (&), damit wir live Daten lesen können
-    Workpiece& getFrontWorkpiece() {
-        return m_queue.front();
-    }
+       bool isAnlage2Ready(){
+         return m_isAnlage2Ready;
+       }
 
-    // 4. Bandende / Auswurf: Entfernt das vorderste Werkstück endgültig aus dem System
-    void removeFrontWorkpiece() {
-        if (!m_queue.empty()) {
-            m_queue.pop_front();
-        }
-    }
+    private:
+        /**
+         * @brief Prüft den Werkstücktyp gegen das Rezept, speichert das Flag im WP und schaltet die Weiche.
+         */
+        void checkAndSetJunction(Workpiece* wp);
+    };
 
-    // Hilfsfunktion für die Logik
-    bool isEmpty() const {
-        return m_queue.empty();
-    }
-    
-    // Komplett-Reset (z.B. wenn die Reset-Taste gedrückt wird)
-    void clearAll() {
-        m_queue.clear();
-    }
-};
+} // namespace logik
 
 #endif // WORKPIECE_MANAGER_HPP

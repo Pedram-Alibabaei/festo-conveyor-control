@@ -38,6 +38,7 @@ namespace hal {
         void setAdcIdelState() override;
         void setAdcWaitigForWpState() override;
         void setAdcCalibrationsState() override;
+        void setAdcTransportPaused(bool paused) override;
 
         /**
          * @brief Aktualisiert die internen Schwellenwerte des ProfileAnalyzers live.

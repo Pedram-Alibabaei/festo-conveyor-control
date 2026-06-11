@@ -1,70 +1,95 @@
 /**
  * @file TargetSequence.hpp
- *
- * @brief Klassenbeschreibung: TargetSequence
+ * @brief Klassenbeschreibung: TargetSequence für die Rezeptur-Validierung.
  *
  * Die Klasse TargetSequence verwaltet die zyklische Soll-Reihenfolge der Werkstücke
  * für den Sortierprozess zwischen Anlage 1 und Anlage 2. Sie fungiert als
- * zentrales Regelwerk (Strategy Pattern) für die Weichenschaltung.
+ * zentrales Regelwerk für die Weichenschaltung.
  *
- * Hauptaufgaben (Zuständigkeiten):
- * - Sequenz-Definition: Hält die fest definierte Reihenfolge (Ringpuffer), in der
- *   Anlage 2 die Werkstücke zwingend erwartet (Nicht-metallisch mit Bohrung ->
- *   Metallisch ohne Bohrung -> Flach -> Metallisch mit Bohrung).
- * - Validierung: Bietet der Logik eine schnelle Prüf-Schnittstelle (isCorrectType()),
- *   um zu entscheiden, ob ein Werkstück die Weiche passieren darf (canPass = true)
- *   oder aussortiert werden muss.
- * - Fortschrittssteuerung: Schaltet den internen Zeiger (Ampel) zum nächsten
- *   erwarteten Typ weiter, sobald eine erfolgreiche Materialübergabe an Anlage 2
- *   bestätigt wurde.
+ * Embedded Systems Engineering WiSe2025 Team 1.1
  */
 
 #ifndef TARGET_SEQUENCE_HPP
 #define TARGET_SEQUENCE_HPP
 
 #include <vector>
-#include "Workpiece.hpp" // Enthält euer WPType Enum
-#include <shared/types.hpp>
-class targetSequence { // <-- Korrigiert: Großes 'T' für C++ Klassen!
+#include <iostream>
+#include "shared/types.hpp"// Enthält das global gültige WpType Enum
+
+class TargetSequence {
 private:
-    std::vector<WpType> m_sequence;
-    size_t m_currentIndex;
+    std::vector<WpType> m_sequence; ///< Die vorgegebene Rezeptur-Reihenfolge (Ringpuffer)
+    std::size_t m_currentIndex;     ///< Zeiger auf den aktuell erwarteten Typen-Index
 
 public:
-    // Konstruktor: Baut die geforderte Reihenfolge auf
-    targetSequence() {
+    /**
+     * @brief Konstruktor: Baut die geforderte Labor-Reihenfolge auf.
+     */
+    TargetSequence() : m_currentIndex(0) {
         m_sequence = {
-            WpType::TALL_DRILLED,       // 1. Nicht-metallisch mit Bohrung
-            WpType::TALL_METAL,         // 2. Metallisch ohne Bohrung
+            WpType::TALL_DRILLED,       // 1. Hoch, mit Bohrung, nicht-metallisch
+            WpType::TALL_METAL,         // 2. Hoch, ohne Bohrung, metallisch
             WpType::FLAT,               // 3. Flaches Werkstück
-            WpType::TALL_DRILLED_METAL  // 4. Metallisch mit Bohrung
+            WpType::TALL_DRILLED_METAL  // 4. Hoch, mit Bohrung, metallisch
         };
-        m_currentIndex = 0;
     }
 
-    // Welches Werkstück wird JETZT gerade erwartet?
+    ~TargetSequence() = default;
+
+    /**
+     * @brief Liefert den Werkstücktyp, der aktuell an der Reihe ist.
+     * @return WpType Der erwartete Typ.
+     */
     WpType getExpectedType() const {
-        return m_sequence[m_currentIndex];
+        return m_sequence.at(m_currentIndex);
     }
 
-    // Prüft, ob das aktuell auf dem Band liegende Werkstück das richtige ist
+    /**
+     * @brief Prüft, ob das übergebene Werkstück dem aktuell erwarteten Rezept-Typ entspricht.
+     * @param currentType Der physisch gemessene Typ des zu prüfenden Werkstücks.
+     * @return true, wenn der Typ übereinstimmt (Teil darf passieren), andernfalls false.
+     */
     bool isCorrectType(WpType currentType) const {
-        return currentType == m_sequence[m_currentIndex];
+        return currentType == m_sequence.at(m_currentIndex);
     }
 
-    // Wird aufgerufen, wenn das Werkstück erfolgreich das Ende von Anlage 2 erreicht hat!
-    // Schaltet die Ampel sozusagen auf das nächste Werkstück um.
+    /**
+     * @brief Schaltet den internen Zeiger zum nächsten erwarteten Typ weiter.
+     * @note Wird im WorkpieceManager aufgerufen, sobald eine erfolgreiche Weichenpassage (EJECTOR_CLEARED) bestätigt wurde.
+     */
     void advanceSequence() {
-        m_currentIndex++;
-        // Wenn wir am Ende der Liste sind, wieder bei 0 anfangen (Ringpuffer-Verhalten)
-        if (m_currentIndex >= m_sequence.size()) {
-            m_currentIndex = 0; 
+        if (!m_sequence.empty()) {
+            // Kompakter Ringpuffer-Sprung mittels Modulo-Operator
+            m_currentIndex = (m_currentIndex + 1) % m_sequence.size();
+            std::cout << "[TargetSequence] Rezeptur vorgerueckt. Naechster Index: " << m_currentIndex
+                      << " (Erwarteter Typ-ID: " << static_cast<int>(getExpectedType()) << ")" << std::endl;
         }
     }
 
-    // Wird aufgerufen, wenn jemand die RESET-Taste drückt
+    /**
+     * @brief Zwingt den Rezeptzeiger hart auf einen bestimmten Typen.
+     * @note Wichtig für die netzwerkbasierte absolute Synchronisation durch Anlage 2.
+     * @param type Der Typ, auf den das Rezept gesetzt werden soll.
+     */
+    void forceType(WpType type) {
+        for (std::size_t i = 0; i < m_sequence.size(); ++i) {
+            if (m_sequence.at(i) == type) {
+                m_currentIndex = i;
+                std::cout << "[TargetSequence] Rezept per Netzwerk-Befehl synchronisiert auf Index: "
+                          << m_currentIndex << " (Typ-ID: " << static_cast<int>(type) << ")" << std::endl;
+                return;
+            }
+        }
+        std::cerr << "[TargetSequence] ERROR: Typ-ID " << static_cast<int>(type)
+                  << " existiert nicht im Rezept!" << std::endl;
+    }
+
+    /**
+     * @brief Setzt die Sequenz wieder an den Anfang des Rezepts (z.B. bei STOP, RESET oder E-STOP).
+     */
     void resetSequence() {
         m_currentIndex = 0;
+        std::cout << "[TargetSequence] Rezeptur auf Startposition zurueckgesetzt." << std::endl;
     }
 };
 
