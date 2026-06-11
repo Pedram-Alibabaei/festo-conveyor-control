@@ -10,14 +10,13 @@
 #include <map>
 #include <string>
 #include "shared/ipc_definitions.hpp"
-#include <shared/types.hpp>
+#include "shared/types.hpp"
 
 class i_Actuators;
-class i_Sensor;
+class i_Sensors;
 class i_Connection;
 class i_Timer;
-class i_CalibrationManager;
-namespace logik { class i_Logik; }
+class i_Logik;
 
 class I_Dispatcher {
 public:
@@ -27,7 +26,7 @@ public:
      * @brief Initialisiert die QNX-Ressourcen (Channel, CoID).
      * @param pos Die physische Position der Anlage.
      */
-    virtual void init(ipc::AnlagenPosition pos) = 0;
+    virtual void init(AnlagenPosition pos) = 0;
 
     /**
      * @brief Startet die zentrale Event-Schleife (blockierend).
@@ -55,11 +54,10 @@ public:
     // Dependency Injection (Setter)
     // ========================================================================
     virtual void setActuators(i_Actuators* actuators) = 0;
-    virtual void setSensor(i_Sensor* sensor) = 0;
+    virtual void setSensor(i_Sensors* sensor) = 0;
     virtual void setConnectionManager(i_Connection* connection) = 0;
     virtual void setTimer(i_Timer* timer) = 0;
-    virtual void setLogik(logik::i_Logik* logik) = 0;
-    virtual void setCalibrationManager(i_CalibrationManager* cm) = 0;
+    virtual void setLogik(i_Logik* logik) = 0;
 
     // ========================================================================
     // (Weiterleitung an andere Anlage / Netzwerk )

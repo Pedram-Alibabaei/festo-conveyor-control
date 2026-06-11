@@ -13,10 +13,16 @@ namespace output_driver {
 
 EjectorController::EjectorController()
     : m_type(SorterHardwareType::WEICHE),
-      m_isSortingOut(true),
+      m_isSortingOut(false),
       m_keepRunning(true),
       m_isTimerActive(false),
-      AUTOCLOSE_TIMEOUT(60000) // 1 Minute Sicherheits-Timeout
+      AUTOCLOSE_TIMEOUT(
+#if defined(EJECTOR_TEST_FAST_TIMEOUT_MS)
+          EJECTOR_TEST_FAST_TIMEOUT_MS
+#else
+          kAutoCloseSafetyTimeout
+#endif
+      )
 {
     pal::is::Ejector::config_as_input();
 
@@ -32,9 +38,10 @@ EjectorController::EjectorController()
     if (m_type == SorterHardwareType::WEICHE) {
         pal::op::Ejector::data_clear();
     } else {
-        pal::op::Ejector::data_set();
+        // Auswerfer: LOW = eingefahren (Ruhe), HIGH = ausgefahren
+        pal::op::Ejector::data_clear();
     }
-    m_isSortingOut = false;
+    m_isSortingOut.store(false);
 
     // Start des autonomen Hintergrund-Watchdogs
     m_watchdogThread = std::thread(&EjectorController::watchdogWorker, this);
@@ -54,7 +61,7 @@ EjectorController::~EjectorController() {
     if (m_type == SorterHardwareType::WEICHE) {
         pal::op::Ejector::data_clear();
     } else {
-        pal::op::Ejector::data_set();
+        pal::op::Ejector::data_clear();
     }
 }
 
@@ -63,42 +70,42 @@ bool EjectorController::isSwitch() const {
 }
 
 void EjectorController::openSwitch() {
-    if (m_type == SorterHardwareType::WEICHE && !m_isSortingOut) {
+    if (m_type == SorterHardwareType::WEICHE && !m_isSortingOut.load()) {
         pal::op::Ejector::data_set();
-        m_isSortingOut = true;
+        m_isSortingOut.store(true);
 
         // Timer aktivieren und Thread anstoßen
         m_startTime = std::chrono::steady_clock::now();
-        m_isTimerActive = true;
+        m_isTimerActive.store(true);
         m_cv.notify_one();
     }
 }
 
 void EjectorController::closeSwitch() {
-    if (m_type == SorterHardwareType::WEICHE && m_isSortingOut) {
+    if (m_type == SorterHardwareType::WEICHE && m_isSortingOut.load()) {
         pal::op::Ejector::data_clear();
-        m_isSortingOut = false;
-        m_isTimerActive = false; // Stoppt die Überwachung im Hintergrund
+        m_isSortingOut.store(false);
+        m_isTimerActive.store(false);
     }
 }
 
 void EjectorController::pushEjector() {
-    if (m_type == SorterHardwareType::AUSWERFER && !m_isSortingOut) {
-        pal::op::Ejector::data_clear();
-        m_isSortingOut = true;
+    if (m_type == SorterHardwareType::AUSWERFER && !m_isSortingOut.load()) {
+        pal::op::Ejector::data_set();
+        m_isSortingOut.store(true);
 
         // Timer aktivieren und Thread anstoßen
         m_startTime = std::chrono::steady_clock::now();
-        m_isTimerActive = true;
+        m_isTimerActive.store(true);
         m_cv.notify_one();
     }
 }
 
 void EjectorController::pullEjector() {
-    if (m_type == SorterHardwareType::AUSWERFER && m_isSortingOut) {
-        pal::op::Ejector::data_set();
-        m_isSortingOut = false;
-        m_isTimerActive = false; // Stoppt die Überwachung im Hintergrund
+    if (m_type == SorterHardwareType::AUSWERFER && m_isSortingOut.load()) {
+        pal::op::Ejector::data_clear();
+        m_isSortingOut.store(false);
+        m_isTimerActive.store(false);
     }
 }
 
@@ -106,36 +113,33 @@ void EjectorController::pullEjector() {
 // DER AUTONOME BACKGROUND-WATCHDOG-THREAD
 // ============================================================================
 void EjectorController::watchdogWorker() {
-    while (m_keepRunning) {
+    while (m_keepRunning.load()) {
         std::unique_lock<std::mutex> lock(m_mutex);
+        m_cv.wait(lock, [this] {
+            return m_isTimerActive.load() || !m_keepRunning.load();
+        });
 
-        // Wenn der Timer NICHT aktiv ist, schläft der Thread hier stromsparend,
-        // bis er über m_cv.notify_one() geweckt wird.
-        m_cv.wait(lock, [this] { return m_isTimerActive || !m_keepRunning; });
+        if (!m_keepRunning.load()) {
+            break;
+        }
 
-        if (!m_keepRunning) break;
+        while (m_isTimerActive.load() && m_keepRunning.load()) {
+            const auto deadline = m_startTime + AUTOCLOSE_TIMEOUT;
+            const bool deactivated = m_cv.wait_until(lock, deadline, [this] {
+                return !m_isTimerActive.load() || !m_keepRunning.load();
+            });
 
-        // Ab hier ist die Weiche/der Auswerfer aktiv draußen.
-        // Wir prüfen alle 20ms im Hintergrund die Zeit.
-        lock.unlock();
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-        lock.lock();
-
-        if (m_isTimerActive) {
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - m_startTime);
-
-            if (duration >= AUTOCLOSE_TIMEOUT) {
-                // Timeout erreicht! Da wir im Thread sind, rufen wir die
-                // Schließfunktionen direkt auf.
-                if (m_type == SorterHardwareType::WEICHE) {
-                    pal::op::Ejector::data_clear();
-                } else {
-                    pal::op::Ejector::data_set();
-                }
-                m_isSortingOut = false;
-                m_isTimerActive = false; // Geht im nächsten Schleifendurchlauf wieder schlafen
+            if (deactivated || !m_keepRunning.load()) {
+                break;
             }
+
+            lock.unlock();
+            if (m_type == SorterHardwareType::WEICHE) {
+                closeSwitch();
+            } else {
+                pullEjector();
+            }
+            lock.lock();
         }
     }
 }

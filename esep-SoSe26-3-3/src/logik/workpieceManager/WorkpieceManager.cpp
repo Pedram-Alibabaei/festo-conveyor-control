@@ -23,6 +23,8 @@ WorkpieceManager::WorkpieceManager(Logik* context)
       m_isAnlage2Ready(true),
       m_isSwitchOpen(false),
       m_switchOpenTicks(0),
+      m_isEjectorPushed(false),
+      m_ejectorPushTicks(0),
       TICKS_ONE_SECOND(100)
 {}
 
@@ -140,17 +142,28 @@ void WorkpieceManager::takt(bool isMotorSlow) {
             default:
                 break;
         }
+    }
 
-        // --- AUTOMATISCHE WEICHEN-RÜCKSETZUNG IM ZEITTAKT ---
-        if (m_isSwitchOpen) {
-            m_switchOpenTicks--;
+    // --- AUTOMATISCHE AKTOR-RUECKSETZUNG IM ZEITTAKT (1 s) ---
+    if (m_isSwitchOpen) {
+        m_switchOpenTicks--;
 
-            if (m_switchOpenTicks <= 0) {
-                if (m_context && m_context->getDispatcher()) {
-                    m_context->getDispatcher()->closeSwitch();
-                }
-                m_isSwitchOpen = false;
+        if (m_switchOpenTicks <= 0) {
+            if (m_context && m_context->getDispatcher()) {
+                m_context->getDispatcher()->closeSwitch();
             }
+            m_isSwitchOpen = false;
+        }
+    }
+
+    if (m_isEjectorPushed) {
+        m_ejectorPushTicks--;
+
+        if (m_ejectorPushTicks <= 0) {
+            if (m_context && m_context->getDispatcher()) {
+                m_context->getDispatcher()->pullEjector();
+            }
+            m_isEjectorPushed = false;
         }
     }
 }
@@ -386,9 +399,15 @@ void WorkpieceManager::clearAll() {
 void WorkpieceManager::canNotPass() {
     if (!m_context || !m_context->getDispatcher()) return;
 
-    if (!m_context->getDispatcher()->isSwitch()) {
+    if (m_context->getDispatcher()->isSwitch()) {
+        // Weiche: geschlossen lassen -> Werkstück in Rutsche
+        m_context->getDispatcher()->closeSwitch();
+        m_isSwitchOpen = false;
+    } else {
+        // Auswerfer: ausfahren -> Werkstück aussortieren
         m_context->getDispatcher()->pushEjector();
-        m_context->getDispatcher()->pullEjector();
+        m_ejectorPushTicks = TICKS_ONE_SECOND;
+        m_isEjectorPushed = true;
     }
 }
 
@@ -396,13 +415,12 @@ void WorkpieceManager::canPass() {
     if (!m_context || !m_context->getDispatcher()) return;
 
     if (m_context->getDispatcher()->isSwitch()) {
+        // Weiche: kurz oeffnen -> Werkstück geradeaus zum Bandende
         m_context->getDispatcher()->openSwitch();
         m_switchOpenTicks = TICKS_ONE_SECOND;
         m_isSwitchOpen = true;
-    } else {
-        m_context->getDispatcher()->pushEjector();
-        m_context->getDispatcher()->pullEjector();
     }
+    // Auswerfer: nichts tun -> Werkstück bleibt auf dem Hauptband
 }
 
 void WorkpieceManager::checkAndSetJunction(Workpiece* wp) {

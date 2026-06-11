@@ -55,8 +55,32 @@ rwildcard = $(wildcard $(addprefix $1/*.,$2)) $(foreach d,$(wildcard $1/*),$(cal
 #Source list
 SRCS = $(call rwildcard, src, c cpp)
 
+EJECTOR_TEST_SRCS = manual_tests/ejector_controller_test_main.cpp \
+	src/hal/output_driver/ejector_controller.cpp \
+	src/hal/pal/device.cpp
+
 #Object files list
 OBJS = $(addprefix $(OUTPUT_DIR)/,$(addsuffix .o, $(basename $(SRCS))))
+EJECTOR_TEST_OBJS = $(OUTPUT_DIR)/manual_tests/ejector_controller_test_main.o \
+	$(OUTPUT_DIR)/src/hal/output_driver/ejector_controller_ejector_test.o \
+	$(OUTPUT_DIR)/src/hal/pal/device.o
+EJECTOR_TEST_TARGET = $(OUTPUT_DIR)/ejector_test
+
+PROFILE_ANALYZER_TEST_OBJS = $(OUTPUT_DIR)/manual_tests/profile_analyzer_test_main.o \
+	$(OUTPUT_DIR)/src/hal/hal_sensors.o \
+	$(OUTPUT_DIR)/src/hal/input_driver/profileAnalyzer.o \
+	$(OUTPUT_DIR)/src/hal/input_driver/adc_interrupt.o \
+	$(OUTPUT_DIR)/src/hal/input_driver/interrupt.o \
+	$(OUTPUT_DIR)/src/hal/input_driver/gpio_0_interrupt.o \
+	$(OUTPUT_DIR)/src/hal/pal/adc.o \
+	$(OUTPUT_DIR)/src/hal/pal/device.o \
+	$(OUTPUT_DIR)/src/hal/output_driver/motor_controller.o \
+	$(OUTPUT_DIR)/src/hal/output_driver/ejector_controller_profile_test.o
+PROFILE_ANALYZER_TEST_TARGET = $(OUTPUT_DIR)/profile_analyzer_test
+
+ifeq ($(EJECTOR_TEST_FAST),1)
+EJECTOR_TEST_CXXFLAGS += -DEJECTOR_TEST_FAST_TIMEOUT_MS=5000
+endif
 
 #Compiling rule
 $(OUTPUT_DIR)/%.o: %.c
@@ -66,12 +90,40 @@ $(OUTPUT_DIR)/%.o: %.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) -c $(DEPS) -o $@ $(INCLUDES) $(CCFLAGS_all) $(CCFLAGS) $<
 
+$(OUTPUT_DIR)/manual_tests/%.o: manual_tests/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) -c $(DEPS) -o $@ $(INCLUDES) $(CCFLAGS_all) $(CCFLAGS) $(EJECTOR_TEST_CXXFLAGS) $<
+
+$(OUTPUT_DIR)/src/hal/output_driver/ejector_controller_ejector_test.o: src/hal/output_driver/ejector_controller.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) -c $(DEPS) -o $@ $(INCLUDES) $(CCFLAGS_all) $(CCFLAGS) $(EJECTOR_TEST_CXXFLAGS) $<
+
+$(OUTPUT_DIR)/src/hal/output_driver/ejector_controller_profile_test.o: src/hal/output_driver/ejector_controller.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) -c $(DEPS) -o $@ $(INCLUDES) $(CCFLAGS_all) $(CCFLAGS) $<
+
 #Linking rule
 $(TARGET):$(OBJS)
 	$(LD) -o $(TARGET) $(LDFLAGS_all) $(LDFLAGS) $(OBJS) $(LIBS_all) $(LIBS)
 
+$(EJECTOR_TEST_TARGET): $(EJECTOR_TEST_OBJS)
+	$(LD) -o $(EJECTOR_TEST_TARGET) $(LDFLAGS_all) $(LDFLAGS) $(EJECTOR_TEST_OBJS) $(LIBS_all) $(LIBS) -pthread
+
 #Rules section for default compilation and linking
 all: $(TARGET)
+
+ejector_test: $(EJECTOR_TEST_TARGET)
+
+$(PROFILE_ANALYZER_TEST_TARGET): $(PROFILE_ANALYZER_TEST_OBJS)
+	$(LD) -o $(PROFILE_ANALYZER_TEST_TARGET) $(LDFLAGS_all) $(LDFLAGS) $(PROFILE_ANALYZER_TEST_OBJS) $(LIBS_all) $(LIBS) -pthread
+
+profile_analyzer_test: $(PROFILE_ANALYZER_TEST_TARGET)
+
+clean_ejector_test:
+	rm -f $(EJECTOR_TEST_OBJS) $(EJECTOR_TEST_TARGET)
+
+clean_profile_analyzer_test:
+	rm -f $(PROFILE_ANALYZER_TEST_OBJS) $(PROFILE_ANALYZER_TEST_TARGET)
 # --- Test Configuration ---
 TEST_SRCS = $(call rwildcard, test, c cpp)
 TEST_OBJS = $(addprefix $(OUTPUT_DIR)/,$(addsuffix .o, $(basename $(TEST_SRCS))))
@@ -101,3 +153,7 @@ rebuild: clean all
 #Inclusion of dependencies (object files to source and includes)
 -include $(OBJS:%.o=%.d)
 -include $(TEST_OBJS:%.o=%.d)
+-include $(EJECTOR_TEST_OBJS:%.o=%.d)
+-include $(PROFILE_ANALYZER_TEST_OBJS:%.o=%.d)
+$(OUTPUT_DIR)/src/hal/output_driver/ejector_controller_ejector_test.d: $(OUTPUT_DIR)/src/hal/output_driver/ejector_controller_ejector_test.o
+$(OUTPUT_DIR)/src/hal/output_driver/ejector_controller_profile_test.d: $(OUTPUT_DIR)/src/hal/output_driver/ejector_controller_profile_test.o

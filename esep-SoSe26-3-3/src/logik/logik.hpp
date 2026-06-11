@@ -23,7 +23,7 @@ class I_CalibrationManager; // Vorwärtsdeklaration des CalibrationManager-Inter
 
 namespace logik {
 
-    class Logik : public i_Logik {
+    class Logik : public ::i_Logik {
     private:
         // --- Infrastruktur-Komponenten ---
         std::unique_ptr<WorkpieceManager> m_wpManager; ///< Das zeittaktbasierte Schieberegister (Digitaler Zwilling)

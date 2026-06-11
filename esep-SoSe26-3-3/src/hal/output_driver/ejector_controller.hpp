@@ -22,6 +22,9 @@ namespace hal {
             AUSWERFER
         };
 
+        /** Sicherheits-Auto-Close, falls Logik openSwitch/pushEjector nicht schliesst. */
+        static constexpr std::chrono::milliseconds kAutoCloseSafetyTimeout{60000};
+
         class EjectorController {
         public:
             EjectorController();
@@ -31,6 +34,8 @@ namespace hal {
             EjectorController& operator=(const EjectorController&) = delete;
 
             bool isSwitch() const;
+            bool isActive() const { return m_isSortingOut.load(); }
+            std::chrono::milliseconds getAutoCloseTimeout() const { return AUTOCLOSE_TIMEOUT; }
 
             // --- Weichen-Steuerung ---
             void openSwitch();
@@ -45,7 +50,7 @@ namespace hal {
             void watchdogWorker();
 
             SorterHardwareType m_type;
-            bool m_isSortingOut;
+            std::atomic<bool> m_isSortingOut;
 
             // --- Thread- und Synchronisations-Schnittstellen ---
             std::thread m_watchdogThread;

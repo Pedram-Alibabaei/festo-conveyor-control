@@ -37,6 +37,8 @@ namespace logik {
         // ====================================================================
         bool m_isSwitchOpen;                        ///< Zustandstracking, ob die Weiche gerade offen ist
         int m_switchOpenTicks;                      ///< Zaehlt die verbleibenden 10ms-Takte fuer das Offenhalten
+        bool m_isEjectorPushed;                     ///< Zustandstracking, ob der Auswerfer gerade ausgefahren ist
+        int m_ejectorPushTicks;                     ///< Zaehlt die verbleibenden 10ms-Takte fuer das Auswerfen
         const int TICKS_ONE_SECOND;                 ///< Konstante: 100 Takte * 10ms = 1000ms (1 Sekunde)
 
     public:
