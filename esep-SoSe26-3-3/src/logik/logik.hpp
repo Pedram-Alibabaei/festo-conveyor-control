@@ -23,6 +23,8 @@ class I_CalibrationManager; // Vorwärtsdeklaration des CalibrationManager-Inter
 
 namespace logik {
 
+    class BaseState;
+
     class Logik : public ::i_Logik {
     private:
         // --- Infrastruktur-Komponenten ---
@@ -66,6 +68,11 @@ namespace logik {
          * @brief Registriert den internen EventManager in der Logik-Schaltzentrale.
          */
         void setEventManager(EventManager* eventManager) { m_eventManager = eventManager; }
+
+        /**
+         * @brief Wechselt den aktiven Schicht-1-Zustand der FSM (Uebernahme des nextState-Zeigers).
+         */
+        void transitionTo(BaseState* nextState);
 
         // ========================================================================
         // IMPLEMENTIERUNG DER I_LOGIK INTERFACE-METHODEN

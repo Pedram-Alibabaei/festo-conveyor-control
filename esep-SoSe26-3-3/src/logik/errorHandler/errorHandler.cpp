@@ -104,6 +104,9 @@ void ErrorHandler::processEvent(logik::Event e) {
     switch (e) {
         // --- EINLAUF (ENTRY) ---
         case logik::Event::ENTRY_BLOCKED:
+            if (m_context->getEventManager() != nullptr && m_context->getEventManager()->isServiceMode()) {
+                break;
+            }
             m_isEntryTimerRunning = true;
             m_entryStartTime = std::chrono::steady_clock::now();
 
@@ -145,6 +148,10 @@ void ErrorHandler::processEvent(logik::Event e) {
 // ZYKLISCHE ZEIT-ÜBERWACHUNG (AUFRUF ALLE 10MS)
 // ============================================================================
 void ErrorHandler::takt() {
+    if (m_context->getEventManager() != nullptr && m_context->getEventManager()->isServiceMode()) {
+        return;
+    }
+
     // --- WATCHDOG: EINLAUF-STAU (STUCK) ---
     if (m_isEntryTimerRunning) {
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(

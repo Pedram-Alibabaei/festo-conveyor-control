@@ -1,69 +1,106 @@
-/*#include "RunningState.hpp"
+#include "RunningState.hpp"
 #include "EStopState.hpp"
 #include "IdleState.hpp"
-#include "dispatcher/dispatcher.hpp" // WICHTIG: Dispatcher Include hinzugefuegt!
+#include "logik/logik.hpp"
+#include "logik/eventManager/eventManager.hpp"
+#include "dispatcher/i_Dispatcher.hpp"
 #include <iostream>
 
 namespace logik {
 
+void RunningState::onEnter() {
+    std::cout << "[RunningState] Entered." << std::endl;
+
+    if (!m_context || !m_context->getDispatcher()) {
+        return;
+    }
+
+    m_context->getDispatcher()->setAdcWaitigForWpState();
+    m_context->getDispatcher()->lightGreenOn();
+
+    if (auto* em = m_context->getEventManager()) {
+        em->setServiceMode(false);
+    }
+}
+
+void RunningState::onExit() {
+    if (!m_context) {
+        return;
+    }
+
+    if (auto* dispatcher = m_context->getDispatcher()) {
+        dispatcher->driveStop();
+    }
+
+    if (auto* em = m_context->getEventManager()) {
+        em->setMotorOn(false);
+        em->setMotorSlow(false);
+    }
+}
+
 void RunningState::handle(Event e) {
-  if (!m_context || !m_context->getDispatcher())
-    return;
-
-  switch (e) {
-  case Event::START_RELEASED:
-    std::cout << "[RunningState] START_RELEASED -> Gruen aus!" << std::endl;
-    m_context->getDispatcher()->lightGreenOff();
-    break;
-  case Event::STOP_PRESSED:
-    std::cout << "[RunningState] STOP_PRESSED -> Wechsel zu IdleState"
-              << std::endl;
-    m_context->getDispatcher()->driveStop();
-    m_context->getDispatcher()->lightRedBlinkSlow();
-    m_context->transitionTo(new IdleState());
-    break;
-  case Event::ESTOP_PRESSED:
-  case Event::PARTNER_ESTOP_PRESSED: // KORRIGIERT: Name angepasst
-    std::cout << "[RunningState] ESTOP -> Wechsel zu EStopState" << std::endl;
-    m_context->transitionTo(new EStopState());
-    if (e == Event::ESTOP_PRESSED) {
-      m_context->getDispatcher()->turnLEDQ2BlinkFast();
+    if (!m_context || !m_context->getDispatcher()) {
+        return;
     }
-    break;
-  case Event::ENTRY_BLOCKED:
-    std::cout << "[RunningState] ENTRY_BLOCKED -> Motor faehrt RECHTS!"
-              << std::endl;
-    m_context->addWorkpiece(); // REQ_01 und REQ_02: Registrierung und ID Vergabe
-    m_context->getDispatcher()->driveRight();
-    m_context->getDispatcher()->lightGreenBlinkSlow();
-    break;
 
-  default:
-    // Check if it's a sensor event that needs to be consumed by a WP
-    if (e == Event::ENTRY_CLEARED || e == Event::HEIGHT_BLOCKED ||
-        e == Event::HEIGHT_CLEARED || e == Event::EJECTOR_BLOCKED ||
-        e == Event::EJECTOR_CLEARED || e == Event::END_BLOCKED ||
-        e == Event::END_CLEARED || e == Event::CHUTE_BLOCKED) {
+    auto* dispatcher = m_context->getDispatcher();
+    auto* em = m_context->getEventManager();
 
-      if (!m_context->dispatchSensorEventToWorkpiece(e)) {
-        std::cout << "[RunningState] FEHLER: Unplausibles Sensor-Event! Keines "
-                     "der Werkstücke hat es erwartet."
-                  << std::endl;
-        // TODO: m_context->transitionTo(new ErrorState());
-      } else {
-        // Falls das Event erwartet wurde, spezifische Reaktionen des Systems:
-        if (e == Event::END_BLOCKED || e == Event::CHUTE_BLOCKED) {
-          std::cout
-              << "[RunningState] WP am Ende oder in Rutsche -> Motor STOPP!"
-              << std::endl;
-          m_context->getDispatcher()->driveStop();
-          m_context->getDispatcher()->lightGreenOff();
+    switch (e) {
+    case Event::STOP_PRESSED:
+        std::cout << "[RunningState] STOP -> IdleState" << std::endl;
+        dispatcher->lightRedBlinkSlow();
+        m_context->transitionTo(new IdleState());
+        break;
+
+    case Event::ESTOP_PRESSED:
+    case Event::PARTNER_ESTOP_PRESSED:
+        std::cout << "[RunningState] ESTOP -> EStopState" << std::endl;
+        if (e == Event::ESTOP_PRESSED) {
+            dispatcher->turnLEDQ2BlinkFast();
         }
-      }
+        m_context->transitionTo(new EStopState());
+        break;
+
+    case Event::MOTOR_RUN:
+        std::cout << "[RunningState] MOTOR_RUN -> Band rechts" << std::endl;
+        dispatcher->driveRight();
+        dispatcher->lightGreenBlinkSlow();
+        if (em) {
+            em->setMotorOn(true);
+        }
+        break;
+
+    case Event::MOTOR_STOP:
+    case Event::END_BLOCKED:
+    case Event::CHUTE_BLOCKED:
+        std::cout << "[RunningState] Band stoppen" << std::endl;
+        dispatcher->driveStop();
+        dispatcher->lightGreenOff();
+        if (em) {
+            em->setMotorOn(false);
+        }
+        break;
+
+    case Event::SET_SLOW:
+        std::cout << "[RunningState] SET_SLOW -> Langsamfahrt" << std::endl;
+        dispatcher->driveSlowRight();
+        if (em) {
+            em->setMotorSlow(true);
+        }
+        break;
+
+    case Event::HEIGHT_CLEARED:
+        std::cout << "[RunningState] HEIGHT_CLEARED -> Normalfahrt" << std::endl;
+        dispatcher->driveRight();
+        if (em) {
+            em->setMotorSlow(false);
+        }
+        break;
+
+    default:
+        break;
     }
-    break;
-  }
 }
 
 } // namespace logik
-*/

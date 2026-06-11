@@ -7,7 +7,9 @@
 
 #include "Logik.hpp"
 #include "calibrationManager/I_CalibrationManager.hpp"
+#include "fsm/states/BaseState.hpp"
 #include <iostream>
+#include <memory>
 
 namespace logik {
 
@@ -28,6 +30,14 @@ void Logik::init(AnlagenPosition pos) {
     m_anlagenPosition = pos;
     m_wpManager->setAnlagenPosition(pos);
     std::cout << "[Logik] Initialisiert auf Position: " << static_cast<int>(pos) << std::endl;
+}
+
+void Logik::transitionTo(BaseState* nextState) {
+    if (m_eventManager != nullptr) {
+        m_eventManager->transitionFsmState(std::unique_ptr<BaseState>(nextState));
+    } else {
+        delete nextState;
+    }
 }
 
 // ========================================================================

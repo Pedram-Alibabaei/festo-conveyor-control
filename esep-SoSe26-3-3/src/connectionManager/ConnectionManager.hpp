@@ -24,11 +24,11 @@ private:
     std::atomic<int> m_partnerCoid;
 
     AnlagenPosition m_pos;
-    name_attach_t* m_attachHandle;
 
     // Die zentrale Status-Variable
     std::atomic<bool> m_partner_Alive;
     std::atomic<bool> m_isConnected;
+    std::atomic<int> m_connectGraceTicks;
 
     // Hintergrund-Thread für name_open (blockiert nicht)
     std::thread m_connectThread;

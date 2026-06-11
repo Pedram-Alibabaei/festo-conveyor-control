@@ -1,73 +1,82 @@
-/*#include "IdleState.hpp"
+#include "IdleState.hpp"
 #include "EStopState.hpp"
 #include "RunningState.hpp"
 #include "ServiceState.hpp"
-#include "dispatcher/dispatcher.hpp" // WICHTIG: Dispatcher Include hinzugefuegt!
+#include "logik/logik.hpp"
+#include "dispatcher/i_Dispatcher.hpp"
 #include <iostream>
 
 namespace logik {
 
-void IdleState::onEnter() { std::cout << "[IdleState] Entered." << std::endl; }
+void IdleState::onEnter() {
+    std::cout << "[IdleState] Entered." << std::endl;
+
+    if (!m_context || !m_context->getDispatcher()) {
+        return;
+    }
+
+    auto* dispatcher = m_context->getDispatcher();
+    dispatcher->setAdcIdelState();
+    dispatcher->driveStop();
+
+    if (auto* em = m_context->getEventManager()) {
+        em->setServiceMode(false);
+        em->setMotorOn(false);
+        em->setMotorSlow(false);
+    }
+}
 
 void IdleState::handle(Event e) {
-  if (!m_context || !m_context->getDispatcher())
-    return;
-
-  switch (e) {
-  case Event::START_PRESSED:
-    std::cout << "[IdleState] START_PRESSED -> Starte Timer..." << std::endl;
-    m_startPressedTime = std::chrono::steady_clock::now();
-    break;
-  case Event::START_RELEASED: {
-    auto end = std::chrono::steady_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::seconds>(
-                        end - m_startPressedTime)
-                        .count();
-
-    if (duration < 2) {
-      std::cout << "[IdleState] Kurzer Druck (" << duration
-                << "s) -> Wechsel zu RunningState" << std::endl;
-      m_context->getDispatcher()->lightGreenOn();
-      m_context->transitionTo(new RunningState());
-    } else {
-      std::cout << "[IdleState] Langer Druck (" << duration
-                << "s) -> Wechsel zu ServiceState" << std::endl;
-      m_context->getDispatcher()->lightGreenBlinkFast();
-      m_context->transitionTo(new ServiceState());
+    if (!m_context || !m_context->getDispatcher()) {
+        return;
     }
-    break;
-  }
-  case Event::ESTOP_PRESSED:
-  case Event::PARTNER_ESTOP_PRESSED: // KORRIGIERT: Name angepasst
-    std::cout << "[IdleState] ESTOP -> Wechsel zu EStopState" << std::endl;
-    m_context->transitionTo(new EStopState());
-    if (e == Event::ESTOP_PRESSED) {
-      m_context->getDispatcher()->turnLEDQ2BlinkFast();
+
+    auto* dispatcher = m_context->getDispatcher();
+
+    switch (e) {
+    case Event::START_SHORT_PRESSED:
+        std::cout << "[IdleState] Kurzer Start -> RunningState" << std::endl;
+        dispatcher->lightGreenOn();
+        m_context->transitionTo(new RunningState());
+        break;
+
+    case Event::START_LONG_PRESSED:
+        std::cout << "[IdleState] Langer Start -> ServiceState" << std::endl;
+        dispatcher->lightGreenBlinkFast();
+        m_context->transitionTo(new ServiceState());
+        break;
+
+    case Event::ESTOP_PRESSED:
+    case Event::PARTNER_ESTOP_PRESSED:
+        std::cout << "[IdleState] ESTOP -> EStopState" << std::endl;
+        if (e == Event::ESTOP_PRESSED) {
+            dispatcher->turnLEDQ2BlinkFast();
+        }
+        m_context->transitionTo(new EStopState());
+        break;
+
+    case Event::STOP_PRESSED:
+        dispatcher->driveStop();
+        dispatcher->lightRedBlinkSlow();
+        break;
+
+    case Event::STOP_RELEASED:
+        dispatcher->lightRedOff();
+        break;
+
+    case Event::RESET_PRESSED:
+    case Event::PARTNER_RESET_PRESSED:
+        dispatcher->lightYellowBlinkFast();
+        break;
+
+    case Event::RESET_RELEASED:
+    case Event::PARTNER_RESET_RELEASED:
+        dispatcher->lightYellowOff();
+        break;
+
+    default:
+        break;
     }
-    break;
-  case Event::STOP_PRESSED:
-    std::cout << "[IdleState] STOP_PRESSED -> Ruhezustand (Motor Stop)!"
-              << std::endl;
-    m_context->getDispatcher()->driveStop();
-    m_context->getDispatcher()->lightRedBlinkSlow();
-    break;
-  case Event::STOP_RELEASED:
-    std::cout << "[IdleState] STOP_RELEASED -> Rot aus!" << std::endl;
-    m_context->getDispatcher()->lightRedOff();
-    break;
-  case Event::RESET_PRESSED:
-    std::cout << "[IdleState] RESET_PRESSED -> Gelb blinkt!" << std::endl;
-    m_context->getDispatcher()->lightYellowBlinkFast();
-    break;
-  case Event::RESET_RELEASED:
-    std::cout << "[IdleState] RESET_RELEASED -> Gelb aus!" << std::endl;
-    m_context->getDispatcher()->lightYellowOff();
-    break;
-  default:
-    // Ignoriere alle anderen Events im Ruhezustand
-    break;
-  }
 }
 
 } // namespace logik
-*/

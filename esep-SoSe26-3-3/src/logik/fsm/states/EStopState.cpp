@@ -1,8 +1,8 @@
-/*#include "EStopState.hpp"
+#include "EStopState.hpp"
 #include "IdleState.hpp"
 #include "logik/logik.hpp"
-#include "dispatcher/dispatcher.hpp"
-#include "logik/i_Logik.hpp"
+#include "logik/eventManager/eventManager.hpp"
+#include "dispatcher/i_Dispatcher.hpp"
 #include <iostream>
 
 namespace logik {
@@ -11,50 +11,70 @@ void EStopState::onEnter() {
     std::cout << "[EStopState] Entered. Sicherer Zustand eingenommen!" << std::endl;
     m_isHardwareUnlocked = false;
 
-    if (m_context && m_context->getDispatcher()) {
-        m_context->getDispatcher()->driveStop();
-        m_context->getDispatcher()->turnAllOff();
-        m_context->getDispatcher()->lightRedBlinkFast(); // UC 004: schnelles Blinken von LIGHT_RED
+    if (!m_context || !m_context->getDispatcher()) {
+        return;
+    }
+
+    auto* dispatcher = m_context->getDispatcher();
+    dispatcher->driveStop();
+    dispatcher->turnAllOff();
+    dispatcher->lightRedBlinkFast();
+
+    if (auto* em = m_context->getEventManager()) {
+        em->setMotorOn(false);
+        em->setMotorSlow(false);
+        em->setEStopActive(true);
+        em->setServiceMode(false);
     }
 }
 
 void EStopState::handle(Event e) {
-    if (!m_context || !m_context->getDispatcher())
+    if (!m_context || !m_context->getDispatcher()) {
         return;
+    }
+
+    auto* dispatcher = m_context->getDispatcher();
 
     switch (e) {
-    // KORRIGIERT: Event-Namen an die Struktur des Dispatchers angepasst
     case Event::ESTOP_RELEASED:
     case Event::PARTNER_ESTOP_RELEASED:
-        std::cout << "[EStopState] E-Stop entriegelt -> Warte auf RESET-Quittierung." << std::endl;
+        std::cout << "[EStopState] E-Stop entriegelt -> Warte auf RESET." << std::endl;
         m_isHardwareUnlocked = true;
-        m_context->getDispatcher()->turnLEDQ2Off();
-        m_context->getDispatcher()->lightRedOn(); // Zustand: entriegelt, aber noch nicht quittiert
+        dispatcher->turnLEDQ2Off();
+        dispatcher->lightRedOn();
         break;
 
-    // ERWEITERUNG: Falls im entriegelten Zustand erneut ein E-Stop gedrueckt wird
     case Event::ESTOP_PRESSED:
     case Event::PARTNER_ESTOP_PRESSED:
-        std::cout << "[EStopState] Warnung: E-Stop erneut verriegelt!" << std::endl;
+        std::cout << "[EStopState] E-Stop erneut verriegelt!" << std::endl;
         m_isHardwareUnlocked = false;
-        m_context->getDispatcher()->lightRedBlinkFast();
+        dispatcher->lightRedBlinkFast();
         break;
 
     case Event::RESET_PRESSED:
+    case Event::PARTNER_RESET_PRESSED:
         if (m_isHardwareUnlocked) {
-            std::cout << "[EStopState] RESET_PRESSED -> Duale Quittierung erfolgreich. Wechsle in IdleState." << std::endl;
-            m_context->getDispatcher()->lightRedOff();
+            std::cout << "[EStopState] RESET quittiert -> IdleState" << std::endl;
+            dispatcher->lightRedOff();
+            dispatcher->lightYellowOff();
+            if (auto* em = m_context->getEventManager()) {
+                em->setEStopActive(false);
+                em->setErrorActive(false);
+            }
             m_context->transitionTo(new IdleState());
         } else {
-            std::cout << "[EStopState] RESET_PRESSED blockiert: Mindestens ein E-Stop ist noch aktiv!" << std::endl;
+            std::cout << "[EStopState] RESET blockiert: E-Stop noch aktiv!" << std::endl;
         }
         break;
 
+    case Event::RESET_RELEASED:
+    case Event::PARTNER_RESET_RELEASED:
+        dispatcher->lightYellowOff();
+        break;
+
     default:
-        // Im EStopState werden alle prozessrelevanten Sensor-Events (z.B. LS_ENTRY) blockiert
         break;
     }
 }
 
 } // namespace logik
-*/

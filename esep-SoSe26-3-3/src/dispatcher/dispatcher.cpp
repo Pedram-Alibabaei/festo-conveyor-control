@@ -62,6 +62,12 @@ void Dispatcher::init(AnlagenPosition pos) {
 
     m_chid = m_attachHandle->chid;
     m_localCoid = ConnectAttach(0, 0, m_chid, _NTO_SIDE_CHANNEL, 0);
+    if (m_localCoid == -1) {
+        std::cerr << "[Dispatcher] Fehler: ConnectAttach fehlgeschlagen!" << std::endl;
+        return;
+    }
+    std::cout << "[Dispatcher] Registriert als '" << myName << "' (chid=" << m_chid
+              << ", coid=" << m_localCoid << ")." << std::endl;
 }
 
 void Dispatcher::stop() {
@@ -104,29 +110,44 @@ void Dispatcher::run() {
 // Zentraler Event-Verteiler
 // ============================================================================
 void Dispatcher::handlePulse(const struct _pulse& pulse) {
-    if (!m_logik) return;
+    switch (pulse.code) {
+        case ipc::CONNECTION_MSG:
+            handleConnectionPulse(pulse.value.sival_int);
+            return;
+
+        case ipc::HAL_INPUT:
+            if (!m_logik) {
+                std::cerr << "[Dispatcher] HAL-Event ohne Logik (code=" << static_cast<int>(pulse.code)
+                          << ") – Event verworfen." << std::endl;
+                return;
+            }
+            handleHalPulse(pulse.value.sival_int);
+            return;
+
+        case ipc::HAL_ESTOP:
+            if (!m_logik) {
+                return;
+            }
+            handleHalEStopPulse(pulse.value.sival_int);
+            return;
+
+        default:
+            break;
+    }
+
+    if (!m_logik) {
+        return;
+    }
 
     switch (pulse.code) {
 
         // ====================================================================
         // LOKALE HARDWARE & SYSTEM
         // ====================================================================
-        case ipc::HAL_INPUT:
-            handleHalPulse(pulse.value.sival_int);
-            break;
-
-        case ipc::HAL_ESTOP:
-            handleHalEStopPulse(pulse.value.sival_int);
-            break;
-
-        case ipc::PulseCode::HAL_ADC_CALIBRATION:
+        case ipc::HAL_ADC_CALIBRATION:
             {
             handleCalibrationPulse(pulse.value.sival_int);
             }
-            break;
-
-        case ipc::CONNECTION_MSG:
-            handleConnectionPulse(pulse.value.sival_int);
             break;
 
         case ipc::DISCONNECT:
@@ -154,7 +175,7 @@ void Dispatcher::handlePulse(const struct _pulse& pulse) {
         // NETZWERK BASIS
         // ====================================================================
         case ipc::HEARTBEAT:
-            if (m_connection && m_connection->isConnected()){
+            if (m_connection) {
                 m_connection->partnerAlive();
             }
             break;
@@ -213,6 +234,8 @@ void Dispatcher::handleHalPulse(uint32_t payload) {
 
     // 1. TASTER (PRESSED / RELEASED)
     if (sensor_id == ipc::BTN_START) {
+        std::cout << "[Dispatcher] START-Taster: "
+                  << (sensor_state == ipc::State::PRESSED ? "PRESSED" : "RELEASED") << std::endl;
         m_logik->processEvent(sensor_state == ipc::State::PRESSED ? logik::Event::START_PRESSED : logik::Event::START_RELEASED);
 
         if (m_partnerCoid != -1) {
@@ -220,10 +243,16 @@ void Dispatcher::handleHalPulse(uint32_t payload) {
         }
     }
     else if (sensor_id == ipc::BTN_STOP) {
+        std::cout << "[Dispatcher] STOP-Taster: "
+                  << (sensor_state == ipc::State::PRESSED ? "PRESSED" : "RELEASED") << std::endl;
         m_logik->processEvent(sensor_state == ipc::State::PRESSED ? logik::Event::STOP_PRESSED : logik::Event::STOP_RELEASED);
     }
     else if (sensor_id == ipc::BTN_RESET) {
         m_logik->processEvent(sensor_state == ipc::State::PRESSED ? logik::Event::RESET_PRESSED : logik::Event::RESET_RELEASED);
+
+        if (m_partnerCoid != -1) {
+            MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_MSG, payload);
+        }
     }
 
     // 2. LICHTSCHRANKEN & SENSOREN (BLOCKED / CLEARED)
@@ -256,6 +285,10 @@ void Dispatcher::handleHalPulse(uint32_t payload) {
     else if (sensor_id == ipc::LS_CHUTE) {
         m_logik->processEvent(sensor_state == ipc::State::BLOCKED ? logik::Event::CHUTE_BLOCKED : logik::Event::CHUTE_CLEARED);
     }
+    else {
+        std::cout << "[Dispatcher] Unbekannter HAL-Sensor id=" << sensor_id
+                  << " state=" << sensor_state << std::endl;
+    }
 }
 
 // ============================================================================
@@ -267,6 +300,9 @@ void Dispatcher::handleNetworkPulse(uint32_t payload) {
 
     if (sensor_id == ipc::BTN_START) {
         m_logik->processEvent(message_type == ipc::State::PRESSED ? logik::Event::PARTNER_START_PRESSED : logik::Event::PARTNER_START_RELEASED);
+    }
+    else if (sensor_id == ipc::BTN_RESET) {
+        m_logik->processEvent(message_type == ipc::State::PRESSED ? logik::Event::PARTNER_RESET_PRESSED : logik::Event::PARTNER_RESET_RELEASED);
     }
     else if (sensor_id == ipc::NetworkMessage::REQ_RECEIVE) {
         m_logik->processEvent(logik::Event::REQ_TO_GIVE_WP);

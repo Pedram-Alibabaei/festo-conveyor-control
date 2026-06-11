@@ -19,26 +19,19 @@ ConnectionManager::ConnectionManager()
     : m_localCoid(-1),
       m_partnerCoid(-1),
       m_pos(AnlagenPosition::UNKNOWN_POSITION),
-      m_attachHandle(nullptr),
       m_partner_Alive(false),
       m_isConnected(false),
+      m_connectGraceTicks(0),
       m_isSearching(false)
 {
 }
 
 ConnectionManager::~ConnectionManager() {
-    // 1. Hintergrund-Thread sauber beenden
     m_isSearching = false;
     if (m_connectThread.joinable()) {
         m_connectThread.join();
     }
 
-    // 2. QNX GNS-Registrierung aufloesen
-    if (m_attachHandle != nullptr) {
-        name_detach(m_attachHandle, 0);
-    }
-
-    // 3. Verbindung zum Partner schliessen
     if (m_partnerCoid != -1) {
         ConnectDetach(m_partnerCoid);
     }
@@ -55,21 +48,8 @@ void ConnectionManager::init(int localCoid,AnlagenPosition pos) {
     std::cout << "[ConnMgr] Initialisiere als Anlage "
               << (m_pos == AnlagenPosition::VORN_ANLAGE_1 ? "1" : "2") << std::endl;
 
-    // 1. Eigenen Namen zusammenbauen und bei QNX GNS anmelden
-    std::string myName = (m_pos == AnlagenPosition::VORN_ANLAGE_1) ? "Anlage_1" : "Anlage_2";
+    // GNS-Name wird ausschliesslich vom Dispatcher registriert (kein doppeltes name_attach).
 
-    // NAME_FLAG_ATTACH_GLOBAL ist extrem wichtig fuer Qnet!
-    m_attachHandle = name_attach(NULL, myName.c_str(), NAME_FLAG_ATTACH_GLOBAL);
-
-    if (m_attachHandle == nullptr) {
-        std::cerr << "[ConnMgr] FEHLER: Konnte GNS-Namen " << myName << " nicht registrieren!" << std::endl;
-        return; // Abbruch bei Fehler
-    }
-    std::cout << "[ConnMgr] Erfolgreich als '" << myName << "' registriert." << std::endl;
-
-    // ========================================================================
-    // 2. DEINE ASYMMETRISCHE START-LOGIK
-    // ========================================================================
     if (m_pos == AnlagenPosition::HINTEN_ANLAGE_2) {
         std::cout << "[ConnMgr] Ich bin Anlage 2. Starte sofort die aktive Suche..." << std::endl;
         connectToPartner(); // Startet den Thread
@@ -117,6 +97,7 @@ void ConnectionManager::connectionTask() {
                 m_partnerCoid = coid;
                 m_partner_Alive = true;
                 m_isConnected = true;
+                m_connectGraceTicks = 40; // 40 x 50ms = 2s Kulanz nach Verbindungsaufbau
 
                 std::cout << "\n[ConnMgr] PARTNER GEFUNDEN! Verbindung steht. (Partner-COID: " << coid << ")" << std::endl;
 
@@ -134,8 +115,8 @@ void ConnectionManager::connectionTask() {
             std::cout << "." << std::flush;
         }
 
-        // 500ms warten, um die CPU nicht zu verbrennen.
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        // 100ms warten – schnellerer Verbindungsaufbau fuer Heartbeat-Synchronisation
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 }
 
@@ -146,6 +127,12 @@ void ConnectionManager::connectionTask() {
 void ConnectionManager::heartbeatTackt() {
     // Wenn gar keine Verbindung besteht, muessen wir auch nichts ueberwachen.
     if (!m_isConnected) {
+        return;
+    }
+
+    if (m_connectGraceTicks > 0) {
+        --m_connectGraceTicks;
+        m_partner_Alive = true;
         return;
     }
 

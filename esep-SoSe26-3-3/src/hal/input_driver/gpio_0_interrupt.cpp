@@ -11,6 +11,7 @@
 
 #include <thread>
 #include <iostream>
+#include <cerrno>
 
 extern "C"
 {
@@ -42,8 +43,12 @@ Gpio0Interrupt::Gpio0Interrupt() :
 void Gpio0Interrupt::initInterrupts(int coid)
 {
     m_coid = coid;
+    std::cout << "[GPIO] Interrupt-Thread startet mit Dispatcher-COID=" << m_coid << std::endl;
 
-    // 1. Hardware-Interrupt beim OS registrieren
+    if (m_coid == -1) {
+        std::cerr << "[GPIO] FEHLER: Ungueltige COID – Taster-Events kommen nicht an!" << std::endl;
+        return;
+    }
     m_interrupt_id = setup_interrupt(pulse_intr, intr_gpio_port_0);
 
     // 2. Hardware-Pins konfigurieren (Deine Methode)
@@ -223,8 +228,14 @@ void Gpio0Interrupt::handle_interrupt() const noexcept
 
             // 5. Puls absolut blockierungsfrei an den Dispatcher senden
             if (m_coid != -1) {
-                // Priorität 10 ist Standard für normale Signale
-                MsgSendPulse(m_coid, 10, pulse_code, payload);
+                int rc = MsgSendPulse(m_coid, 10, pulse_code, payload);
+                if (rc != 0 && pin.is_button) {
+                    std::cerr << "[GPIO] MsgSendPulse fehlgeschlagen fuer Sensor "
+                              << pin.sensor_id << " errno=" << errno << std::endl;
+                } else if (pin.sensor_id == ipc::BTN_START || pin.sensor_id == ipc::BTN_STOP) {
+                    std::cout << "[GPIO] Taster id=" << pin.sensor_id
+                              << " -> " << (pin.active ? "PRESSED" : "RELEASED") << std::endl;
+                }
             }
         }
     }

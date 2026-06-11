@@ -11,6 +11,7 @@
 #include "shared/types.hpp"
 #include "shared/logikEvent.hpp"
 #include <chrono>
+#include <memory>
 
 namespace logik {
 
@@ -18,6 +19,7 @@ namespace logik {
  class WorkpieceManager;
  class ErrorHandler;
  class Fsm;
+ class BaseState;
 
  class EventManager {
  private:
@@ -27,9 +29,7 @@ namespace logik {
   WorkpieceManager* m_wpManager; ///< Adresse des Schieberegisters aus dem Logik-Kontext
   ErrorHandler* m_errorHandler; ///< Adresse des ErrorHandlers aus dem Logik-Kontext
 
-  // Die FSM darf ein unique_ptr bleiben, wenn der EventManager sie exklusiv besitzt
-  // (Alternativ auch hier Raw-Pointer, falls die Logik die FSM hält)
-  // std::unique_ptr<Fsm> m_fsm;
+  std::unique_ptr<Fsm> m_fsm;
 
   // --- Motor- und Positions-Flags ---
   bool m_isMotorOn;
@@ -51,6 +51,10 @@ namespace logik {
   // --- Bandende-Schutz ---
   bool m_isEndBlocked;
 
+  bool m_isServiceMode;
+
+  std::chrono::steady_clock::time_point m_partnerStartPressedTime;
+
  private:
   void routeToErrorHandler(logik::Event e);
   void routeToWorkpieceManager(logik::Event e);
@@ -62,7 +66,7 @@ namespace logik {
    * @param context Zeiger auf die uebegeordnete Logik.
    */
   explicit EventManager(Logik* context);
-  ~EventManager() = default;
+  ~EventManager();
 
   // Verhindert Kopieren
   EventManager(const EventManager&) = delete;
@@ -79,6 +83,8 @@ namespace logik {
    * @brief Deine exakte, geschützte Takt-Verarbeitung für den digitalen Zwilling.
    */
   void handleTakt();
+
+  void transitionFsmState(std::unique_ptr<BaseState> nextState);
 
   // --- Getters und Setters ---
   void setMotorOn(bool on) { m_isMotorOn = on; }
@@ -104,6 +110,9 @@ namespace logik {
 
   void setPartnerChuteStatus(bool isFull);
   bool isPartnerChuteFull() const { return m_isPartnerChuteFull; }
+
+  void setServiceMode(bool active) { m_isServiceMode = active; }
+  bool isServiceMode() const { return m_isServiceMode; }
  };
 
 } // namespace logik

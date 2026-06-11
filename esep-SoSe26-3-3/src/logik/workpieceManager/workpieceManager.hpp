@@ -124,6 +124,8 @@ namespace logik {
          return m_isAnlage2Ready;
        }
 
+       bool hasActiveWorkpieces() const { return !m_activeWorkpieces.empty(); }
+
     private:
         /**
          * @brief Prüft den Werkstücktyp gegen das Rezept, speichert das Flag im WP und schaltet die Weiche.
