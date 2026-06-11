@@ -51,6 +51,10 @@ namespace hal {
         m_analyzer.setAdcCalibrationsState();
     }
 
+    void HalSensors::setAdcTransportPaused(bool paused) {
+        m_analyzer.setTransportPaused(paused);
+    }
+
     void HalSensors::updateCalibrationThresholds(uint16_t calib_mode, uint16_t calib_value) {
         // Übergibt die geladenen Schwellenwerte direkt an die lokale m_analyzer-Instanz
         m_analyzer.updateCalibrationThresholds(calib_mode, calib_value);
