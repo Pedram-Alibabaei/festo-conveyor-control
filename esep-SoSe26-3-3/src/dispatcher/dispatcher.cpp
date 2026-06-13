@@ -116,6 +116,12 @@ void Dispatcher::handlePulse(const struct _pulse& pulse) {
             handleConnectionPulse(pulse.value.sival_int);
             return;
 
+        case ipc::RECONNECT_MSG:
+            if (m_connection != nullptr) {
+                m_connection->performReconnect();
+            }
+            return;
+
         case ipc::HAL_INPUT:
             if (!m_logik) {
                 std::cerr << "[Dispatcher] HAL-Event ohne Logik (code=" << static_cast<int>(pulse.code)
@@ -154,6 +160,9 @@ void Dispatcher::handlePulse(const struct _pulse& pulse) {
         case ipc::DISCONNECT:
             std::cout << "[Dispatcher] Netzwerkverbindung verloren." << std::endl;
             m_partnerCoid = -1;
+            if (m_connection != nullptr) {
+                m_connection->acknowledgeConnectionLost();
+            }
             if (m_logik != nullptr) {
                 m_logik->processEvent(logik::Event::CONNECTION_LOST);
             }
@@ -168,9 +177,25 @@ void Dispatcher::handlePulse(const struct _pulse& pulse) {
 
         case ipc::HEARTBEATTACKT:
             if (m_connection) {
+                const bool wasConnected = m_connection->isConnected();
                 m_connection->heartbeatTackt();
-                if (m_connection->isConnected()) {
-                    MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::HEARTBEAT, 0);
+                bool stillConnected = m_connection->isConnected();
+
+                if (stillConnected && m_partnerCoid != -1) {
+                    if (MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::HEARTBEAT, 0) == -1) {
+                        std::cerr << "[Dispatcher] Heartbeat an Partner fehlgeschlagen (errno="
+                                  << errno << ")." << std::endl;
+                        m_partnerCoid = -1;
+                        m_connection->forceDisconnect();
+                        stillConnected = false;
+                    }
+                }
+
+                if (wasConnected && !stillConnected) {
+                    m_partnerCoid = -1;
+                    if (m_logik != nullptr) {
+                        m_logik->processEvent(logik::Event::CONNECTION_LOST);
+                    }
                 }
             }
             break;
@@ -433,12 +458,17 @@ void Dispatcher::handlePartnerEStopPulse(uint32_t payload) {
 
     if (partner_state == ipc::State::RELEASED) {
         m_partnerEstopPressed = true;
-        std::cout << "[Dispatcher] Partner-ESTOP: PRESSED" << std::endl;
+        std::cout << "[Dispatcher] Partner-ESTOP: Taster GEDRUECKT" << std::endl;
         m_logik->processEvent(logik::Event::PARTNER_ESTOP_PRESSED);
+    }
+    else if (partner_state == ipc::State::ESTOP_SAFETY_WAIT) {
+        m_partnerEstopPressed = false;
+        std::cout << "[Dispatcher] Partner-ESTOP: Sicherheitsmodus (Reset noetig)" << std::endl;
+        m_logik->processEvent(logik::Event::PARTNER_ESTOP_SAFETY_SYNC);
     }
     else if (partner_state == ipc::State::PRESSED) {
         m_partnerEstopPressed = false;
-        std::cout << "[Dispatcher] Partner-ESTOP: RELEASED" << std::endl;
+        std::cout << "[Dispatcher] Partner-ESTOP: FREI" << std::endl;
         m_logik->processEvent(logik::Event::PARTNER_ESTOP_RELEASED);
     }
 }
@@ -501,18 +531,38 @@ void Dispatcher::sendeChuteStats(bool isVoll) {
     MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_MSG, payload);
 }
 
+void Dispatcher::sendPartnerResetPressed() {
+    if (m_partnerCoid == -1) {
+        return;
+    }
+
+    const uint32_t payload = ipc::encodeHalPayload(ipc::BTN_RESET, ipc::State::PRESSED);
+    MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_MSG, payload);
+    std::cout << "[Dispatcher] RESET-PRESSED an Partner gesendet." << std::endl;
+}
+
 
 void Dispatcher::sendLocalEstopStatusToPartner() {
     if (m_partnerCoid == -1) {
         return;
     }
 
-    const bool pressed = isEstopPressed();
-    const ipc::State state = pressed ? ipc::State::RELEASED : ipc::State::PRESSED;
+    const bool hwPressed = isEstopPressed();
+    const bool safetyWait = !hwPressed && m_logik != nullptr && m_logik->isEstopSafetyActive();
+
+    ipc::State state = ipc::State::PRESSED;
+    const char* label = "FREI";
+    if (hwPressed) {
+        state = ipc::State::RELEASED;
+        label = "TASTER_GEDRUECKT";
+    } else if (safetyWait) {
+        state = ipc::State::ESTOP_SAFETY_WAIT;
+        label = "SICHERHEITSMODUS";
+    }
+
     const uint32_t payload = ipc::encodeHalPayload(ipc::BTN_ESTOP, state);
     MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_ESTOP, payload);
-    std::cout << "[Dispatcher] ESTOP-Status an Partner gesendet: "
-              << (pressed ? "PRESSED" : "RELEASED") << std::endl;
+    std::cout << "[Dispatcher] ESTOP-Status an Partner gesendet: " << label << std::endl;
 }
 
 void Dispatcher::requestPartnerEstopStatus() {

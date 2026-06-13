@@ -10,9 +10,18 @@ class Logik;
 namespace level0 {
 
 void applyConnectionLostEntry(I_Dispatcher* dispatcher);
+void applyConnectionLostEstopWaitingResetEntry(I_Dispatcher* dispatcher);
 void clearTrafficLightsForRestore(I_Dispatcher* dispatcher);
+void applyEstopPressedTraffic(I_Dispatcher* dispatcher);
+void applyEstopLocalActiveEntry(Logik* logik);
+void applyEstopPartnerActiveEntry(Logik* logik);
+void applyEstopBothNotActiveEntry(I_Dispatcher* dispatcher);
+void syncLocalEstopPanelLed(I_Dispatcher* dispatcher);
 void applyEstopSafetyClear(Logik* logik);
+void finishEstopReset(Logik* logik);
 bool isAnyEstopActive(Logik* logik);
+bool isLocalEstopActive(I_Dispatcher* dispatcher);
+bool isPartnerEstopActive(Logik* logik); ///< Nur Partner-Taster gedrückt (nicht Sicherheitsmodus)
 
 } // namespace level0
 } // namespace logik

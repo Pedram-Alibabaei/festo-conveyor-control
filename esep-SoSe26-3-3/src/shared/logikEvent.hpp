@@ -70,6 +70,7 @@ namespace logik {
         PARTNER_RESET_RELEASED, ///< Reset-Taster der Partneranlage wurde losgelassen
         PARTNER_ESTOP_PRESSED,  ///< Not-Aus der Partneranlage aktiv
         PARTNER_ESTOP_RELEASED, ///< Not-Aus der Partneranlage entriegelt
+        PARTNER_ESTOP_SAFETY_SYNC, ///< Partner im Estop-Sicherheitsmodus (Taster frei, Reset noetig)
 
         REQ_TO_GIVE_WP,         ///< Anlage 1 fragt an: "Darf ich Werkstueck uebergeben?"
         READY_TO_RECEIVE_WP,    ///< Anlage 2 antwortet: "Bereit! Ich nehme das Teil auf."

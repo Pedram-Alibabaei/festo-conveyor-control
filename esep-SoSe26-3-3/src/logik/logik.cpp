@@ -49,6 +49,10 @@ void Logik::processEvent(logik::Event e) {
     }
 }
 
+bool Logik::isEstopSafetyActive() const {
+    return m_eventManager != nullptr && m_eventManager->isEStopActive();
+}
+
     void Logik::workpieceTypeFromHS(WpType type) {
         if (m_eventManager != nullptr) {
            m_eventManager->handleEvent(logik::Event::HEIGHT_CLEARED);

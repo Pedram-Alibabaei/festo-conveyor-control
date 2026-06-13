@@ -29,6 +29,14 @@ public:
     int getPartnerCoid() const override {
         return partnerCoid;
     }
+
+    void forceDisconnect() override {}
+
+    void acknowledgeConnectionLost() override {
+        connected = false;
+    }
+
+    void performReconnect() override {}
 };
 
 #endif // FAKE_CONNECTION_HPP

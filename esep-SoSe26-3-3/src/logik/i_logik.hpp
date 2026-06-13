@@ -82,6 +82,9 @@ public:
      * @param minSamples Die gemessene Mindestanzahl an Samples (Länge des Teils).
      */
     virtual void setLiveAdcCalibration(uint16_t emptyBelt, uint16_t flatCenter, uint32_t minSamples) = 0;
+
+    /** @brief True solange die Anlage im Estop-Sicherheitsmodus ist (auch nach Taster-Loslassen). */
+    virtual bool isEstopSafetyActive() const { return false; }
 };
 
 #endif // I_LOGIK_HPP

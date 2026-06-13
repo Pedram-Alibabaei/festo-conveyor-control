@@ -39,10 +39,8 @@ void ConnectionLostState::handle(Event e) {
 
     case Event::ESTOP_PRESSED:
     case Event::PARTNER_ESTOP_PRESSED:
+    case Event::PARTNER_ESTOP_SAFETY_SYNC:
         std::cout << "[ConnectionLost] ESTOP -> ConnectionLostAndEStop" << std::endl;
-        if (e == Event::ESTOP_PRESSED && dispatcher != nullptr) {
-            dispatcher->turnLEDQ2BlinkFast();
-        }
         m_context->transitionTo(new ConnectionLostAndEStopState());
         break;
 

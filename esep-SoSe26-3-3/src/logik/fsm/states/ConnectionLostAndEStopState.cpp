@@ -21,7 +21,7 @@ void ConnectionLostAndEStopState::entry() {
     level0::applyEstopSafetyClear(m_context);
 
     if (auto* dispatcher = m_context->getDispatcher()) {
-        dispatcher->turnLEDQ2BlinkFast();
+        level0::syncLocalEstopPanelLed(dispatcher);
     }
 
     if (auto* em = m_context->getEventManager()) {
@@ -43,8 +43,15 @@ void ConnectionLostAndEStopState::handle(Event e) {
     case Event::ESTOP_RELEASED:
     case Event::PARTNER_ESTOP_RELEASED:
         if (!level0::isAnyEstopActive(m_context) && em != nullptr && em->isConnectionLost()) {
-            std::cout << "[ConnectionLost+EStop] ESTOP frei, Netz weg -> ConnectionLost" << std::endl;
-            m_context->transitionTo(new ConnectionLostState());
+            std::cout << "[ConnectionLost+EStop] Beide ESTOP-Taster frei -> warte Reset (Netz weg)"
+                      << std::endl;
+            em->setEStopActive(true);
+            if (dispatcher != nullptr) {
+                level0::applyConnectionLostEstopWaitingResetEntry(dispatcher);
+            }
+        } else if (dispatcher != nullptr) {
+            level0::applyConnectionLostEntry(dispatcher);
+            level0::syncLocalEstopPanelLed(dispatcher);
         }
         break;
 
@@ -66,7 +73,26 @@ void ConnectionLostAndEStopState::handle(Event e) {
     case Event::ESTOP_PRESSED:
     case Event::PARTNER_ESTOP_PRESSED:
         if (dispatcher != nullptr) {
-            dispatcher->lightRedBlinkFast();
+            level0::applyConnectionLostEntry(dispatcher);
+            if (e == Event::ESTOP_PRESSED) {
+                level0::syncLocalEstopPanelLed(dispatcher);
+            } else {
+                dispatcher->turnLEDQ2Off();
+            }
+        }
+        break;
+
+    case Event::PARTNER_ESTOP_SAFETY_SYNC:
+        if (em != nullptr) {
+            em->setEStopActive(true);
+        }
+        if (dispatcher != nullptr) {
+            if (!dispatcher->isEstopPressed() && !dispatcher->isPartnerEstopPressed()) {
+                level0::applyConnectionLostEstopWaitingResetEntry(dispatcher);
+            } else {
+                level0::applyConnectionLostEntry(dispatcher);
+                level0::syncLocalEstopPanelLed(dispatcher);
+            }
         }
         break;
 

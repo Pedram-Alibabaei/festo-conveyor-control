@@ -73,6 +73,7 @@ bool EventManager::isFsmPassthroughEvent(Event e) const {
     case Event::ESTOP_RELEASED:
     case Event::PARTNER_ESTOP_PRESSED:
     case Event::PARTNER_ESTOP_RELEASED:
+    case Event::PARTNER_ESTOP_SAFETY_SYNC:
     case Event::CONNECTION_LOST:
     case Event::CONNECTION_RESTORED:
     case Event::DATA_EXIST:
@@ -116,12 +117,16 @@ void EventManager::updateContextFlags(Event e) {
     switch (e) {
     case Event::ESTOP_PRESSED:
     case Event::PARTNER_ESTOP_PRESSED:
+    case Event::PARTNER_ESTOP_SAFETY_SYNC:
         m_ctx.eStopActive = true;
         break;
 
     case Event::ESTOP_RELEASED:
     case Event::PARTNER_ESTOP_RELEASED:
-        m_ctx.eStopActive = false;
+        // Bei Connection_lost Estop-Sicherheitszustand halten bis koordinierter Reset.
+        if (!(m_ctx.connectionLost && m_ctx.eStopActive)) {
+            m_ctx.eStopActive = false;
+        }
         break;
 
     case Event::END_BLOCKED:

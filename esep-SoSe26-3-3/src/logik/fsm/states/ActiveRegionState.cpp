@@ -75,11 +75,40 @@ void ActiveRegionState::handle(Event e) {
 
     case Event::ESTOP_PRESSED:
     case Event::PARTNER_ESTOP_PRESSED:
+    case Event::PARTNER_ESTOP_SAFETY_SYNC:
         std::cout << "[ActiveRegion] ESTOP -> EStopState" << std::endl;
-        if (e == Event::ESTOP_PRESSED && m_context != nullptr && m_context->getDispatcher() != nullptr) {
-            m_context->getDispatcher()->turnLEDQ2BlinkFast();
-        }
         m_context->transitionTo(new EStopState());
+        return;
+
+    case Event::ERROR:
+        if (m_context != nullptr && m_context->getDispatcher() != nullptr) {
+            m_context->getDispatcher()->driveStop();
+            m_context->getDispatcher()->lightRedOn();
+        }
+        if (m_level1 != nullptr) {
+            m_level1->handle(e);
+        }
+        return;
+
+    case Event::ERROR_CLEARED:
+        if (m_context != nullptr && m_context->getDispatcher() != nullptr) {
+            m_context->getDispatcher()->lightRedOff();
+        }
+        if (m_level1 != nullptr) {
+            m_level1->handle(e);
+        }
+        return;
+
+    case Event::WARNING:
+        if (m_context != nullptr && m_context->getDispatcher() != nullptr) {
+            m_context->getDispatcher()->lightYellowBlinkSlow();
+        }
+        return;
+
+    case Event::WARNING_CLEARED:
+        if (m_context != nullptr && m_context->getDispatcher() != nullptr) {
+            m_context->getDispatcher()->lightYellowOff();
+        }
         return;
 
     default:

@@ -51,6 +51,7 @@ namespace ipc {
         // MANAGER_TICK_CALIBRATION = _PULSE_CODE_MINAVAIL + 5,  // Geladene Ticks vom CalibrationManager beim Start
         CONNECTION_MSG           = _PULSE_CODE_MINAVAIL + 6,  // Interner Handshake (ConnectionManager gefunden)
         DISCONNECT               = _PULSE_CODE_MINAVAIL + 7,  // Not-Halt oder Verbindungsabbruch
+        RECONNECT_MSG            = _PULSE_CODE_MINAVAIL + 8,  // Verzoegerte Partnersuche (nicht im Heartbeat blockieren)
 
         // ====================================================================
         // TIMER EVENTS (10 - 19)
@@ -116,6 +117,8 @@ namespace ipc {
         VOLL       = _PULSE_CODE_MINAVAIL + 5,
         EMPTY      = _PULSE_CODE_MINAVAIL + 6,
 
+        /** Partner-Taster frei, aber noch im Estop-Sicherheitsmodus (Reset noetig). */
+        ESTOP_SAFETY_WAIT = _PULSE_CODE_MINAVAIL + 7,
 
         HIGH_ERROR = _PULSE_CODE_MINAVAIL + 10,
 

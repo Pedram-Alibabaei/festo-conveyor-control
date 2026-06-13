@@ -67,6 +67,7 @@ public:
     virtual void readyToReceiveWp() = 0;
     virtual void updateWpListe(WpType type) = 0;
     virtual void sendeChuteStats(bool isVoll)=0;
+    virtual void sendPartnerResetPressed() = 0;
 
     // ========================================================================
     // (Weiterleitung an HAL - ADC Zustand)

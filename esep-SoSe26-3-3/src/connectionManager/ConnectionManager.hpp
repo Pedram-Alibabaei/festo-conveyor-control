@@ -35,6 +35,8 @@ private:
     std::atomic<bool> m_isSearching;
     void connectionTask();
     void scheduleReconnect();
+    void scheduleReconnectAsync();
+    void triggerConnectionLost(const char* reason);
 
 public:
     ConnectionManager();
@@ -46,6 +48,9 @@ public:
 
     void connectToPartner() override;
     void heartbeatTackt() override;
+    void forceDisconnect() override;
+    void acknowledgeConnectionLost() override;
+    void performReconnect() override;
     void partnerAlive() override;
 
     // Status-Abfragen für den Dispatcher

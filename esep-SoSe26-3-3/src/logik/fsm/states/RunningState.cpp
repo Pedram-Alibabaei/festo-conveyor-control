@@ -48,7 +48,6 @@ void RunningState::handle(Event e) {
     switch (e) {
     case Event::STOP_PRESSED:
         std::cout << "[RunningState] STOP -> IdleState" << std::endl;
-        dispatcher->lightRedBlinkSlow();
         m_context->transitionTo(new IdleState());
         break;
 

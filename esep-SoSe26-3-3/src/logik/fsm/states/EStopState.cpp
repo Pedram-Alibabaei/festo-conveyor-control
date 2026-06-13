@@ -11,9 +11,84 @@
 
 namespace logik {
 
+void EStopState::clearResetLatches() {
+    m_localResetLatched = false;
+    m_partnerResetLatched = false;
+}
+
+void EStopState::latchLocalReset(Logik* context) {
+    if (m_localResetLatched) {
+        return;
+    }
+
+    m_localResetLatched = true;
+    std::cout << "[EStopState] Lokaler Reset quittiert (latched)." << std::endl;
+
+    if (context != nullptr && context->getDispatcher() != nullptr) {
+        context->getDispatcher()->sendPartnerResetPressed();
+        context->getDispatcher()->turnLEDResetOn();
+    }
+}
+
+void EStopState::latchPartnerReset(Logik* context) {
+    if (m_partnerResetLatched) {
+        return;
+    }
+
+    m_partnerResetLatched = true;
+    std::cout << "[EStopState] Partner-Reset quittiert (latched)." << std::endl;
+}
+
+void EStopState::applyResetWaitingVisuals(Logik* context) {
+    if (context == nullptr || context->getDispatcher() == nullptr) {
+        return;
+    }
+
+    auto* dispatcher = context->getDispatcher();
+    dispatcher->lightRedOn();
+    if (m_localResetLatched) {
+        dispatcher->turnLEDResetOn();
+    } else {
+        dispatcher->turnLEDResetBlinkFast();
+    }
+}
+
+void EStopState::tryFinishReset() {
+    if (!m_localResetLatched || !m_partnerResetLatched) {
+        std::cout << "[EStopState] Reset wartet: local="
+                  << m_localResetLatched << " partner=" << m_partnerResetLatched << std::endl;
+        return;
+    }
+
+    completeResetAndLeave();
+}
+
+void EStopState::replaceSubState(std::unique_ptr<EStopSubStateBase> next) {
+    if (m_sub != nullptr && m_context != nullptr) {
+        m_sub->exit(m_context);
+    }
+
+    m_sub = std::move(next);
+    if (m_sub != nullptr && m_context != nullptr) {
+        m_sub->entry(m_context, *this);
+    }
+}
+
+void EStopState::completeResetAndLeave() {
+    if (m_sub != nullptr && m_context != nullptr) {
+        m_sub->exit(m_context);
+    }
+    m_sub.reset();
+    clearResetLatches();
+
+    if (m_context != nullptr) {
+        level0::finishEstopReset(m_context);
+    }
+}
+
 void EStopState::entry() {
     std::cout << "[EStopState] Entered (Ebene 0). Sicherer Zustand!" << std::endl;
-    m_isHardwareUnlocked = false;
+    clearResetLatches();
 
     if (m_context == nullptr) {
         return;
@@ -22,11 +97,7 @@ void EStopState::entry() {
     level0::applyEstopSafetyClear(m_context);
 
     if (auto* dispatcher = m_context->getDispatcher()) {
-        dispatcher->driveStop();
-        dispatcher->closeSwitch();
         dispatcher->turnAllOff();
-        dispatcher->lightRedBlinkFast();
-        dispatcher->setAdcIdelState();
     }
 
     if (auto* em = m_context->getEventManager()) {
@@ -37,70 +108,50 @@ void EStopState::entry() {
     }
 
     L1StateRegistry::setHistory(L1StateId::IDLE);
+    replaceSubState(createInitialEStopSubState(m_context));
+}
+
+void EStopState::exit() {
+    if (m_sub != nullptr && m_context != nullptr) {
+        m_sub->exit(m_context);
+    }
+    m_sub.reset();
+    clearResetLatches();
 }
 
 void EStopState::handle(Event e) {
-    if (!m_context || !m_context->getDispatcher()) {
+    if (m_context == nullptr) {
         return;
     }
 
     auto* dispatcher = m_context->getDispatcher();
-    auto* em = m_context->getEventManager();
 
     switch (e) {
     case Event::CONNECTION_LOST:
         std::cout << "[EStopState] CONNECTION_LOST -> ConnectionLostAndEStop" << std::endl;
-        dispatcher->lightYellowBlinkFast();
-        dispatcher->lightGreenBlinkFast();
+        if (dispatcher != nullptr) {
+            dispatcher->lightYellowBlinkFast();
+            dispatcher->lightGreenBlinkFast();
+        }
         m_context->transitionTo(new ConnectionLostAndEStopState());
-        break;
+        return;
 
     case Event::CONNECTION_RESTORED:
-        std::cout << "[EStopState] CONNECTION_RESTORED (bleibt in Estop)" << std::endl;
-        dispatcher->lightYellowOff();
-        dispatcher->lightGreenOff();
-        break;
-
-    case Event::ESTOP_RELEASED:
-    case Event::PARTNER_ESTOP_RELEASED:
-        std::cout << "[EStopState] E-Stop entriegelt -> Warte auf RESET." << std::endl;
-        m_isHardwareUnlocked = true;
-        dispatcher->turnLEDQ2Off();
-        dispatcher->lightRedOn();
-        break;
-
-    case Event::ESTOP_PRESSED:
-    case Event::PARTNER_ESTOP_PRESSED:
-        std::cout << "[EStopState] E-Stop erneut verriegelt!" << std::endl;
-        m_isHardwareUnlocked = false;
-        dispatcher->lightRedBlinkFast();
-        break;
-
-    case Event::RESET_PRESSED:
-    case Event::PARTNER_RESET_PRESSED:
-        if (m_isHardwareUnlocked) {
-            std::cout << "[EStopState] RESET -> ActiveRegion/Idle (kein H*)" << std::endl;
-            dispatcher->lightRedOff();
-            dispatcher->lightYellowOff();
-            if (em != nullptr) {
-                em->setEStopActive(false);
-                em->setErrorActive(false);
-            }
-            L1StateRegistry::setHistory(L1StateId::IDLE);
-            m_context->transitionTo(
-                new ActiveRegionState(std::unique_ptr<BaseState>(new IdleState())));
-        } else {
-            std::cout << "[EStopState] RESET blockiert: E-Stop noch aktiv!" << std::endl;
-        }
-        break;
+        std::cout << "[EStopState] CONNECTION_RESTORED -> Unterzustand neu synchronisieren" << std::endl;
+        clearResetLatches();
+        replaceSubState(createInitialEStopSubState(m_context));
+        return;
 
     case Event::RESET_RELEASED:
     case Event::PARTNER_RESET_RELEASED:
-        dispatcher->lightYellowOff();
         break;
 
     default:
         break;
+    }
+
+    if (m_sub != nullptr) {
+        m_sub->handle(e, m_context, *this);
     }
 }
 

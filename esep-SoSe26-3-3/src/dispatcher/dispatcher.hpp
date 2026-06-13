@@ -117,6 +117,7 @@ public:
     bool isEstopPressed() override;
     bool isPartnerEstopPressed() const override;
     void sendeChuteStats(bool isVoll) override;
+    void sendPartnerResetPressed() override;
 
     void setAdcIdelState()override { if (m_sensors) m_sensors->setAdcIdelState();}
     void setAdcWaitigForWpState()override { if (m_sensors) m_sensors->setAdcWaitigForWpState();}

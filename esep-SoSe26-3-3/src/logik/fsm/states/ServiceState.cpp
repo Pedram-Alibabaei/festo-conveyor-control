@@ -51,7 +51,6 @@ void ServiceState::handle(Event e) {
     switch (e) {
     case Event::STOP_PRESSED:
         std::cout << "[ServiceState] STOP -> IdleState" << std::endl;
-        dispatcher->lightRedBlinkSlow();
         m_context->transitionTo(new IdleState());
         break;
 

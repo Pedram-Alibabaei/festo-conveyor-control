@@ -47,16 +47,13 @@ void IdleState::handle(Event e) {
 
     case Event::STOP_PRESSED:
         dispatcher->driveStop();
-        dispatcher->lightRedBlinkSlow();
         break;
 
     case Event::STOP_RELEASED:
-        dispatcher->lightRedOff();
         break;
 
     case Event::RESET_PRESSED:
     case Event::PARTNER_RESET_PRESSED:
-        dispatcher->lightYellowBlinkFast();
         break;
 
     case Event::RESET_RELEASED:

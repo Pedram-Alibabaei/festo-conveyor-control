@@ -73,6 +73,12 @@ void ConnectionManager::connectToPartner() {
     m_connectThread = std::thread(&ConnectionManager::connectionTask, this);
 }
 
+void ConnectionManager::scheduleReconnectAsync() {
+    if (m_localCoid != -1) {
+        MsgSendPulse(m_localCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::RECONNECT_MSG, 0);
+    }
+}
+
 void ConnectionManager::scheduleReconnect() {
     if (m_partnerCoid != -1) {
         ConnectDetach(m_partnerCoid);
@@ -117,7 +123,7 @@ void ConnectionManager::connectionTask() {
                 m_partnerCoid = coid;
                 m_partner_Alive = true;
                 m_isConnected = true;
-                m_connectGraceTicks = 40; // 40 x 50ms = 2s Kulanz nach Verbindungsaufbau
+                m_connectGraceTicks = 10; // 10 x 50ms = 500ms Kulanz nach Verbindungsaufbau
 
                 std::cout << "\n[ConnMgr] PARTNER GEFUNDEN! Verbindung steht. (Partner-COID: " << coid << ")" << std::endl;
 
@@ -135,8 +141,8 @@ void ConnectionManager::connectionTask() {
             std::cout << "." << std::flush;
         }
 
-        // 100ms warten – schnellerer Verbindungsaufbau fuer Heartbeat-Synchronisation
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // 50ms warten – schnellerer Verbindungsaufbau fuer Heartbeat-Synchronisation
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 }
 
@@ -144,8 +150,38 @@ void ConnectionManager::connectionTask() {
 // Hard-Realtime Kontaktueberwachung (Watchdog)
 // ============================================================================
 
+void ConnectionManager::acknowledgeConnectionLost() {
+    if (!m_isConnected.exchange(false)) {
+        return;
+    }
+
+    scheduleReconnectAsync();
+}
+
+void ConnectionManager::triggerConnectionLost(const char* reason) {
+    if (!m_isConnected.exchange(false)) {
+        return;
+    }
+
+    std::cerr << "[ConnMgr] " << reason << std::endl;
+
+    const int partnerCoid = m_partnerCoid.load();
+    if (partnerCoid != -1) {
+        MsgSendPulse(partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::DISCONNECT, 0);
+    }
+
+    scheduleReconnectAsync();
+}
+
+void ConnectionManager::forceDisconnect() {
+    triggerConnectionLost("Verbindung erzwungen getrennt.");
+}
+
+void ConnectionManager::performReconnect() {
+    scheduleReconnect();
+}
+
 void ConnectionManager::heartbeatTackt() {
-    // Wenn gar keine Verbindung besteht, muessen wir auch nichts ueberwachen.
     if (!m_isConnected) {
         return;
     }
@@ -156,20 +192,9 @@ void ConnectionManager::heartbeatTackt() {
         return;
     }
 
-    // DIE DEADLINE-PRUEFUNG: Hat der Partner seit dem letzten Takt geantwortet?
     if (m_partner_Alive == false) {
-        std::cerr << "[ConnMgr] Heartbeat-Deadline verpasst – Verbindung verloren." << std::endl;
-
-        m_isConnected = false;
-
-        if (m_localCoid != -1) {
-            MsgSendPulse(m_localCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::DISCONNECT, 0);
-        }
-
-        scheduleReconnect();
+        triggerConnectionLost("Heartbeat-Deadline verpasst – Verbindung verloren.");
     } else {
-        // Er hat rechtzeitig geantwortet.
-        // Wir setzen die Falle wieder scharf fuer das naechste 50ms-Fenster!
         m_partner_Alive = false;
     }
 }

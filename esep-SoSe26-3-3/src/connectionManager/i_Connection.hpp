@@ -25,6 +25,15 @@ public:
     // 4. Wird vom Dispatcher aufgerufen, wenn der zentrale Timer getickt hat
     virtual void heartbeatTackt() = 0;
 
+    /** Lokaler Watchdog/Sendefehler: Partner sofort benachrichtigen. */
+    virtual void forceDisconnect() = 0;
+
+    /** Partner meldet Verlust per DISCONNECT-Puls (kein Ping-Pong). */
+    virtual void acknowledgeConnectionLost() = 0;
+
+    /** Hintergrund-Partnersuche starten (vom Dispatcher per RECONNECT_MSG). */
+    virtual void performReconnect() = 0;
+
     // 5. wird vom Dispatcher aufgerufen, wenn ein Puls vom Partner ankommt.
     virtual void partnerAlive() = 0;
 

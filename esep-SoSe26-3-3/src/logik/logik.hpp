@@ -124,6 +124,8 @@ namespace logik {
          */
         void setLiveAdcCalibration(uint16_t emptyBelt, uint16_t flatCenter, uint32_t minSamples) override;
 
+        bool isEstopSafetyActive() const override;
+
         // ========================================================================
         // ZUSÄTZLICHE SERVICE-METHODEN
         // ========================================================================
