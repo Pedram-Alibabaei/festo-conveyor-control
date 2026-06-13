@@ -67,6 +67,14 @@ public:
     MOCK_METHOD(void, turnLEDQ2BlinkFast, (), (override));
     MOCK_METHOD(void, turnLEDQ2BlinkSlow, (), (override));
 
+    MOCK_METHOD(void, sendPartnerResetPressed, (), (override));
+    MOCK_METHOD(void, sendLocalCalibStatusToPartner, (), (override));
+    MOCK_METHOD(void, forwardCalibrationToHal, (std::uint16_t, std::uint16_t, std::uint32_t), (override));
+    MOCK_METHOD(bool, requestFileExists, (), (override));
+    MOCK_METHOD(bool, isEstopPressed, (), (override));
+    MOCK_METHOD(bool, isPartnerEstopPressed, (), (const, override));
+    MOCK_METHOD(void, sendeChuteStats, (bool), (override));
+
     MOCK_METHOD(void, turnAllOff, (), (override));
 };
 

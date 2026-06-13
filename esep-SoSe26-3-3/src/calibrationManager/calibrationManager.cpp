@@ -36,6 +36,18 @@ bool assignCalibrationValue(const std::string& key, std::uint32_t val, Calibrati
         data.ticks_HeightB_to_HeightC_Slow = val;
         return true;
     }
+    if (key == "ticks_HeightC_to_EjectorB_Slow") {
+        data.ticks_HeightC_to_EjectorB_Slow = val;
+        return true;
+    }
+    if (key == "ticks_EjectorB_to_EjectorC_Slow") {
+        data.ticks_EjectorB_to_EjectorC_Slow = val;
+        return true;
+    }
+    if (key == "ticks_EjectorC_to_ChuteB_Slow") {
+        data.ticks_EjectorC_to_ChuteB_Slow = val;
+        return true;
+    }
     if (key == "ticks_EntryC_to_HeightB_Normal") {
         data.ticks_EntryC_to_HeightB_Normal = val;
         return true;
@@ -84,9 +96,11 @@ bool isCalibrationDataValid(const CalibrationData& data) {
         data.ticks_HeightC_to_EjectorB_Normal,
         data.ticks_EjectorB_to_EjectorC_Normal,
         data.ticks_EjectorC_to_EndB_Normal,
-        data.ticks_EndB_to_EndC_Normal,
         data.ticks_EntryC_to_HeightB_Slow,
-        data.ticks_HeightB_to_HeightC_Slow
+        data.ticks_HeightB_to_HeightC_Slow,
+        data.ticks_HeightC_to_EjectorB_Slow,
+        data.ticks_EjectorB_to_EjectorC_Slow,
+        data.ticks_EjectorC_to_ChuteB_Slow
     };
 
     for (std::uint32_t ticks : segmentTicks) {
@@ -249,9 +263,12 @@ bool CalibrationManager::saveCalibrationData(const CalibrationData& data) {
     file << "ticks_EjectorC_to_EndB_Normal=" << data.ticks_EjectorC_to_EndB_Normal << "\n";
     file << "ticks_EndB_to_EndC_Normal=" << data.ticks_EndB_to_EndC_Normal << "\n\n";
 
-    file << "[Slow-Speed-Base-Ticks]\n";
+    file << "[Slow-Speed-Ticks]\n";
     file << "ticks_EntryC_to_HeightB_Slow=" << data.ticks_EntryC_to_HeightB_Slow << "\n";
     file << "ticks_HeightB_to_HeightC_Slow=" << data.ticks_HeightB_to_HeightC_Slow << "\n";
+    file << "ticks_HeightC_to_EjectorB_Slow=" << data.ticks_HeightC_to_EjectorB_Slow << "\n";
+    file << "ticks_EjectorB_to_EjectorC_Slow=" << data.ticks_EjectorB_to_EjectorC_Slow << "\n";
+    file << "ticks_EjectorC_to_ChuteB_Slow=" << data.ticks_EjectorC_to_ChuteB_Slow << "\n";
 
     file.close();
     m_cachedData = data;

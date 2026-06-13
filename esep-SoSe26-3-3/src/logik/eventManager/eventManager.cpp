@@ -98,10 +98,12 @@ bool EventManager::isFsmPassthroughEvent(Event e) const {
 }
 
 void EventManager::handleEvent(Event e) {
-    // Phase 1: Subsysteme — ErrorHandler zuerst (braucht entryFrei VOR Update)
-    if (canRouteToBandSubsystems()) {
+    // Phase 1: Subsysteme — im Service-Modus keine Werkstueck-Simulation
+    if (canRouteToBandSubsystems() && !m_ctx.serviceMode) {
         routeToErrorHandler(e);
         routeToWorkpieceManager(e);
+    } else if (canRouteToBandSubsystems() && m_ctx.serviceMode) {
+        routeToErrorHandler(e);
     }
 
     // Phase 2: Kontext-Flags
@@ -139,10 +141,27 @@ void EventManager::updateContextFlags(Event e) {
 
     case Event::CONNECTION_LOST:
         m_ctx.connectionLost = true;
+        m_ctx.partnerCalibrationReady = false;
         break;
 
     case Event::CONNECTION_RESTORED:
         m_ctx.connectionLost = false;
+        break;
+
+    case Event::DATA_EXIST:
+        m_ctx.calibrationDataReady = true;
+        break;
+
+    case Event::DATA_NOT_EXIST:
+        m_ctx.calibrationDataReady = false;
+        break;
+
+    case Event::PARTNER_CALIB_READY:
+        m_ctx.partnerCalibrationReady = true;
+        break;
+
+    case Event::PARTNER_CALIB_NOT_READY:
+        m_ctx.partnerCalibrationReady = false;
         break;
 
     case Event::RESET_RELEASED:
@@ -183,26 +202,19 @@ std::vector<Event> EventManager::preprocessForFsm(Event e) {
     }
 
     case Event::PARTNER_START_PRESSED:
-        m_partnerStartPressedTime = std::chrono::steady_clock::now();
-        std::cout << "[EventManager] START gedrueckt (Partner)" << std::endl;
+        std::cout << "[EventManager] Partner-START gedrueckt (nur lokal wirksam)." << std::endl;
         break;
 
-    case Event::PARTNER_START_RELEASED: {
-        const auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - m_partnerStartPressedTime);
-
-        if (duration >= START_LONG_THRESHOLD) {
-            std::cout << "[EventManager] Partner-START lang (" << duration.count() << "ms)" << std::endl;
-            fsmEvents.push_back(Event::START_LONG_PRESSED);
-        } else {
-            std::cout << "[EventManager] Partner-START kurz (" << duration.count() << "ms)" << std::endl;
-            fsmEvents.push_back(Event::START_SHORT_PRESSED);
-        }
+    case Event::PARTNER_START_RELEASED:
+        std::cout << "[EventManager] Partner-START losgelassen (kein Moduswechsel)." << std::endl;
         break;
-    }
 
     // --- Einlauf-Zone: Sensor-Events → Motor-/Freigabe-Signale fuer FSM ---
     case Event::ENTRY_BLOCKED:
+        if (m_ctx.serviceMode) {
+            fsmEvents.push_back(e);
+            break;
+        }
         if (m_ctx.entryFrei && !m_ctx.endBlocked) {
             fsmEvents.push_back(Event::MOTOR_RUN);
             fsmEvents.push_back(Event::ENTRY_NOT_FREI);
@@ -210,14 +222,37 @@ std::vector<Event> EventManager::preprocessForFsm(Event e) {
         }
         break;
 
+    case Event::ENTRY_CLEARED:
+    case Event::EJECTOR_BLOCKED:
+    case Event::EJECTOR_CLEARED:
+    case Event::CHUTE_BLOCKED:
+        if (m_ctx.serviceMode) {
+            fsmEvents.push_back(e);
+        }
+        break;
+
     case Event::HEIGHT_BLOCKED:
-        fsmEvents.push_back(Event::ENTRY_FREI);
-        m_ctx.entryFrei = true;
+        if (m_ctx.serviceMode) {
+            fsmEvents.push_back(e);
+        } else {
+            fsmEvents.push_back(Event::ENTRY_FREI);
+            m_ctx.entryFrei = true;
+        }
         break;
 
     case Event::END_BLOCKED:
-        fsmEvents.push_back(Event::MOTOR_STOP);
-        fsmEvents.push_back(Event::END_BLOCKED);
+        if (m_ctx.serviceMode) {
+            fsmEvents.push_back(e);
+        } else {
+            fsmEvents.push_back(Event::MOTOR_STOP);
+            fsmEvents.push_back(Event::END_BLOCKED);
+        }
+        break;
+
+    case Event::END_CLEARED:
+        if (m_ctx.serviceMode) {
+            fsmEvents.push_back(e);
+        }
         break;
 
     // --- Netzwerk ---
@@ -243,6 +278,10 @@ std::vector<Event> EventManager::preprocessForFsm(Event e) {
 }
 
 void EventManager::handleTakt() {
+    if (m_context != nullptr && m_ctx.serviceMode && m_ctx.motorOn) {
+        m_context->incrementServiceTickCounter();
+    }
+
     if (m_wpManager == nullptr) {
         return;
     }

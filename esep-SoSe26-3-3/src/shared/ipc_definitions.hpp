@@ -107,6 +107,8 @@ namespace ipc {
         HANDOVER_SUCCESSFUL   = _PULSE_CODE_MINAVAIL + 3,
         CHUTE                 = _PULSE_CODE_MINAVAIL + 4,
         ESTOP_STATUS_QUERY    = _PULSE_CODE_MINAVAIL + 5, // Partner ESTOP-Status anfragen
+        CALIB_STATUS_QUERY    = _PULSE_CODE_MINAVAIL + 6, // Partner Kalibrierungsstatus anfragen
+        CALIB_STATUS          = _PULSE_CODE_MINAVAIL + 7, // Kalibrierungsstatus melden
  };
 
     enum State:uint16_t{

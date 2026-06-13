@@ -21,6 +21,9 @@ CalibrationData makeValidCalibrationData() {
     data.ticks_EndB_to_EndC_Normal = 100;
     data.ticks_EntryC_to_HeightB_Slow = 400;
     data.ticks_HeightB_to_HeightC_Slow = 300;
+    data.ticks_HeightC_to_EjectorB_Slow = 360;
+    data.ticks_EjectorB_to_EjectorC_Slow = 120;
+    data.ticks_EjectorC_to_ChuteB_Slow = 280;
     return data;
 }
 
@@ -36,6 +39,9 @@ void expectCalibrationDataEqual(const CalibrationData& expected, const Calibrati
     EXPECT_EQ(expected.ticks_EndB_to_EndC_Normal, actual.ticks_EndB_to_EndC_Normal);
     EXPECT_EQ(expected.ticks_EntryC_to_HeightB_Slow, actual.ticks_EntryC_to_HeightB_Slow);
     EXPECT_EQ(expected.ticks_HeightB_to_HeightC_Slow, actual.ticks_HeightB_to_HeightC_Slow);
+    EXPECT_EQ(expected.ticks_HeightC_to_EjectorB_Slow, actual.ticks_HeightC_to_EjectorB_Slow);
+    EXPECT_EQ(expected.ticks_EjectorB_to_EjectorC_Slow, actual.ticks_EjectorB_to_EjectorC_Slow);
+    EXPECT_EQ(expected.ticks_EjectorC_to_ChuteB_Slow, actual.ticks_EjectorC_to_ChuteB_Slow);
 }
 
 void writeTextFile(const std::string& path, const std::string& content) {
@@ -105,7 +111,10 @@ TEST_F(CalibrationManagerTest, InvalidAdcOrder_FileExistsReturnsFalse) {
         "ticks_EjectorC_to_EndB_Normal=250\n"
         "ticks_EndB_to_EndC_Normal=100\n"
         "ticks_EntryC_to_HeightB_Slow=400\n"
-        "ticks_HeightB_to_HeightC_Slow=300\n");
+        "ticks_HeightB_to_HeightC_Slow=300\n"
+        "ticks_HeightC_to_EjectorB_Slow=360\n"
+        "ticks_EjectorB_to_EjectorC_Slow=120\n"
+        "ticks_EjectorC_to_ChuteB_Slow=280\n");
 
     CalibrationManager manager(m_path);
     EXPECT_FALSE(manager.fileExists());
@@ -184,7 +193,10 @@ TEST_F(CalibrationManagerTest, FileWithSectionHeaders_IsAccepted) {
         "ticks_EndB_to_EndC_Normal=100\n"
         "[Slow-Speed-Base-Ticks]\n"
         "ticks_EntryC_to_HeightB_Slow=400\n"
-        "ticks_HeightB_to_HeightC_Slow=300\n");
+        "ticks_HeightB_to_HeightC_Slow=300\n"
+        "ticks_HeightC_to_EjectorB_Slow=360\n"
+        "ticks_EjectorB_to_EjectorC_Slow=120\n"
+        "ticks_EjectorC_to_ChuteB_Slow=280\n");
 
     CalibrationManager manager(m_path);
     EXPECT_TRUE(manager.fileExists());

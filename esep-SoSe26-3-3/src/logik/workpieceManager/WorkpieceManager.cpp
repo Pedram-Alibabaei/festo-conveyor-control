@@ -282,7 +282,10 @@ void WorkpieceManager::handleSensorSignal(logik::Event e, WpType typeFromHal) {
                     m_sequence.advanceSequence();
                 } else {
                     wp->updateLocation(WpLocation::TRANSIT_TO_CHUTE);
-                    wp->setTargetLimit(150);
+                    const std::uint32_t chuteLimit = m_calibData.ticks_EjectorC_to_ChuteB_Slow > 0
+                        ? m_calibData.ticks_EjectorC_to_ChuteB_Slow
+                        : 150U;
+                    wp->setTargetLimit(chuteLimit);
                 }
             } else {
                 if (m_context && m_context->getErrorHandler()) {

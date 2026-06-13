@@ -45,6 +45,8 @@ struct PlantContext {
     bool endBlocked = false;
     bool serviceMode = false;
     bool connectionLost = false;
+    bool calibrationDataReady = false;
+    bool partnerCalibrationReady = false;
     AnlagenPosition position = AnlagenPosition::UNKNOWN_POSITION;
 };
 
@@ -119,6 +121,12 @@ public:
 
     void setConnectionLost(bool lost) { m_ctx.connectionLost = lost; }
     bool isConnectionLost() const { return m_ctx.connectionLost; }
+
+    void setCalibrationDataReady(bool ready) { m_ctx.calibrationDataReady = ready; }
+    bool isCalibrationDataReady() const { return m_ctx.calibrationDataReady; }
+
+    void setPartnerCalibrationReady(bool ready) { m_ctx.partnerCalibrationReady = ready; }
+    bool isPartnerCalibrationReady() const { return m_ctx.partnerCalibrationReady; }
 };
 
 } // namespace logik

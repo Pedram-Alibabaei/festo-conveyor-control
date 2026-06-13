@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<diagram program="UMLET" version="15.1">
+  <zoom_level>8</zoom_level>
+
+  <element>
+    <id>Text</id>
+    <coordinates>
+      <x>20</x>
+      <y>10</y>
+      <w>720</w>
+      <h>36</h>
+    </coordinates>
+    <panel_attributes>style=plain
+fontsize=18
+Ebene 1 — Active States (Idle / Running / Service)</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLNote</id>
+    <coordinates>
+      <x>20</x>
+      <y>360</y>
+      <w>720</w>
+      <h>100</h>
+    </coordinates>
+    <panel_attributes>fontsize=12
+Legende
+--
+• Lebt nur innerhalb von Active (Ebene 0)
+• Deep History H* speichert letzten L1-Zustand (Connection_lost → RESTORED)
+• Estop-Reset → immer Idle (kein H*)
+• Side-Effects in Level1Actions (src/logik/fsm/level1/)</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLSpecialState</id>
+    <coordinates>
+      <x>30</x>
+      <y>120</y>
+      <w>20</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>type=initial</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>80</x>
+      <y>80</y>
+      <w>180</w>
+      <h>120</h>
+    </coordinates>
+    <panel_attributes>Idle
+--
+Entry:
+  setAdcIdleState()
+  driveStop()
+  lightGreenOff()
+
+DATA_NOT_EXIST → Service
+START_SHORT [calib OK] → Running
+START_LONG → Service</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>320</x>
+      <y>80</y>
+      <w>180</w>
+      <h>130</h>
+    </coordinates>
+    <panel_attributes>Running
+--
+Entry:
+  setAdcWaitForWp()
+  lightGreenOn()
+
+STOP → Idle
+MOTOR_RUN / STOP / SET_SLOW
+END_BLOCKED / CHUTE_BLOCKED</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>560</x>
+      <y>80</y>
+      <w>180</w>
+      <h>130</h>
+    </coordinates>
+    <panel_attributes>Service
+--
+Entry:
+  setAdcCalibration()
+  lightGreenBlinkFast()
+  serviceMode=true
+
+STOP → Idle
+DATA_EXIST → calib OK
+Motor wie Running (ohne Gruen aus)</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>45</x>
+      <y>115</y>
+      <w>45</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;</panel_attributes>
+    <additional_attributes>10;10;40;10</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>255</x>
+      <y>120</y>
+      <w>70</w>
+      <h>30</h>
+    </coordinates>
+    <panel_attributes>START_SHORT
+[calibrationDataReady]</panel_attributes>
+    <additional_attributes>10;20;60;20</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>255</x>
+      <y>150</y>
+      <w>310</w>
+      <h>40</h>
+    </coordinates>
+    <panel_attributes>START_LONG
+DATA_NOT_EXIST</panel_attributes>
+    <additional_attributes>10;30;300;30</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>255</x>
+      <y>170</y>
+      <w>70</w>
+      <h>30</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;-
+STOP</panel_attributes>
+    <additional_attributes>60;20;10;20</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>495</x>
+      <y>170</y>
+      <w>70</w>
+      <h>30</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;-
+STOP</panel_attributes>
+    <additional_attributes>60;20;10;20</additional_attributes>
+  </element>
+
+</diagram>

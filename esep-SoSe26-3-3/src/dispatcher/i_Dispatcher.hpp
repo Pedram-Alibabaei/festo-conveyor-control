@@ -68,6 +68,7 @@ public:
     virtual void updateWpListe(WpType type) = 0;
     virtual void sendeChuteStats(bool isVoll)=0;
     virtual void sendPartnerResetPressed() = 0;
+    virtual void sendLocalCalibStatusToPartner() = 0;
 
     // ========================================================================
     // (Weiterleitung an HAL - ADC Zustand)

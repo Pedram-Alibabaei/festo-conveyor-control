@@ -73,6 +73,7 @@ private:
     void handleCalibrationPulse(uint32_t payload);
     void sendLocalEstopStatusToPartner();
     void requestPartnerEstopStatus();
+    void requestPartnerCalibStatus();
 
 public:
     Dispatcher();
@@ -118,6 +119,7 @@ public:
     bool isPartnerEstopPressed() const override;
     void sendeChuteStats(bool isVoll) override;
     void sendPartnerResetPressed() override;
+    void sendLocalCalibStatusToPartner() override;
 
     void setAdcIdelState()override { if (m_sensors) m_sensors->setAdcIdelState();}
     void setAdcWaitigForWpState()override { if (m_sensors) m_sensors->setAdcWaitigForWpState();}

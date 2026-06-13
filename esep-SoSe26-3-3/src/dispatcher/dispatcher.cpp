@@ -257,6 +257,8 @@ void Dispatcher::handleConnectionPulse(uint32_t payload) {
 
     requestPartnerEstopStatus();
     sendLocalEstopStatusToPartner();
+    requestPartnerCalibStatus();
+    sendLocalCalibStatusToPartner();
 
     if (m_logik != nullptr) {
         std::cout << "[Dispatcher] Partner-ESTOP (Cache vor RESTORED): "
@@ -277,10 +279,6 @@ void Dispatcher::handleHalPulse(uint32_t payload) {
         std::cout << "[Dispatcher] START-Taster: "
                   << (sensor_state == ipc::State::PRESSED ? "PRESSED" : "RELEASED") << std::endl;
         m_logik->processEvent(sensor_state == ipc::State::PRESSED ? logik::Event::START_PRESSED : logik::Event::START_RELEASED);
-
-        if (m_partnerCoid != -1) {
-            MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_MSG, payload);
-        }
     }
     else if (sensor_id == ipc::BTN_STOP) {
         std::cout << "[Dispatcher] STOP-Taster: "
@@ -384,6 +382,18 @@ void Dispatcher::handleNetworkPulse(uint32_t payload) {
     else if (message_type == ipc::NetworkMessage::ESTOP_STATUS_QUERY) {
         std::cout << "[Dispatcher] Partner fragt ESTOP-Status an -> antworte." << std::endl;
         sendLocalEstopStatusToPartner();
+    }
+    else if (message_type == ipc::NetworkMessage::CALIB_STATUS_QUERY) {
+        std::cout << "[Dispatcher] Partner fragt Kalibrierungsstatus an -> antworte." << std::endl;
+        sendLocalCalibStatusToPartner();
+    }
+    else if (sensor_id == ipc::NetworkMessage::CALIB_STATUS) {
+        const bool partnerReady = (message_type == ipc::State::PRESSED);
+        std::cout << "[Dispatcher] Partner-Kalibrierung: "
+                  << (partnerReady ? "BEREIT" : "NICHT bereit") << std::endl;
+        m_logik->processEvent(partnerReady
+            ? logik::Event::PARTNER_CALIB_READY
+            : logik::Event::PARTNER_CALIB_NOT_READY);
     }
     else {
         std::cout << "[Dispatcher] Unbekannte Partner-Nachricht id=" << sensor_id
@@ -573,6 +583,29 @@ void Dispatcher::requestPartnerEstopStatus() {
     const uint32_t payload = ipc::encodeHalPayload(0, ipc::NetworkMessage::ESTOP_STATUS_QUERY);
     MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_MSG, payload);
     std::cout << "[Dispatcher] Partner-ESTOP-Status angefragt." << std::endl;
+}
+
+void Dispatcher::sendLocalCalibStatusToPartner() {
+    if (m_partnerCoid == -1) {
+        return;
+    }
+
+    const bool ready = requestFileExists();
+    const ipc::State state = ready ? ipc::State::PRESSED : ipc::State::RELEASED;
+    const uint32_t payload = ipc::encodeHalPayload(ipc::NetworkMessage::CALIB_STATUS, state);
+    MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_MSG, payload);
+    std::cout << "[Dispatcher] Kalibrierungsstatus an Partner gesendet: "
+              << (ready ? "BEREIT" : "NICHT bereit") << std::endl;
+}
+
+void Dispatcher::requestPartnerCalibStatus() {
+    if (m_partnerCoid == -1) {
+        return;
+    }
+
+    const uint32_t payload = ipc::encodeHalPayload(0, ipc::NetworkMessage::CALIB_STATUS_QUERY);
+    MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_MSG, payload);
+    std::cout << "[Dispatcher] Partner-Kalibrierungsstatus angefragt." << std::endl;
 }
 
 void Dispatcher::forwardCalibrationToHal(std::uint16_t emptyBelt, std::uint16_t flatCenter, std::uint32_t minSamples) {
