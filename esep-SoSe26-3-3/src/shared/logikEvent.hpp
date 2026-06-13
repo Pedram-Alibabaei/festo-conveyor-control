@@ -97,6 +97,7 @@ namespace logik {
 
         BAND_EMPTY,             ///< Keine Werkstuecke mehr im Schieberegister vorhanden
         SET_SLOW,               ///< Geschwindigkeit umschalten auf Langsamfahrt (z.B. vor Hoehenmessung)
+        SET_FAST,
         MOTOR_RUN,              ///< Befehl an Motor-Aktor: Band starten
         MOTOR_STOP              ///< Befehl an Motor-Aktor: Band stoppen
     };

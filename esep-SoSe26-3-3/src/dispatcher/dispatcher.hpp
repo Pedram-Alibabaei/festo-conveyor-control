@@ -51,6 +51,8 @@ private:
     i_Timer* m_timer;
     i_Logik* m_logik;
 
+    std::atomic<bool> m_partnerEstopPressed;
+
     // Temporäre Variablen im Dispatcher für die Live-Messung
     // Lokale Zwischenlage für den Einlernvorgang im Dispatcher
     static CalibrationData s_incomingServiceData;
@@ -69,6 +71,8 @@ private:
     void handleHalEStopPulse(uint32_t payload);
     void handlePartnerEStopPulse(uint32_t payload);
     void handleCalibrationPulse(uint32_t payload);
+    void sendLocalEstopStatusToPartner();
+    void requestPartnerEstopStatus();
 
 public:
     Dispatcher();
@@ -110,6 +114,8 @@ public:
     void updateWpListe(WpType type) override;
 
     bool requestFileExists() override;
+    bool isEstopPressed() override;
+    bool isPartnerEstopPressed() const override;
     void sendeChuteStats(bool isVoll) override;
 
     void setAdcIdelState()override { if (m_sensors) m_sensors->setAdcIdelState();}

@@ -214,8 +214,11 @@ void Gpio0Interrupt::handle_interrupt() const noexcept
             if (pin.is_button) {
                 // Taster-Logik
                 state_value = pin.active ? ipc::State::PRESSED : ipc::State::RELEASED;
+            } else if (pin.sensor_id == ipc::SENSOR_METAL) {
+                // Induktivsensor: Pin HIGH = Metall erkannt -> BLOCKED (wie LS unterbrochen)
+                state_value = pin.active ? ipc::State::BLOCKED : ipc::State::CLEARED;
             } else {
-                // Lichtschranken- und Sensor-Logik
+                // Lichtschranken: Pin HIGH = frei -> CLEARED
                 state_value = pin.active ? ipc::State::CLEARED : ipc::State::BLOCKED;
             }
 
@@ -229,10 +232,15 @@ void Gpio0Interrupt::handle_interrupt() const noexcept
             // 5. Puls absolut blockierungsfrei an den Dispatcher senden
             if (m_coid != -1) {
                 int rc = MsgSendPulse(m_coid, 10, pulse_code, payload);
-                if (rc != 0 && pin.is_button) {
+                if (rc != 0) {
                     std::cerr << "[GPIO] MsgSendPulse fehlgeschlagen fuer Sensor "
                               << pin.sensor_id << " errno=" << errno << std::endl;
-                } else if (pin.sensor_id == ipc::BTN_START || pin.sensor_id == ipc::BTN_STOP) {
+                } else if (!pin.is_button) {
+                    const char* stateLabel =
+                        (state_value == ipc::State::BLOCKED) ? "BLOCKED" : "CLEARED";
+                    std::cout << "[GPIO] Sensor id=" << pin.sensor_id
+                              << " -> " << stateLabel << std::endl;
+                } else if (pin.is_button) {
                     std::cout << "[GPIO] Taster id=" << pin.sensor_id
                               << " -> " << (pin.active ? "PRESSED" : "RELEASED") << std::endl;
                 }

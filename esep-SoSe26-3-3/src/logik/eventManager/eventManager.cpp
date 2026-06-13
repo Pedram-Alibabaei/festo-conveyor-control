@@ -1,6 +1,11 @@
 /**
  * @file eventManager.cpp
- * @brief Implementierung des EventManagers mit Koppelung der Logik-Komponenten.
+ * @brief Orchestrator: PlantContext + Event-Vorverarbeitung + Routing.
+ *
+ * Pipeline pro Event:
+ *   1. ErrorHandler + WorkpieceManager (wenn Band-Subsysteme freigegeben)
+ *   2. Kontext-Flags aktualisieren
+ *   3. FSM-Events vorverarbeiten und gezielt an FSM senden
  *
  * SoSe2026 Team 3.3
  */
@@ -11,213 +16,294 @@
 #include "logik/errorHandler/errorHandler.hpp"
 #include "logik/fsm/Fsm.hpp"
 #include "logik/fsm/states/BaseState.hpp"
+#include "dispatcher/i_Dispatcher.hpp"
 
 #include <iostream>
 
+namespace {
+
+constexpr std::chrono::milliseconds START_LONG_THRESHOLD{2000};
+
+} // namespace
+
 namespace logik {
 
-    EventManager::EventManager(Logik* context)
-        : m_context(context),
-          m_wpManager(nullptr),      // Initial per init() gekoppelt
-          m_errorHandler(nullptr),   // Initial per init() gekoppelt
-          m_fsm(nullptr),
-          m_isMotorOn(false),
-          m_isMotorSlow(false),
-          m_anlagenPosition(AnlagenPosition::UNKNOWN_POSITION),
-          m_isEStopActive(false),
-          m_isErrorActive(false),
-          m_isEntryFrei(true),
-          m_isChuteFull(false),
-          m_isPartnerChuteFull(false),
-          START_LONG_THRESHOLD(2000),
-          m_isEndBlocked(false),
-          m_isServiceMode(false)
-    {
-    }
+EventManager::EventManager(Logik* context)
+    : m_context(context),
+      m_wpManager(nullptr),
+      m_errorHandler(nullptr)
+{
+}
 
 EventManager::~EventManager() = default;
 
 void EventManager::init(AnlagenPosition pos) {
-    m_anlagenPosition = pos;
+    m_ctx.position = pos;
 
-    // ========================================================================
-    // ANPASSUNG: GESCHWISTER-ZEIGER REINREDUZIEREN (MEDIATOR PATTERN)
-    // ========================================================================
     if (m_context != nullptr) {
-        m_wpManager    = m_context->getWorkpieceManager();
+        m_wpManager = m_context->getWorkpieceManager();
         m_errorHandler = m_context->getErrorHandler();
     }
 
     m_fsm = std::make_unique<Fsm>(m_context, this);
 
-    std::cout << "[Event-Manager] Auf Position " << static_cast<int>(pos)
-              << " konfiguriert und mit Geschwister-Modulen verknuepft." << std::endl;
+    std::cout << "[EventManager] Initialisiert (Position "
+              << static_cast<int>(pos) << "). Rolle: Orchestrator + PlantContext."
+              << std::endl;
 }
 
-void EventManager::handleEvent(logik::Event e) {
+bool EventManager::canRouteToBandSubsystems() const {
+    return !m_ctx.eStopActive
+        && !m_ctx.errorActive
+        && !m_ctx.endBlocked
+        && !m_ctx.connectionLost;
+}
 
-    // ========================================================================
-    // ANPASSUNG: ERST ROUTEN, DANN INTERNE FLAGS UPDATEN
-    // Wichtig, damit der ErrorHandler m_isEntryFrei pruefen kann, BEVOR es kippt!
-    // ========================================================================
-    if (!m_isEStopActive && !m_isErrorActive) {
+bool EventManager::isFsmPassthroughEvent(Event e) const {
+    switch (e) {
+    case Event::STOP_PRESSED:
+    case Event::STOP_RELEASED:
+    case Event::RESET_PRESSED:
+    case Event::RESET_RELEASED:
+    case Event::PARTNER_STOP_PRESSED:
+    case Event::PARTNER_STOP_RELEASED:
+    case Event::PARTNER_RESET_PRESSED:
+    case Event::PARTNER_RESET_RELEASED:
+    case Event::ESTOP_PRESSED:
+    case Event::ESTOP_RELEASED:
+    case Event::PARTNER_ESTOP_PRESSED:
+    case Event::PARTNER_ESTOP_RELEASED:
+    case Event::CONNECTION_LOST:
+    case Event::CONNECTION_RESTORED:
+    case Event::DATA_EXIST:
+    case Event::DATA_NOT_EXIST:
+    case Event::ERROR:
+    case Event::ERROR_CLEARED:
+    case Event::WARNING:
+    case Event::WARNING_CLEARED:
+    case Event::END_BLOCKED:
+    case Event::END_CLEARED:
+    case Event::CHUTE_BLOCKED:
+    case Event::HEIGHT_CLEARED:
+    case Event::SET_SLOW:
+    case Event::MOTOR_RUN:
+    case Event::MOTOR_STOP:
+    case Event::ENTRY_FREI:
+    case Event::ENTRY_NOT_FREI:
+        return true;
+    default:
+        return false;
+    }
+}
+
+void EventManager::handleEvent(Event e) {
+    // Phase 1: Subsysteme — ErrorHandler zuerst (braucht entryFrei VOR Update)
+    if (canRouteToBandSubsystems()) {
         routeToErrorHandler(e);
         routeToWorkpieceManager(e);
     }
 
-    switch (e) {
-        case logik::Event::ESTOP_PRESSED:
-        case logik::Event::PARTNER_ESTOP_PRESSED:
-            m_isEStopActive = true;
-            break;
+    // Phase 2: Kontext-Flags
+    updateContextFlags(e);
 
-        case logik::Event::ESTOP_RELEASED:
-        case logik::Event::PARTNER_ESTOP_RELEASED:
-            m_isEStopActive = false;
-            break;
-
-        case logik::Event::END_BLOCKED:
-            m_isEndBlocked = true;
-            routeToFsm(logik::Event::MOTOR_STOP);
-            break;
-
-        case logik::Event::END_CLEARED:
-            m_isEndBlocked = false;
-            break;
-
-        case logik::Event::ENTRY_BLOCKED:
-            if (m_isEntryFrei && !m_isEndBlocked) {
-                routeToFsm(logik::Event::MOTOR_RUN);
-                routeToFsm(logik::Event::ENTRY_NOT_FREI);
-                m_isEntryFrei = false;
-            }
-            break;
-
-        case logik::Event::HEIGHT_BLOCKED:
-            routeToFsm(logik::Event::ENTRY_FREI);
-            m_isEntryFrei = true;
-            break;
-
-        case logik::Event::START_PRESSED:
-            m_startPressedStartTime = std::chrono::steady_clock::now();
-            std::cout << "[Event-Manager] START gedrueckt (lokal)" << std::endl;
-            break;
-
-        case logik::Event::START_RELEASED: {
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - m_startPressedStartTime);
-
-            if (duration >= START_LONG_THRESHOLD) {
-                std::cout << "[Event-Manager] START lang (" << duration.count() << "ms)" << std::endl;
-                routeToFsm(logik::Event::START_LONG_PRESSED);
-            } else {
-                std::cout << "[Event-Manager] START kurz (" << duration.count() << "ms)" << std::endl;
-                routeToFsm(logik::Event::START_SHORT_PRESSED);
-            }
-            break;
-        }
-
-        case logik::Event::PARTNER_START_PRESSED:
-            m_partnerStartPressedTime = std::chrono::steady_clock::now();
-            std::cout << "[Event-Manager] START gedrueckt (Partner)" << std::endl;
-            break;
-
-        case logik::Event::PARTNER_START_RELEASED: {
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - m_partnerStartPressedTime);
-
-            if (duration >= START_LONG_THRESHOLD) {
-                std::cout << "[Event-Manager] Partner-START lang (" << duration.count() << "ms)" << std::endl;
-                routeToFsm(logik::Event::START_LONG_PRESSED);
-            } else {
-                std::cout << "[Event-Manager] Partner-START kurz (" << duration.count() << "ms)" << std::endl;
-                routeToFsm(logik::Event::START_SHORT_PRESSED);
-            }
-            break;
-        }
-
-        case logik::Event::RESET_RELEASED:
-        case logik::Event::PARTNER_RESET_RELEASED:
-            if (m_isErrorActive) {
-                std::cout << "[Event-Manager] Fehler quittiert (RESET)." << std::endl;
-                m_isErrorActive = false;
-            }
-            break;
-
-        default:
-            break;
+    // Phase 3: FSM — nur vorverarbeitete + explizit erlaubte Events
+    for (Event fsmEvent : preprocessForFsm(e)) {
+        routeToFsm(fsmEvent);
     }
-
-    // Event an die eigentliche Schicht-1-FSM weiterleiten
-    routeToFsm(e);
 }
 
-// ============================================================================
-// COMPONENT WATCHDOG TICK (DEINE RECHTLICHE STEUERUNG)
-// ============================================================================
+void EventManager::updateContextFlags(Event e) {
+    switch (e) {
+    case Event::ESTOP_PRESSED:
+    case Event::PARTNER_ESTOP_PRESSED:
+        m_ctx.eStopActive = true;
+        break;
+
+    case Event::ESTOP_RELEASED:
+    case Event::PARTNER_ESTOP_RELEASED:
+        m_ctx.eStopActive = false;
+        break;
+
+    case Event::END_BLOCKED:
+        m_ctx.endBlocked = true;
+        break;
+
+    case Event::END_CLEARED:
+        m_ctx.endBlocked = false;
+        break;
+
+    case Event::CONNECTION_LOST:
+        m_ctx.connectionLost = true;
+        break;
+
+    case Event::CONNECTION_RESTORED:
+        m_ctx.connectionLost = false;
+        break;
+
+    case Event::RESET_RELEASED:
+    case Event::PARTNER_RESET_RELEASED:
+        if (m_ctx.errorActive) {
+            std::cout << "[EventManager] Fehler quittiert (RESET)." << std::endl;
+            m_ctx.errorActive = false;
+        }
+        break;
+
+    default:
+        break;
+    }
+}
+
+std::vector<Event> EventManager::preprocessForFsm(Event e) {
+    std::vector<Event> fsmEvents;
+
+    switch (e) {
+    // --- START: Roh-Event → kurz/lang (FSM sieht nie START_PRESSED/RELEASED) ---
+    case Event::START_PRESSED:
+        m_startPressedStartTime = std::chrono::steady_clock::now();
+        std::cout << "[EventManager] START gedrueckt (lokal)" << std::endl;
+        break;
+
+    case Event::START_RELEASED: {
+        const auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - m_startPressedStartTime);
+
+        if (duration >= START_LONG_THRESHOLD) {
+            std::cout << "[EventManager] START lang (" << duration.count() << "ms)" << std::endl;
+            fsmEvents.push_back(Event::START_LONG_PRESSED);
+        } else {
+            std::cout << "[EventManager] START kurz (" << duration.count() << "ms)" << std::endl;
+            fsmEvents.push_back(Event::START_SHORT_PRESSED);
+        }
+        break;
+    }
+
+    case Event::PARTNER_START_PRESSED:
+        m_partnerStartPressedTime = std::chrono::steady_clock::now();
+        std::cout << "[EventManager] START gedrueckt (Partner)" << std::endl;
+        break;
+
+    case Event::PARTNER_START_RELEASED: {
+        const auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - m_partnerStartPressedTime);
+
+        if (duration >= START_LONG_THRESHOLD) {
+            std::cout << "[EventManager] Partner-START lang (" << duration.count() << "ms)" << std::endl;
+            fsmEvents.push_back(Event::START_LONG_PRESSED);
+        } else {
+            std::cout << "[EventManager] Partner-START kurz (" << duration.count() << "ms)" << std::endl;
+            fsmEvents.push_back(Event::START_SHORT_PRESSED);
+        }
+        break;
+    }
+
+    // --- Einlauf-Zone: Sensor-Events → Motor-/Freigabe-Signale fuer FSM ---
+    case Event::ENTRY_BLOCKED:
+        if (m_ctx.entryFrei && !m_ctx.endBlocked) {
+            fsmEvents.push_back(Event::MOTOR_RUN);
+            fsmEvents.push_back(Event::ENTRY_NOT_FREI);
+            m_ctx.entryFrei = false;
+        }
+        break;
+
+    case Event::HEIGHT_BLOCKED:
+        fsmEvents.push_back(Event::ENTRY_FREI);
+        m_ctx.entryFrei = true;
+        break;
+
+    case Event::END_BLOCKED:
+        fsmEvents.push_back(Event::MOTOR_STOP);
+        fsmEvents.push_back(Event::END_BLOCKED);
+        break;
+
+    // --- Netzwerk ---
+    case Event::CONNECTION_LOST:
+        std::cout << "[EventManager] Verbindung zum Partner verloren." << std::endl;
+        fsmEvents.push_back(Event::CONNECTION_LOST);
+        break;
+
+    case Event::CONNECTION_RESTORED: {
+        std::cout << "[EventManager] Verbindung zum Partner wiederhergestellt." << std::endl;
+        fsmEvents.push_back(Event::CONNECTION_RESTORED);
+        break;
+    }
+
+    default:
+        if (isFsmPassthroughEvent(e)) {
+            fsmEvents.push_back(e);
+        }
+        break;
+    }
+
+    return fsmEvents;
+}
+
 void EventManager::handleTakt() {
-    if (m_wpManager == nullptr) return;
-
-    if (m_isEStopActive || m_isErrorActive || m_isEndBlocked) { return; }
-
-    if (m_isMotorOn) {
-        m_wpManager->takt(m_isMotorSlow);
+    if (m_wpManager == nullptr) {
+        return;
     }
+
+    if (!canRouteToBandSubsystems() || !m_ctx.motorOn) {
+        return;
+    }
+
+    m_wpManager->takt(m_ctx.motorSlow);
 }
 
-void EventManager::routeToWorkpieceManager(logik::Event e) {
-    if (m_wpManager == nullptr) return;
-
-    if (m_isEStopActive || m_isErrorActive || m_isEndBlocked) { return; }
+void EventManager::routeToWorkpieceManager(Event e) {
+    if (m_wpManager == nullptr) {
+        return;
+    }
 
     switch (e) {
-        case logik::Event::ENTRY_BLOCKED:
-            if (m_isEntryFrei && (m_anlagenPosition == AnlagenPosition::VORN_ANLAGE_1 || m_isServiceMode)) {
-                m_wpManager->addWorkpiece();
-            }
-            break;
+    case Event::ENTRY_BLOCKED:
+        if (m_ctx.entryFrei
+            && (m_ctx.position == AnlagenPosition::VORN_ANLAGE_1 || m_ctx.serviceMode)) {
+            m_wpManager->addWorkpiece();
+        }
+        break;
 
-        case logik::Event::ENTRY_CLEARED:
-        case logik::Event::HEIGHT_BLOCKED:
-        case logik::Event::HEIGHT_CLEARED:
-        case logik::Event::HEIGHT_ERROR:
-        case logik::Event::METAL_DETECTED:
-        case logik::Event::METAL_CLEARED:
-        case logik::Event::EJECTOR_BLOCKED:
-        case logik::Event::EJECTOR_CLEARED:
-        case logik::Event::END_BLOCKED:
-        case logik::Event::END_CLEARED:
-        case logik::Event::CHUTE_BLOCKED:
-        case logik::Event::CHUTE_CLEARED:
-            if (!m_isMotorOn && !m_wpManager->hasActiveWorkpieces() && !m_isServiceMode) {
-                break;
-            }
-            m_wpManager->handleSensorSignal(e);
+    case Event::ENTRY_CLEARED:
+    case Event::HEIGHT_BLOCKED:
+    case Event::HEIGHT_CLEARED:
+    case Event::HEIGHT_ERROR:
+    case Event::METAL_DETECTED:
+    case Event::METAL_CLEARED:
+    case Event::EJECTOR_BLOCKED:
+    case Event::EJECTOR_CLEARED:
+    case Event::END_BLOCKED:
+    case Event::END_CLEARED:
+    case Event::CHUTE_BLOCKED:
+    case Event::CHUTE_CLEARED:
+        if (!m_ctx.motorOn && !m_wpManager->hasActiveWorkpieces() && !m_ctx.serviceMode) {
             break;
-        default:
-            break;
+        }
+        m_wpManager->handleSensorSignal(e);
+        break;
+
+    default:
+        break;
     }
 }
 
-void EventManager::routeToErrorHandler(logik::Event e) {
-    if (m_errorHandler == nullptr) return;
+void EventManager::routeToErrorHandler(Event e) {
+    if (m_errorHandler == nullptr) {
+        return;
+    }
 
-    // ========================================================================
-    // ANPASSUNG: AKTIVIERUNG DER SENSOREN-ZEITÜBERWACHUNG
-    // ========================================================================
     switch (e) {
-        case logik::Event::ENTRY_BLOCKED:
-        case logik::Event::ENTRY_CLEARED:
-        case logik::Event::CHUTE_BLOCKED:
-        case logik::Event::CHUTE_CLEARED:
-            m_errorHandler->processEvent(e);
-            break;
-        default:
-            break;
+    case Event::ENTRY_BLOCKED:
+    case Event::ENTRY_CLEARED:
+    case Event::CHUTE_BLOCKED:
+    case Event::CHUTE_CLEARED:
+        m_errorHandler->processEvent(e);
+        break;
+
+    default:
+        break;
     }
 }
 
-void EventManager::routeToFsm(logik::Event e) {
+void EventManager::routeToFsm(Event e) {
     if (m_fsm != nullptr) {
         m_fsm->processEvent(e);
     }
@@ -230,10 +316,11 @@ void EventManager::transitionFsmState(std::unique_ptr<BaseState> nextState) {
 }
 
 void EventManager::setPartnerChuteStatus(bool isFull) {
-    m_isPartnerChuteFull = isFull;
-    if (m_isPartnerChuteFull && m_isChuteFull) {
+    m_ctx.partnerChuteFull = isFull;
+
+    if (m_ctx.partnerChuteFull && m_ctx.chuteFull) {
         setErrorActive(true);
-        handleEvent(logik::Event::ERROR);
+        handleEvent(Event::ERROR);
     }
 }
 

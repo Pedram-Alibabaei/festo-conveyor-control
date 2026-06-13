@@ -9,7 +9,7 @@
 #define WORKPIECE_MANAGER_HPP
 
 #include <vector>
-#include "workpiece.hpp"
+#include "Workpiece.hpp"
 #include "targetSequence.hpp"
 #include "shared/types.hpp"
 #include "shared/logikEvent.hpp"

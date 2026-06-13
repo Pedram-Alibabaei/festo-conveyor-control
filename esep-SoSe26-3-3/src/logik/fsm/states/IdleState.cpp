@@ -1,5 +1,4 @@
 #include "IdleState.hpp"
-#include "EStopState.hpp"
 #include "RunningState.hpp"
 #include "ServiceState.hpp"
 #include "logik/logik.hpp"
@@ -8,7 +7,7 @@
 
 namespace logik {
 
-void IdleState::onEnter() {
+void IdleState::entry() {
     std::cout << "[IdleState] Entered." << std::endl;
 
     if (!m_context || !m_context->getDispatcher()) {
@@ -44,15 +43,6 @@ void IdleState::handle(Event e) {
         std::cout << "[IdleState] Langer Start -> ServiceState" << std::endl;
         dispatcher->lightGreenBlinkFast();
         m_context->transitionTo(new ServiceState());
-        break;
-
-    case Event::ESTOP_PRESSED:
-    case Event::PARTNER_ESTOP_PRESSED:
-        std::cout << "[IdleState] ESTOP -> EStopState" << std::endl;
-        if (e == Event::ESTOP_PRESSED) {
-            dispatcher->turnLEDQ2BlinkFast();
-        }
-        m_context->transitionTo(new EStopState());
         break;
 
     case Event::STOP_PRESSED:

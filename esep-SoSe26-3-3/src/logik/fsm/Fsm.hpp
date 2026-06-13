@@ -1,8 +1,6 @@
 /**
  * @file Fsm.hpp
- * @brief GoF-Zustandsmaschine fuer Schicht-1 (Idle, Running, Service, EStop).
- *
- * SoSe2026 Team 3.3
+ * @brief Hierarchische FSM: Ebene 0 (Active/Estop/Connection) + Ebene 1 (Idle/Running/Service).
  */
 
 #ifndef FSM_HPP
@@ -21,6 +19,9 @@ private:
     Logik* m_logik;
     EventManager* m_eventManager;
     std::unique_ptr<BaseState> m_currentState;
+
+    bool isLevel1State(const BaseState* state) const;
+    void transitionLevel0(std::unique_ptr<BaseState> nextState);
 
 public:
     Fsm(Logik* logik, EventManager* eventManager);

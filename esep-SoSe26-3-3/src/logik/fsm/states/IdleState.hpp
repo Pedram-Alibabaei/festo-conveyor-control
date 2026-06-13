@@ -7,7 +7,7 @@ namespace logik {
 
 class IdleState : public BaseState {
 public:
-    void onEnter() override;
+    void entry() override;
     void handle(Event e) override;
 };
 

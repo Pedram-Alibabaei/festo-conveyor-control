@@ -1,108 +1,320 @@
-// Hack, um private Methoden (z.B. handleHalPulse) im Test aufrufen zu koennen
+/**
+ * Unit-Tests fuer Dispatcher-Pulse-Routing (HAL -> Logik, Netzwerk -> Logik).
+ *
+ * Bauen:  make dispatcher_tests
+ * Target: ./build/armv7le-debug/dispatcher_tests
+ *
+ * Pulse-Matrix (Hardware morgen pruefen):
+ *   HAL_INPUT   -> Taster, Lichtschranken, Metal, Hoehensensor-Typ
+ *   HAL_ESTOP   -> Not-Aus (invertierte Active-Low Logik)
+ *   PARTNER_MSG -> Partner-START/RESET, REQ/READY, Rutsche
+ *   PARTNER_ESTOP -> Partner Not-Aus
+ *   BELT_TICK   -> Logik::takt()
+ *   WP_INFO     -> workpieceInfo(id, typ)
+ *   UPDATE_LIST -> updateWpListe(typ)
+ *   HAL_ADC_CALIBRATION -> setLiveAdcCalibration()
+ */
+
 #define private public
 #include "dispatcher/dispatcher.hpp"
 #undef private
 
 #include <gtest/gtest.h>
-#include <gmock/gmock.h>
-#include "MockLogik.hpp"
-#include "MockActuators.hpp"
-#include "MockConnection.hpp"
 
-using ::testing::_;
-using ::testing::Exactly;
+#include "FakeConnection.hpp"
+#include "FakeLogik.hpp"
+#include "shared/ipc_definitions.hpp"
 
-class DispatcherTest : public ::testing::Test {
+namespace {
+
+uint32_t halPayload(ipc::SensorID sensor, ipc::State state) {
+    return ipc::encodeHalPayload(static_cast<uint16_t>(sensor), static_cast<uint16_t>(state));
+}
+
+uint32_t netPayload(uint16_t messageId, uint16_t state) {
+    return ipc::encodeHalPayload(messageId, state);
+}
+
+} // namespace
+
+class DispatcherPulseTest : public ::testing::Test {
 protected:
-    Dispatcher* dispatcher;
-    MockLogik* mockLogik;
-    MockActuators* mockActuators;
-    MockConnection* mockConnection;
+    Dispatcher* dispatcher = nullptr;
+    FakeLogik* fakeLogik = nullptr;
+    FakeConnection* fakeConnection = nullptr;
 
-    virtual void SetUp() override {
+    void SetUp() override {
         dispatcher = new Dispatcher();
-        
-        mockLogik = new MockLogik();
-        mockActuators = new MockActuators();
-        mockConnection = new MockConnection();
-        
-        dispatcher->setLogik(mockLogik);
-        dispatcher->setActuators(mockActuators);
-        dispatcher->setConnectionManager(mockConnection);
-        
-        // Initialisierung ueberspringen wir, da sie QNX Channels anlegt (ChannelCreate)
-        // Aber wir koennen die State-Variablen manuell setzen falls noetig
+        fakeLogik = new FakeLogik();
+        fakeConnection = new FakeConnection();
+        dispatcher->setLogik(fakeLogik);
+        dispatcher->setConnectionManager(fakeConnection);
+        dispatcher->m_partnerCoid = -1;
     }
 
-    virtual void TearDown() override {
+    void TearDown() override {
         delete dispatcher;
-        delete mockLogik;
-        delete mockActuators;
-        delete mockConnection;
+        delete fakeLogik;
+        delete fakeConnection;
+    }
+
+    void sendHal(ipc::SensorID sensor, ipc::State state) {
+        dispatcher->handleHalPulse(halPayload(sensor, state));
+    }
+
+    void sendEStop(ipc::State state) {
+        dispatcher->handleHalEStopPulse(halPayload(ipc::BTN_ESTOP, state));
+    }
+
+    void sendNetwork(uint16_t messageId, uint16_t state) {
+        dispatcher->handleNetworkPulse(netPayload(messageId, state));
+    }
+
+    void sendPulse(int code, uint32_t value = 0) {
+        struct _pulse pulse {};
+        pulse.code = static_cast<int8_t>(code);
+        pulse.value.sival_int = static_cast<int>(value);
+        dispatcher->handlePulse(pulse);
     }
 };
 
-// Test: TASTE START gedrueckt (1) -> Logik erhaelt Event::START_PRESSED
-TEST_F(DispatcherTest, StartBtnPressedSendsEventToLogik) {
-    // payload: Sensor-ID 0 (BTN_START), State 1
-    uint32_t payload = ipc::encodeSensorData(ipc::BTN_START, 1);
-    
-    EXPECT_CALL(*mockLogik, processEvent(logik::Event::START_PRESSED)).Times(Exactly(1));
-    
-    dispatcher->handleHalPulse(payload);
+// ============================================================================
+// HAL – Taster
+// ============================================================================
+
+TEST_F(DispatcherPulseTest, StartPressed_ForwardsToLogik) {
+    sendHal(ipc::BTN_START, ipc::State::PRESSED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::START_PRESSED));
 }
 
-// Test: TASTE START losgelassen (0) -> Logik erhaelt Event::START_RELEASED
-TEST_F(DispatcherTest, StartBtnReleasedSendsEventToLogik) {
-    uint32_t payload = ipc::encodeSensorData(ipc::BTN_START, 0);
-    
-    EXPECT_CALL(*mockLogik, processEvent(logik::Event::START_RELEASED)).Times(Exactly(1));
-    
-    dispatcher->handleHalPulse(payload);
+TEST_F(DispatcherPulseTest, StartReleased_ForwardsToLogik) {
+    sendHal(ipc::BTN_START, ipc::State::RELEASED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::START_RELEASED));
 }
 
-// Test: TASTE RESET gedrueckt (1) -> Logik erhaelt Event::RESET_PRESSED
-TEST_F(DispatcherTest, ResetBtnPressedSendsEventToLogik) {
-    uint32_t payload = ipc::encodeSensorData(ipc::BTN_RESET, 1);
-    EXPECT_CALL(*mockLogik, processEvent(logik::Event::RESET_PRESSED)).Times(Exactly(1));
-    dispatcher->handleHalPulse(payload);
+TEST_F(DispatcherPulseTest, StopPressed_ForwardsToLogik) {
+    sendHal(ipc::BTN_STOP, ipc::State::PRESSED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::STOP_PRESSED));
 }
 
-// Test: TASTE STOP gedrueckt (0 -> Active Low) -> Logik erhaelt Event::STOP_PRESSED
-TEST_F(DispatcherTest, StopBtnPressedSendsEventToLogik) {
-    uint32_t payload = ipc::encodeSensorData(ipc::BTN_STOP, 0);
-    EXPECT_CALL(*mockLogik, processEvent(logik::Event::STOP_PRESSED)).Times(Exactly(1));
-    dispatcher->handleHalPulse(payload);
+TEST_F(DispatcherPulseTest, StopReleased_ForwardsToLogik) {
+    sendHal(ipc::BTN_STOP, ipc::State::RELEASED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::STOP_RELEASED));
 }
 
-// Test: TASTE ESTOP gedrueckt (0 -> Active Low) -> Logik erhaelt Event::ESTOP_PRESSED
-TEST_F(DispatcherTest, EstopBtnPressedSendsEventToLogik) {
-    uint32_t payload = ipc::encodeSensorData(ipc::BTN_ESTOP, 0);
-    EXPECT_CALL(*mockLogik, processEvent(logik::Event::ESTOP_PRESSED)).Times(Exactly(1));
-    dispatcher->handleHalPulse(payload);
+TEST_F(DispatcherPulseTest, ResetPressed_ForwardsToLogik) {
+    sendHal(ipc::BTN_RESET, ipc::State::PRESSED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::RESET_PRESSED));
 }
 
-// Test: TASTE ESTOP ueber Netzwerk empfangen (0 -> Active Low) -> Logik erhaelt Event::NET_ESTOP_PRESSED
-TEST_F(DispatcherTest, NetEstopBtnPressedSendsEventToLogik) {
-    uint32_t payload = ipc::encodeSensorData(ipc::BTN_ESTOP, 0);
-    EXPECT_CALL(*mockLogik, processEvent(logik::Event::NET_ESTOP_PRESSED)).Times(Exactly(1));
-    dispatcher->handleNetworkPulse(payload);
+TEST_F(DispatcherPulseTest, ResetReleased_ForwardsToLogik) {
+    sendHal(ipc::BTN_RESET, ipc::State::RELEASED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::RESET_RELEASED));
 }
 
-// Test: LS_ENTRY unterbrochen (0 -> Active Low) -> Logik erhaelt Event::ENTRY_BLOCKED
-TEST_F(DispatcherTest, LSEntryBlockedSendsEventToLogik) {
-    uint32_t payload = ipc::encodeSensorData(ipc::LS_ENTRY, 0); // 0 = Unterbrochen (Active low)
-    
-    EXPECT_CALL(*mockLogik, processEvent(logik::Event::ENTRY_BLOCKED)).Times(Exactly(1));
-    
-    dispatcher->handleHalPulse(payload);
+// ============================================================================
+// HAL – Not-Aus (eigener Pulse-Code, GPIO Active-Low)
+// ============================================================================
+
+TEST_F(DispatcherPulseTest, EstopReleased_ForwardsAsEstopPressed) {
+    sendEStop(ipc::State::RELEASED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::ESTOP_PRESSED));
 }
 
-// Test: LS_END frei (1 -> Active Low) -> Logik erhaelt Event::END_CLEARED
-TEST_F(DispatcherTest, LSEndClearedSendsEventToLogik) {
-    uint32_t payload = ipc::encodeSensorData(ipc::LS_END, 1); // 1 = Frei (Active low)
-    
-    EXPECT_CALL(*mockLogik, processEvent(logik::Event::END_CLEARED)).Times(Exactly(1));
-    
-    dispatcher->handleHalPulse(payload);
+TEST_F(DispatcherPulseTest, EstopPressed_ForwardsAsEstopReleased) {
+    sendEStop(ipc::State::PRESSED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::ESTOP_RELEASED));
+}
+
+// ============================================================================
+// HAL – Lichtschranken & Sensoren
+// ============================================================================
+
+TEST_F(DispatcherPulseTest, EntryBlocked_ForwardsToLogik) {
+    sendHal(ipc::LS_ENTRY, ipc::State::BLOCKED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::ENTRY_BLOCKED));
+}
+
+TEST_F(DispatcherPulseTest, EntryCleared_ForwardsToLogik) {
+    sendHal(ipc::LS_ENTRY, ipc::State::CLEARED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::ENTRY_CLEARED));
+}
+
+TEST_F(DispatcherPulseTest, HeightBlocked_ForwardsToLogik) {
+    sendHal(ipc::HEIGHT, ipc::State::BLOCKED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::HEIGHT_BLOCKED));
+}
+
+TEST_F(DispatcherPulseTest, HeightCleared_ForwardsToLogik) {
+    sendHal(ipc::HEIGHT, ipc::State::CLEARED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::HEIGHT_CLEARED));
+}
+
+TEST_F(DispatcherPulseTest, HeightError_ForwardsToLogik) {
+    sendHal(ipc::HEIGHT, ipc::State::HIGH_ERROR);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::HEIGHT_ERROR));
+}
+
+TEST_F(DispatcherPulseTest, HeightWpType_ForwardsToWorkpieceTypeFromHS) {
+    sendHal(ipc::HEIGHT, static_cast<ipc::State>(WpType::FLAT));
+    ASSERT_EQ(fakeLogik->hsTypes.size(), 1u);
+    EXPECT_EQ(fakeLogik->hsTypes[0], WpType::FLAT);
+}
+
+TEST_F(DispatcherPulseTest, MetalBlocked_ForwardsToLogik) {
+    sendHal(ipc::SENSOR_METAL, ipc::State::BLOCKED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::METAL_DETECTED));
+}
+
+TEST_F(DispatcherPulseTest, MetalCleared_ForwardsToLogik) {
+    sendHal(ipc::SENSOR_METAL, ipc::State::CLEARED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::METAL_CLEARED));
+}
+
+TEST_F(DispatcherPulseTest, EjectorBlocked_ForwardsToLogik) {
+    sendHal(ipc::LS_SWITCH, ipc::State::BLOCKED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::EJECTOR_BLOCKED));
+}
+
+TEST_F(DispatcherPulseTest, EjectorCleared_ForwardsToLogik) {
+    sendHal(ipc::LS_SWITCH, ipc::State::CLEARED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::EJECTOR_CLEARED));
+}
+
+TEST_F(DispatcherPulseTest, EndBlocked_ForwardsToLogik) {
+    sendHal(ipc::LS_END, ipc::State::BLOCKED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::END_BLOCKED));
+}
+
+TEST_F(DispatcherPulseTest, EndCleared_ForwardsToLogik) {
+    sendHal(ipc::LS_END, ipc::State::CLEARED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::END_CLEARED));
+}
+
+TEST_F(DispatcherPulseTest, ChuteBlocked_ForwardsToLogik) {
+    sendHal(ipc::LS_CHUTE, ipc::State::BLOCKED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::CHUTE_BLOCKED));
+}
+
+TEST_F(DispatcherPulseTest, ChuteCleared_ForwardsToLogik) {
+    sendHal(ipc::LS_CHUTE, ipc::State::CLEARED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::CHUTE_CLEARED));
+}
+
+// ============================================================================
+// Netzwerk – Partner-Taster & Uebergabe
+// ============================================================================
+
+TEST_F(DispatcherPulseTest, PartnerStartPressed_ForwardsToLogik) {
+    sendNetwork(ipc::BTN_START, ipc::State::PRESSED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::PARTNER_START_PRESSED));
+}
+
+TEST_F(DispatcherPulseTest, PartnerStartReleased_ForwardsToLogik) {
+    sendNetwork(ipc::BTN_START, ipc::State::RELEASED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::PARTNER_START_RELEASED));
+}
+
+TEST_F(DispatcherPulseTest, PartnerResetPressed_ForwardsToLogik) {
+    sendNetwork(ipc::BTN_RESET, ipc::State::PRESSED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::PARTNER_RESET_PRESSED));
+}
+
+TEST_F(DispatcherPulseTest, PartnerResetReleased_ForwardsToLogik) {
+    sendNetwork(ipc::BTN_RESET, ipc::State::RELEASED);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::PARTNER_RESET_RELEASED));
+}
+
+TEST_F(DispatcherPulseTest, ReqReceive_ForwardsToLogik) {
+    sendNetwork(ipc::NetworkMessage::REQ_RECEIVE, 0);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::REQ_TO_GIVE_WP));
+}
+
+TEST_F(DispatcherPulseTest, ReadyReceive_ForwardsToLogik) {
+    sendNetwork(ipc::NetworkMessage::READY_RECEIVE, 0);
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::READY_TO_RECEIVE_WP));
+}
+
+TEST_F(DispatcherPulseTest, PartnerChuteFull_UpdatesLogik) {
+    sendNetwork(ipc::NetworkMessage::CHUTE, ipc::State::VOLL);
+    EXPECT_TRUE(fakeLogik->partnerChuteSet);
+    EXPECT_TRUE(fakeLogik->partnerChuteFull);
+}
+
+TEST_F(DispatcherPulseTest, PartnerChuteEmpty_UpdatesLogik) {
+    sendNetwork(ipc::NetworkMessage::CHUTE, ipc::State::EMPTY);
+    EXPECT_TRUE(fakeLogik->partnerChuteSet);
+    EXPECT_FALSE(fakeLogik->partnerChuteFull);
+}
+
+TEST_F(DispatcherPulseTest, PartnerEstopReleased_ForwardsAsPartnerEstopPressed) {
+    dispatcher->handlePartnerEStopPulse(halPayload(ipc::BTN_ESTOP, ipc::State::RELEASED));
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::PARTNER_ESTOP_PRESSED));
+}
+
+TEST_F(DispatcherPulseTest, PartnerEstopPressed_ForwardsAsPartnerEstopReleased) {
+    dispatcher->handlePartnerEStopPulse(halPayload(ipc::BTN_ESTOP, ipc::State::PRESSED));
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::PARTNER_ESTOP_RELEASED));
+}
+
+// ============================================================================
+// System-Pulse (handlePulse)
+// ============================================================================
+
+TEST_F(DispatcherPulseTest, BeltTick_CallsLogikTakt) {
+    sendPulse(ipc::BELT_TICK);
+    EXPECT_EQ(fakeLogik->taktCount, 1);
+}
+
+TEST_F(DispatcherPulseTest, Heartbeat_CallsPartnerAlive) {
+    sendPulse(ipc::HEARTBEAT);
+    EXPECT_EQ(fakeConnection->partnerAliveTicks, 1);
+}
+
+TEST_F(DispatcherPulseTest, HeartbeatTakt_CallsConnectionHeartbeat) {
+    sendPulse(ipc::HEARTBEATTACKT);
+    EXPECT_EQ(fakeConnection->heartbeatTicks, 1);
+}
+
+TEST_F(DispatcherPulseTest, WpInfo_ForwardsIdAndType) {
+    const uint32_t payload = (static_cast<uint32_t>(7) << 16) | static_cast<uint32_t>(WpType::TALL);
+    sendPulse(ipc::WP_INFO, payload);
+    ASSERT_EQ(fakeLogik->wpInfos.size(), 1u);
+    EXPECT_EQ(fakeLogik->wpInfos[0].first, 7);
+    EXPECT_EQ(fakeLogik->wpInfos[0].second, WpType::TALL);
+}
+
+TEST_F(DispatcherPulseTest, UpdateList_ForwardsWpType) {
+    sendPulse(ipc::UPDATE_LIST, static_cast<uint32_t>(WpType::TALL_DRILLED));
+    ASSERT_EQ(fakeLogik->wpListUpdates.size(), 1u);
+    EXPECT_EQ(fakeLogik->wpListUpdates[0], WpType::TALL_DRILLED);
+}
+
+TEST_F(DispatcherPulseTest, PartnerEstopPressed_SetsPartnerEstopFlag) {
+    dispatcher->handlePartnerEStopPulse(halPayload(ipc::BTN_ESTOP, ipc::State::RELEASED));
+    EXPECT_TRUE(dispatcher->isPartnerEstopPressed());
+}
+
+TEST_F(DispatcherPulseTest, PartnerEstopReleased_ClearsPartnerEstopFlag) {
+    dispatcher->handlePartnerEStopPulse(halPayload(ipc::BTN_ESTOP, ipc::State::RELEASED));
+    dispatcher->handlePartnerEStopPulse(halPayload(ipc::BTN_ESTOP, ipc::State::PRESSED));
+    EXPECT_FALSE(dispatcher->isPartnerEstopPressed());
+}
+
+TEST_F(DispatcherPulseTest, IsEstopPressed_WithoutSensors_ReturnsFalse) {
+    EXPECT_FALSE(dispatcher->isEstopPressed());
+}
+
+TEST_F(DispatcherPulseTest, AdcCalibrationMinSamples_ForwardsLiveAdc) {
+    Dispatcher::s_liveEmptyBelt = 700;
+    Dispatcher::s_liveFlatCenter = 1100;
+
+    const uint32_t payload = ipc::encodeCalibPayload(
+        25, static_cast<uint16_t>(ipc::CalibMode::MIN_SAMPLES));
+    sendPulse(ipc::HAL_ADC_CALIBRATION, payload);
+
+    EXPECT_TRUE(fakeLogik->liveAdcSet);
+    EXPECT_EQ(fakeLogik->liveEmptyBelt, 700);
+    EXPECT_EQ(fakeLogik->liveFlatCenter, 1100);
+    EXPECT_EQ(fakeLogik->liveMinSamples, 25u);
 }

@@ -19,8 +19,8 @@ public:
     }
 
     virtual void handle(Event e) = 0;
-    virtual void onEnter() {}
-    virtual void onExit() {}
+    virtual void entry() {}
+    virtual void exit() {}
 };
 
 } // namespace logik

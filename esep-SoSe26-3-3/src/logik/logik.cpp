@@ -141,12 +141,12 @@ void Logik::checkCalibrationFile() {
     if (m_calibManager == nullptr) { return; }
 
     if (m_calibManager->fileExists()) {
-        std::cout << "[Logik] Kalibrierungsdatei wurde gefunden! Feuere Event: DATA_EXIST." << std::endl;
+        std::cout << "[Logik] Gueltige Kalibrierungsdatei gefunden! Feuere Event: DATA_EXIST." << std::endl;
         this->processEvent(logik::Event::DATA_EXIST);
         loadCalibrationData();
     }
     else {
-        std::cout << "[Logik] Keine Kalibrierungsdatei vorhanden! Feuere Event: DATA_NOT_EXIST." << std::endl;
+        std::cout << "[Logik] Keine gueltige Kalibrierungsdatei! Feuere Event: DATA_NOT_EXIST." << std::endl;
         this->processEvent(logik::Event::DATA_NOT_EXIST);
     }
 }

@@ -10,7 +10,7 @@ private:
     bool m_isHardwareUnlocked = false;
 
 public:
-    void onEnter() override;
+    void entry() override;
     void handle(Event e) override;
 };
 

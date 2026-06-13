@@ -1,5 +1,4 @@
 #include "ServiceState.hpp"
-#include "EStopState.hpp"
 #include "IdleState.hpp"
 #include "logik/logik.hpp"
 #include "logik/eventManager/eventManager.hpp"
@@ -8,7 +7,7 @@
 
 namespace logik {
 
-void ServiceState::onEnter() {
+void ServiceState::entry() {
     std::cout << "[ServiceState] Entered. Kalibrierungsmodus aktiv." << std::endl;
 
     if (!m_context || !m_context->getDispatcher()) {
@@ -26,7 +25,7 @@ void ServiceState::onEnter() {
     m_context->getDispatcher()->driveStop();
 }
 
-void ServiceState::onExit() {
+void ServiceState::exit() {
     if (!m_context || !m_context->getDispatcher()) {
         return;
     }
@@ -50,15 +49,6 @@ void ServiceState::handle(Event e) {
     auto* em = m_context->getEventManager();
 
     switch (e) {
-    case Event::ESTOP_PRESSED:
-    case Event::PARTNER_ESTOP_PRESSED:
-        std::cout << "[ServiceState] ESTOP -> EStopState" << std::endl;
-        if (e == Event::ESTOP_PRESSED) {
-            dispatcher->turnLEDQ2BlinkFast();
-        }
-        m_context->transitionTo(new EStopState());
-        break;
-
     case Event::STOP_PRESSED:
         std::cout << "[ServiceState] STOP -> IdleState" << std::endl;
         dispatcher->lightRedBlinkSlow();

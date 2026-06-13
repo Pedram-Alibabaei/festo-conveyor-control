@@ -35,7 +35,8 @@ Dispatcher::Dispatcher()
       m_connection(nullptr),          // Netzwerk-Manager
       m_calibrationManager(nullptr),   // KORRIGIERT: Kalibrierungs-Manager Pointer
       m_timer(nullptr),
-      m_logik(nullptr)
+      m_logik(nullptr),
+      m_partnerEstopPressed(false)
 {
 }
 
@@ -151,9 +152,12 @@ void Dispatcher::handlePulse(const struct _pulse& pulse) {
             break;
 
         case ipc::DISCONNECT:
-                    // m_logik->processEvent(logik::Event::ESTOP_PRESSED); // <--- AUSKOMMENTIEREN!
-                    std::cout << "[Dispatcher] WARNUNG: Netzwerk weg. Ignoriert fuer Solo-Test!" << std::endl;
-                    break;
+            std::cout << "[Dispatcher] Netzwerkverbindung verloren." << std::endl;
+            m_partnerCoid = -1;
+            if (m_logik != nullptr) {
+                m_logik->processEvent(logik::Event::CONNECTION_LOST);
+            }
+            break;
 
         // ====================================================================
         // TIMER EVENTS
@@ -223,6 +227,17 @@ void Dispatcher::handleConnectionPulse(uint32_t payload) {
     if (m_position == AnlagenPosition::HINTEN_ANLAGE_2) {
         MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::ANLAGE_2_CIID, 1);
     }
+
+    std::cout << "[Dispatcher] Partner verbunden (coid=" << m_partnerCoid << ")." << std::endl;
+
+    requestPartnerEstopStatus();
+    sendLocalEstopStatusToPartner();
+
+    if (m_logik != nullptr) {
+        std::cout << "[Dispatcher] Partner-ESTOP (Cache vor RESTORED): "
+                  << (isPartnerEstopPressed() ? "GEDRUECKT" : "NICHT gedrueckt") << std::endl;
+        m_logik->processEvent(logik::Event::CONNECTION_RESTORED);
+    }
 }
 
 // ============================================================================
@@ -248,6 +263,8 @@ void Dispatcher::handleHalPulse(uint32_t payload) {
         m_logik->processEvent(sensor_state == ipc::State::PRESSED ? logik::Event::STOP_PRESSED : logik::Event::STOP_RELEASED);
     }
     else if (sensor_id == ipc::BTN_RESET) {
+        std::cout << "[Dispatcher] RESET-Taster: "
+                  << (sensor_state == ipc::State::PRESSED ? "PRESSED" : "RELEASED") << std::endl;
         m_logik->processEvent(sensor_state == ipc::State::PRESSED ? logik::Event::RESET_PRESSED : logik::Event::RESET_RELEASED);
 
         if (m_partnerCoid != -1) {
@@ -257,32 +274,46 @@ void Dispatcher::handleHalPulse(uint32_t payload) {
 
     // 2. LICHTSCHRANKEN & SENSOREN (BLOCKED / CLEARED)
     else if (sensor_id == ipc::LS_ENTRY) {
+        std::cout << "[Dispatcher] LS_ENTRY: "
+                  << (sensor_state == ipc::State::BLOCKED ? "BLOCKED" : "CLEARED") << std::endl;
         m_logik->processEvent(sensor_state == ipc::State::BLOCKED ? logik::Event::ENTRY_BLOCKED : logik::Event::ENTRY_CLEARED);
     }
     else if (sensor_id == ipc::HEIGHT) {
         if (sensor_state == ipc::State::BLOCKED) {
+            std::cout << "[Dispatcher] HEIGHT: BLOCKED" << std::endl;
             m_logik->processEvent(logik::Event::HEIGHT_BLOCKED);
         }
         else if (sensor_state == ipc::State::CLEARED) {
+            std::cout << "[Dispatcher] HEIGHT: CLEARED" << std::endl;
             m_logik->processEvent(logik::Event::HEIGHT_CLEARED);
         }
         else if (sensor_state == ipc::State::HIGH_ERROR) {
+            std::cout << "[Dispatcher] HEIGHT: HIGH_ERROR" << std::endl;
             m_logik->processEvent(logik::Event::HEIGHT_ERROR);
         }
         else {
+            std::cout << "[Dispatcher] HEIGHT: Typ=" << sensor_state << std::endl;
             m_logik->workpieceTypeFromHS(static_cast<WpType>(sensor_state));
         }
     }
     else if (sensor_id == ipc::SENSOR_METAL) {
+        std::cout << "[Dispatcher] METAL: "
+                  << (sensor_state == ipc::State::BLOCKED ? "DETECTED" : "CLEARED") << std::endl;
         m_logik->processEvent(sensor_state == ipc::State::BLOCKED ? logik::Event::METAL_DETECTED : logik::Event::METAL_CLEARED);
     }
     else if (sensor_id == ipc::LS_SWITCH) {
+        std::cout << "[Dispatcher] LS_SWITCH: "
+                  << (sensor_state == ipc::State::BLOCKED ? "BLOCKED" : "CLEARED") << std::endl;
         m_logik->processEvent(sensor_state == ipc::State::BLOCKED ? logik::Event::EJECTOR_BLOCKED : logik::Event::EJECTOR_CLEARED);
     }
     else if (sensor_id == ipc::LS_END) {
+        std::cout << "[Dispatcher] LS_END: "
+                  << (sensor_state == ipc::State::BLOCKED ? "BLOCKED" : "CLEARED") << std::endl;
         m_logik->processEvent(sensor_state == ipc::State::BLOCKED ? logik::Event::END_BLOCKED : logik::Event::END_CLEARED);
     }
     else if (sensor_id == ipc::LS_CHUTE) {
+        std::cout << "[Dispatcher] LS_CHUTE: "
+                  << (sensor_state == ipc::State::BLOCKED ? "BLOCKED" : "CLEARED") << std::endl;
         m_logik->processEvent(sensor_state == ipc::State::BLOCKED ? logik::Event::CHUTE_BLOCKED : logik::Event::CHUTE_CLEARED);
     }
     else {
@@ -299,24 +330,39 @@ void Dispatcher::handleNetworkPulse(uint32_t payload) {
     uint16_t message_type = ipc::decodeSensorState(payload);
 
     if (sensor_id == ipc::BTN_START) {
+        std::cout << "[Dispatcher] Partner-START: "
+                  << (message_type == ipc::State::PRESSED ? "PRESSED" : "RELEASED") << std::endl;
         m_logik->processEvent(message_type == ipc::State::PRESSED ? logik::Event::PARTNER_START_PRESSED : logik::Event::PARTNER_START_RELEASED);
     }
     else if (sensor_id == ipc::BTN_RESET) {
+        std::cout << "[Dispatcher] Partner-RESET: "
+                  << (message_type == ipc::State::PRESSED ? "PRESSED" : "RELEASED") << std::endl;
         m_logik->processEvent(message_type == ipc::State::PRESSED ? logik::Event::PARTNER_RESET_PRESSED : logik::Event::PARTNER_RESET_RELEASED);
     }
     else if (sensor_id == ipc::NetworkMessage::REQ_RECEIVE) {
+        std::cout << "[Dispatcher] Netzwerk: REQ_TO_GIVE_WP" << std::endl;
         m_logik->processEvent(logik::Event::REQ_TO_GIVE_WP);
     }
     else if (sensor_id == ipc::NetworkMessage::READY_RECEIVE) {
+        std::cout << "[Dispatcher] Netzwerk: READY_TO_RECEIVE_WP" << std::endl;
         m_logik->processEvent(logik::Event::READY_TO_RECEIVE_WP);
     }
     else if (sensor_id == ipc::NetworkMessage::CHUTE){
-
+        std::cout << "[Dispatcher] Partner-Rutsche: "
+                  << (message_type == ipc::VOLL ? "VOLL" : "LEER") << std::endl;
         bool isFull = (message_type == ipc::VOLL);
         if (m_logik != nullptr) {
             m_logik->setPartnerChuteStatus(isFull);
         }
 
+    }
+    else if (message_type == ipc::NetworkMessage::ESTOP_STATUS_QUERY) {
+        std::cout << "[Dispatcher] Partner fragt ESTOP-Status an -> antworte." << std::endl;
+        sendLocalEstopStatusToPartner();
+    }
+    else {
+        std::cout << "[Dispatcher] Unbekannte Partner-Nachricht id=" << sensor_id
+                  << " state=" << message_type << std::endl;
     }
 }
 
@@ -359,6 +405,7 @@ void Dispatcher::handleHalEStopPulse(uint32_t payload) {
 
     if (sensor_id == ipc::BTN_ESTOP) {
         if (sensor_state == ipc::State::RELEASED) {
+            std::cout << "[Dispatcher] ESTOP: PRESSED (Active-Low)" << std::endl;
             m_logik->processEvent(logik::Event::ESTOP_PRESSED);
 
             if (m_partnerCoid != -1) {
@@ -367,6 +414,7 @@ void Dispatcher::handleHalEStopPulse(uint32_t payload) {
             }
         }
         else if (sensor_state == ipc::State::PRESSED) {
+            std::cout << "[Dispatcher] ESTOP: RELEASED (Active-Low)" << std::endl;
             m_logik->processEvent(logik::Event::ESTOP_RELEASED);
 
             if (m_partnerCoid != -1) {
@@ -384,9 +432,13 @@ void Dispatcher::handlePartnerEStopPulse(uint32_t payload) {
     uint16_t partner_state = ipc::decodeSensorState(payload);
 
     if (partner_state == ipc::State::RELEASED) {
+        m_partnerEstopPressed = true;
+        std::cout << "[Dispatcher] Partner-ESTOP: PRESSED" << std::endl;
         m_logik->processEvent(logik::Event::PARTNER_ESTOP_PRESSED);
     }
     else if (partner_state == ipc::State::PRESSED) {
+        m_partnerEstopPressed = false;
+        std::cout << "[Dispatcher] Partner-ESTOP: RELEASED" << std::endl;
         m_logik->processEvent(logik::Event::PARTNER_ESTOP_RELEASED);
     }
 }
@@ -424,11 +476,22 @@ void Dispatcher::handleCalibrationPulse(uint32_t payload) {
 }
 
 /**
- * @brief Prueft über den CalibrationManager, ob die XML/Text-Datei mit den
- * gelernten Ticks und ADC-Fenstern auf der Festplatte existiert.
+ * @brief Prueft über den CalibrationManager, ob die Textdatei mit den
+ * gelernten Ticks und ADC-Fenstern existiert und gueltige Werte enthaelt.
  */
 bool Dispatcher::requestFileExists() {
     return m_calibrationManager && m_calibrationManager->fileExists();
+}
+
+bool Dispatcher::isEstopPressed() {
+    if (m_sensors == nullptr) {
+        return false;
+    }
+    return m_sensors->isEstopPressed();
+}
+
+bool Dispatcher::isPartnerEstopPressed() const {
+    return m_partnerEstopPressed.load();
 }
 
 void Dispatcher::sendeChuteStats(bool isVoll) {
@@ -438,6 +501,29 @@ void Dispatcher::sendeChuteStats(bool isVoll) {
     MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_MSG, payload);
 }
 
+
+void Dispatcher::sendLocalEstopStatusToPartner() {
+    if (m_partnerCoid == -1) {
+        return;
+    }
+
+    const bool pressed = isEstopPressed();
+    const ipc::State state = pressed ? ipc::State::RELEASED : ipc::State::PRESSED;
+    const uint32_t payload = ipc::encodeHalPayload(ipc::BTN_ESTOP, state);
+    MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_ESTOP, payload);
+    std::cout << "[Dispatcher] ESTOP-Status an Partner gesendet: "
+              << (pressed ? "PRESSED" : "RELEASED") << std::endl;
+}
+
+void Dispatcher::requestPartnerEstopStatus() {
+    if (m_partnerCoid == -1) {
+        return;
+    }
+
+    const uint32_t payload = ipc::encodeHalPayload(0, ipc::NetworkMessage::ESTOP_STATUS_QUERY);
+    MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_MSG, payload);
+    std::cout << "[Dispatcher] Partner-ESTOP-Status angefragt." << std::endl;
+}
 
 void Dispatcher::forwardCalibrationToHal(std::uint16_t emptyBelt, std::uint16_t flatCenter, std::uint32_t minSamples) {
     m_sensors->updateCalibrationThresholds(static_cast<uint16_t>(ipc::CalibMode::EMPTY_BELT), emptyBelt);

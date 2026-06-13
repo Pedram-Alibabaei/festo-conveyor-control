@@ -7,8 +7,8 @@ namespace logik {
 
 class RunningState : public BaseState {
 public:
-    void onEnter() override;
-    void onExit() override;
+    void entry() override;
+    void exit() override;
     void handle(Event e) override;
 };
 

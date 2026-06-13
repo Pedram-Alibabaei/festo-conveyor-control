@@ -82,6 +82,17 @@ public:
 
     virtual bool requestFileExists()= 0;
 
+    /**
+     * @brief Synchrone Abfrage des lokalen Not-Aus (delegiert an HAL/Sensors).
+     */
+    virtual bool isEstopPressed() = 0;
+
+    /**
+     * @brief Gibt an, ob beim Partner zuletzt ein Not-Aus gemeldet wurde.
+     * @note Wird nach CONNECTION_RESTORED genutzt, um in den EStopState zu wechseln.
+     */
+    virtual bool isPartnerEstopPressed() const = 0;
+
 
 
  // ========================================================================

@@ -28,10 +28,12 @@ public:
     virtual void setLogikContext(i_Logik* logik) = 0;
 
     /**
-     * @brief Prueft, ob eine Kalibrierungsdatei auf dem Standardpfad existiert.
+     * @brief Prueft, ob eine gueltige Kalibrierungsdatei auf dem Standardpfad existiert.
      * @note Wird direkt beim Systemstart aufgerufen, um der FSM die Events
      * DATA_EXIST oder DATA_NOT_EXIST zu liefern.
-     * @return true, wenn die Datei existiert, ansonsten false.
+     * @details Die Datei muss existieren, parsebar sein und alle Pflichtfelder
+     * mit plausiblen Werten enthalten.
+     * @return true, wenn die Datei existiert und gueltige Kalibrierdaten enthaelt.
      */
     virtual bool fileExists() = 0;
 

@@ -119,6 +119,78 @@ $(PROFILE_ANALYZER_TEST_TARGET): $(PROFILE_ANALYZER_TEST_OBJS)
 
 profile_analyzer_test: $(PROFILE_ANALYZER_TEST_TARGET)
 
+DISPATCHER_HAL_TEST_OBJS = $(OUTPUT_DIR)/manual_tests/dispatcher_hal_test_main.o \
+	$(OUTPUT_DIR)/src/dispatcher/dispatcher.o \
+	$(OUTPUT_DIR)/src/hal/hal_sensors.o \
+	$(OUTPUT_DIR)/src/hal/input_driver/profileAnalyzer.o \
+	$(OUTPUT_DIR)/src/hal/input_driver/adc_interrupt.o \
+	$(OUTPUT_DIR)/src/hal/input_driver/interrupt.o \
+	$(OUTPUT_DIR)/src/hal/input_driver/gpio_0_interrupt.o \
+	$(OUTPUT_DIR)/src/hal/pal/adc.o \
+	$(OUTPUT_DIR)/src/hal/pal/device.o \
+	$(OUTPUT_DIR)/src/hal/output_driver/motor_controller.o \
+	$(OUTPUT_DIR)/src/hal/output_driver/ejector_controller_profile_test.o
+DISPATCHER_HAL_TEST_TARGET = $(OUTPUT_DIR)/dispatcher_hal_test
+
+$(DISPATCHER_HAL_TEST_TARGET): $(DISPATCHER_HAL_TEST_OBJS)
+	$(LD) -o $(DISPATCHER_HAL_TEST_TARGET) $(LDFLAGS_all) $(LDFLAGS) $(DISPATCHER_HAL_TEST_OBJS) $(LIBS_all) $(LIBS) -pthread
+
+dispatcher_hal_test: $(DISPATCHER_HAL_TEST_TARGET)
+
+clean_dispatcher_hal_test:
+	rm -f $(DISPATCHER_HAL_TEST_OBJS) $(DISPATCHER_HAL_TEST_TARGET)
+
+CONNECTION_GNS_TEST_OBJS = $(OUTPUT_DIR)/manual_tests/connection_gns_test_main.o \
+	$(OUTPUT_DIR)/src/dispatcher/dispatcher.o \
+	$(OUTPUT_DIR)/src/connectionManager/ConnectionManager.o \
+	$(OUTPUT_DIR)/src/timer/timer.o \
+	$(OUTPUT_DIR)/src/hal/hal_sensors.o \
+	$(OUTPUT_DIR)/src/hal/input_driver/profileAnalyzer.o \
+	$(OUTPUT_DIR)/src/hal/input_driver/adc_interrupt.o \
+	$(OUTPUT_DIR)/src/hal/input_driver/interrupt.o \
+	$(OUTPUT_DIR)/src/hal/input_driver/gpio_0_interrupt.o \
+	$(OUTPUT_DIR)/src/hal/pal/adc.o \
+	$(OUTPUT_DIR)/src/hal/pal/device.o \
+	$(OUTPUT_DIR)/src/hal/output_driver/motor_controller.o \
+	$(OUTPUT_DIR)/src/hal/output_driver/ejector_controller_profile_test.o
+CONNECTION_GNS_TEST_TARGET = $(OUTPUT_DIR)/connection_gns_test
+
+$(CONNECTION_GNS_TEST_TARGET): $(CONNECTION_GNS_TEST_OBJS)
+	$(LD) -o $(CONNECTION_GNS_TEST_TARGET) $(LDFLAGS_all) $(LDFLAGS) $(CONNECTION_GNS_TEST_OBJS) $(LIBS_all) $(LIBS) -pthread
+
+connection_gns_test: $(CONNECTION_GNS_TEST_TARGET)
+
+clean_connection_gns_test:
+	rm -f $(CONNECTION_GNS_TEST_OBJS) $(CONNECTION_GNS_TEST_TARGET)
+
+CALIBRATION_MANAGER_TEST_OBJS = $(OUTPUT_DIR)/test/calibrationManager_test.o \
+	$(OUTPUT_DIR)/test/main_test.o \
+	$(OUTPUT_DIR)/src/calibrationManager/calibrationManager.o
+CALIBRATION_MANAGER_TEST_TARGET = $(OUTPUT_DIR)/calibration_manager_tests
+CALIBRATION_MANAGER_TEST_LIBS = -lgtest
+
+$(CALIBRATION_MANAGER_TEST_TARGET): $(CALIBRATION_MANAGER_TEST_OBJS)
+	$(LD) -o $(CALIBRATION_MANAGER_TEST_TARGET) $(LDFLAGS_all) $(LDFLAGS) $(CALIBRATION_MANAGER_TEST_OBJS) $(LIBS_all) $(LIBS) $(CALIBRATION_MANAGER_TEST_LIBS)
+
+calibration_manager_tests: $(CALIBRATION_MANAGER_TEST_TARGET)
+
+DISPATCHER_TEST_OBJS = $(OUTPUT_DIR)/test/dispatcher_test.o \
+	$(OUTPUT_DIR)/test/main_test.o \
+	$(OUTPUT_DIR)/src/dispatcher/dispatcher.o
+DISPATCHER_TEST_TARGET = $(OUTPUT_DIR)/dispatcher_tests
+DISPATCHER_TEST_LIBS = -lgtest
+
+$(DISPATCHER_TEST_TARGET): $(DISPATCHER_TEST_OBJS)
+	$(LD) -o $(DISPATCHER_TEST_TARGET) $(LDFLAGS_all) $(LDFLAGS) $(DISPATCHER_TEST_OBJS) $(LIBS_all) $(LIBS) $(DISPATCHER_TEST_LIBS)
+
+dispatcher_tests: $(DISPATCHER_TEST_TARGET)
+
+clean_calibration_manager_tests:
+	rm -f $(CALIBRATION_MANAGER_TEST_OBJS) $(CALIBRATION_MANAGER_TEST_TARGET)
+
+clean_dispatcher_tests:
+	rm -f $(DISPATCHER_TEST_OBJS) $(DISPATCHER_TEST_TARGET)
+
 clean_ejector_test:
 	rm -f $(EJECTOR_TEST_OBJS) $(EJECTOR_TEST_TARGET)
 
@@ -155,5 +227,8 @@ rebuild: clean all
 -include $(TEST_OBJS:%.o=%.d)
 -include $(EJECTOR_TEST_OBJS:%.o=%.d)
 -include $(PROFILE_ANALYZER_TEST_OBJS:%.o=%.d)
+-include $(CALIBRATION_MANAGER_TEST_OBJS:%.o=%.d)
+-include $(DISPATCHER_HAL_TEST_OBJS:%.o=%.d)
+-include $(DISPATCHER_TEST_OBJS:%.o=%.d)
 $(OUTPUT_DIR)/src/hal/output_driver/ejector_controller_ejector_test.d: $(OUTPUT_DIR)/src/hal/output_driver/ejector_controller_ejector_test.o
 $(OUTPUT_DIR)/src/hal/output_driver/ejector_controller_profile_test.d: $(OUTPUT_DIR)/src/hal/output_driver/ejector_controller_profile_test.o

@@ -61,11 +61,31 @@ void ConnectionManager::init(int localCoid,AnlagenPosition pos) {
 
 
 void ConnectionManager::connectToPartner() {
-    // Sicherheits-Check: Nur starten, wenn wir nicht schon suchen oder verbunden sind
-    if (!m_isSearching && !m_isConnected) {
-        m_isSearching = true;
-        m_connectThread = std::thread(&ConnectionManager::connectionTask, this);
+    if (m_isSearching || m_isConnected) {
+        return;
     }
+
+    if (m_connectThread.joinable()) {
+        m_connectThread.join();
+    }
+
+    m_isSearching = true;
+    m_connectThread = std::thread(&ConnectionManager::connectionTask, this);
+}
+
+void ConnectionManager::scheduleReconnect() {
+    if (m_partnerCoid != -1) {
+        ConnectDetach(m_partnerCoid);
+        m_partnerCoid = -1;
+    }
+
+    m_isSearching = false;
+    if (m_connectThread.joinable()) {
+        m_connectThread.join();
+    }
+
+    std::cout << "[ConnMgr] Starte erneute Partnersuche..." << std::endl;
+    connectToPartner();
 }
 
 // ============================================================================
@@ -138,15 +158,15 @@ void ConnectionManager::heartbeatTackt() {
 
     // DIE DEADLINE-PRUEFUNG: Hat der Partner seit dem letzten Takt geantwortet?
     if (m_partner_Alive == false) {
-        // DEADLINE VERPASST!
-        std::cerr << "[ConnMgr] KRITISCHER FEHLER: Heartbeat-Deadline verpasst! Loese Not-Halt aus." << std::endl;
+        std::cerr << "[ConnMgr] Heartbeat-Deadline verpasst – Verbindung verloren." << std::endl;
 
-        m_isConnected = false; // System als getrennt markieren
+        m_isConnected = false;
 
-        // Not-Halt Puls an den lokalen Dispatcher abfeuern
         if (m_localCoid != -1) {
             MsgSendPulse(m_localCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::DISCONNECT, 0);
         }
+
+        scheduleReconnect();
     } else {
         // Er hat rechtzeitig geantwortet.
         // Wir setzen die Falle wieder scharf fuer das naechste 50ms-Fenster!

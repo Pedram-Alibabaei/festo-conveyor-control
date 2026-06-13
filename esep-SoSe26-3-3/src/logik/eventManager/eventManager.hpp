@@ -1,6 +1,15 @@
 /**
  * @file eventManager.hpp
- * @brief Zeitliche Filterung, Entprellung und Vorverarbeitung von Hardware-Signalen.
+ * @brief Zentraler Orchestrator zwischen Dispatcher-Events und Fachmodulen.
+ *
+ * Rolle des EventManagers (Mediator + PlantContext):
+ *  - PlantContext: Laufzeit-Flags der Anlage (Motor, Estop, Fehler, Einlauf, …)
+ *  - Vorverarbeitung: Roh-Events → FSM-taugliche Signale (z.B. START kurz/lang)
+ *  - Routing: leitet Events an ErrorHandler, WorkpieceManager und FSM weiter
+ *  - Takt-Gate: entscheidet, ob der WorkpieceManager-Takt laufen darf
+ *
+ * Der EventManager ist KEIN Ersatz für die FSM:
+ *  Zustandswechsel (Idle/Running/Service/Estop) bleiben in den FSM-States.
  *
  * SoSe2026 Team 3.3
  */
@@ -12,108 +21,105 @@
 #include "shared/logikEvent.hpp"
 #include <chrono>
 #include <memory>
+#include <vector>
 
 namespace logik {
 
- class Logik;
- class WorkpieceManager;
- class ErrorHandler;
- class Fsm;
- class BaseState;
+class Logik;
+class WorkpieceManager;
+class ErrorHandler;
+class Fsm;
+class BaseState;
 
- class EventManager {
- private:
-  Logik* m_context; ///< Zeiger auf die übergeordnete Schaltzentrale (Nicht-besitzend)
+/**
+ * @brief Laufzeit-Kontext der Anlage — von FSM-States und Subsystemen gelesen/gesetzt.
+ */
+struct PlantContext {
+    bool motorOn = false;
+    bool motorSlow = false;
+    bool eStopActive = false;
+    bool errorActive = false;
+    bool entryFrei = true;
+    bool chuteFull = false;
+    bool partnerChuteFull = false;
+    bool endBlocked = false;
+    bool serviceMode = false;
+    bool connectionLost = false;
+    AnlagenPosition position = AnlagenPosition::UNKNOWN_POSITION;
+};
 
-  // --- KORREKTUR: Raw-Pointer statt unique_ptr (Ownership liegt bei der Logik-Klasse!) ---
-  WorkpieceManager* m_wpManager; ///< Adresse des Schieberegisters aus dem Logik-Kontext
-  ErrorHandler* m_errorHandler; ///< Adresse des ErrorHandlers aus dem Logik-Kontext
+class EventManager {
+private:
+    Logik* m_context;
 
-  std::unique_ptr<Fsm> m_fsm;
+    WorkpieceManager* m_wpManager;
+    ErrorHandler* m_errorHandler;
+    std::unique_ptr<Fsm> m_fsm;
 
-  // --- Motor- und Positions-Flags ---
-  bool m_isMotorOn;
-  bool m_isMotorSlow;
-  AnlagenPosition m_anlagenPosition;
+    PlantContext m_ctx;
 
-  // E-Stop Zustandssicherung
-  bool m_isEStopActive;   ///< true, wenn der Not-Aus gedrueckt ist
-  bool m_isErrorActive;   ///< true, wenn ein Anlagenfehler (z.B. Rutsche voll) aktiv ist
-  bool m_isEntryFrei;     ///< true, wenn der Bereich zwischen Einlauf und Hoehenmessung frei ist
+    std::chrono::steady_clock::time_point m_startPressedStartTime;
+    std::chrono::steady_clock::time_point m_partnerStartPressedTime;
 
-  bool m_isChuteFull;         ///< true, wenn die eigene Rutsche voll ist (> 1 Sek blockiert)
-  bool m_isPartnerChuteFull;  ///< true, wenn die Rutsche der Partner-Station voll ist (vom Netzwerk)
+    bool canRouteToBandSubsystems() const;
+    bool isFsmPassthroughEvent(Event e) const;
 
-  // --- Taster-Zeitmessung ---
-  std::chrono::steady_clock::time_point m_startPressedStartTime;
-  const std::chrono::milliseconds START_LONG_THRESHOLD;
+    void updateContextFlags(Event e);
+    void routeToErrorHandler(Event e);
+    void routeToWorkpieceManager(Event e);
+    void routeToFsm(Event e);
+    std::vector<Event> preprocessForFsm(Event e);
 
-  // --- Bandende-Schutz ---
-  bool m_isEndBlocked;
+public:
+    explicit EventManager(Logik* context);
+    ~EventManager();
 
-  bool m_isServiceMode;
+    EventManager(const EventManager&) = delete;
+    EventManager& operator=(const EventManager&) = delete;
 
-  std::chrono::steady_clock::time_point m_partnerStartPressedTime;
+    void init(AnlagenPosition pos);
 
- private:
-  void routeToErrorHandler(logik::Event e);
-  void routeToWorkpieceManager(logik::Event e);
-  void routeToFsm(logik::Event e);
+    /** Einstiegspunkt fuer alle Events aus Logik/Dispatcher. */
+    void handleEvent(Event e);
 
- public:
-  /**
-   * @brief Konstruktor.
-   * @param context Zeiger auf die uebegeordnete Logik.
-   */
-  explicit EventManager(Logik* context);
-  ~EventManager();
+    /** 10ms-Bandtakt — WorkpieceManager nur bei freigegebenem Betrieb. */
+    void handleTakt();
 
-  // Verhindert Kopieren
-  EventManager(const EventManager&) = delete;
-  EventManager& operator=(const EventManager&) = delete;
+    void transitionFsmState(std::unique_ptr<BaseState> nextState);
 
-  /**
-   * @brief Initialisiert den EventManager und verknuepft die Geschwisterkomponenten live.
-   */
-  void init(AnlagenPosition pos);
+    const PlantContext& context() const { return m_ctx; }
 
-  void handleEvent(logik::Event e);
+    // --- Kompatibilitaets-Getter/Setter (delegieren an m_ctx) ---
+    void setMotorOn(bool on) { m_ctx.motorOn = on; }
+    bool isMotorOn() const { return m_ctx.motorOn; }
 
-  /**
-   * @brief Deine exakte, geschützte Takt-Verarbeitung für den digitalen Zwilling.
-   */
-  void handleTakt();
+    void setMotorSlow(bool slow) { m_ctx.motorSlow = slow; }
+    bool isMotorSlow() const { return m_ctx.motorSlow; }
 
-  void transitionFsmState(std::unique_ptr<BaseState> nextState);
+    void setEndBlocked(bool blocked) { m_ctx.endBlocked = blocked; }
+    bool isEndBlocked() const { return m_ctx.endBlocked; }
 
-  // --- Getters und Setters ---
-  void setMotorOn(bool on) { m_isMotorOn = on; }
-  bool isMotorOn() const { return m_isMotorOn; }
+    void setEStopActive(bool active) { m_ctx.eStopActive = active; }
+    bool isEStopActive() const { return m_ctx.eStopActive; }
 
-  void setMotorSlow(bool slow) { m_isMotorSlow = slow; }
-  bool isMotorSlow() const { return m_isMotorSlow; }
+    void setErrorActive(bool active) { m_ctx.errorActive = active; }
+    bool isErrorActive() const { return m_ctx.errorActive; }
 
-  void setEndBlocked(bool blocked) { m_isEndBlocked = blocked; }
-  bool isEndBlocked() const { return m_isEndBlocked; }
+    void setEntryFrei(bool frei) { m_ctx.entryFrei = frei; }
+    bool isEntryFrei() const { return m_ctx.entryFrei; }
 
-  void setEStopActive(bool active) { m_isEStopActive = active; }
-  bool isEStopActive() const { return m_isEStopActive; }
+    void setChuteFull(bool isFull) { m_ctx.chuteFull = isFull; }
+    bool isChuteFull() const { return m_ctx.chuteFull; }
 
-  void setErrorActive(bool active) { m_isErrorActive = active; }
-  bool isErrorActive() const { return m_isErrorActive; }
+    void setPartnerChuteStatus(bool isFull);
+    bool isPartnerChuteFull() const { return m_ctx.partnerChuteFull; }
 
-  void setEntryFrei(bool frei) { m_isEntryFrei = frei; }
-  bool isEntryFrei() const { return m_isEntryFrei; }
+    void setServiceMode(bool active) { m_ctx.serviceMode = active; }
+    bool isServiceMode() const { return m_ctx.serviceMode; }
 
-  void setChuteFull(bool isFull) { m_isChuteFull = isFull; }
-  bool isChuteFull() const { return m_isChuteFull; }
-
-  void setPartnerChuteStatus(bool isFull);
-  bool isPartnerChuteFull() const { return m_isPartnerChuteFull; }
-
-  void setServiceMode(bool active) { m_isServiceMode = active; }
-  bool isServiceMode() const { return m_isServiceMode; }
- };
+    void setConnectionLost(bool lost) { m_ctx.connectionLost = lost; }
+    bool isConnectionLost() const { return m_ctx.connectionLost; }
+};
 
 } // namespace logik
 

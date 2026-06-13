@@ -1,0 +1,94 @@
+#include "ActiveRegionState.hpp"
+#include "ConnectionLostState.hpp"
+#include "EStopState.hpp"
+#include "IdleState.hpp"
+#include "logik/fsm/level0/L1StateRegistry.hpp"
+#include "logik/logik.hpp"
+#include "dispatcher/i_Dispatcher.hpp"
+#include <iostream>
+
+namespace logik {
+
+ActiveRegionState::ActiveRegionState()
+    : m_entryMode(EntryMode::WithIdle)
+{
+    m_level1 = std::unique_ptr<BaseState>(new IdleState());
+    L1StateRegistry::setHistory(L1StateId::IDLE);
+}
+
+ActiveRegionState::ActiveRegionState(EntryMode mode)
+    : m_entryMode(mode)
+{
+}
+
+ActiveRegionState::ActiveRegionState(std::unique_ptr<BaseState> level1State)
+    : m_level1(std::move(level1State)),
+      m_entryMode(EntryMode::WithIdle)
+{
+    if (m_level1 != nullptr) {
+        L1StateRegistry::rememberFrom(m_level1.get());
+    }
+}
+
+void ActiveRegionState::entry() {
+    std::cout << "[ActiveRegion] Entered (Ebene 0)." << std::endl;
+
+    if (m_entryMode == EntryMode::RestoreHistory || m_level1 == nullptr) {
+        m_level1 = L1StateRegistry::createFromHistory();
+        std::cout << "[ActiveRegion] History H* wiederhergestellt (L1="
+                  << static_cast<int>(L1StateRegistry::history()) << ")." << std::endl;
+    }
+
+    if (m_level1 != nullptr) {
+        m_level1->setContext(m_context);
+        m_level1->entry();
+    }
+}
+
+void ActiveRegionState::exit() {
+    if (m_level1 != nullptr) {
+        L1StateRegistry::rememberFrom(m_level1.get());
+        m_level1->exit();
+        m_level1.reset();
+    }
+}
+
+void ActiveRegionState::replaceLevel1(std::unique_ptr<BaseState> nextLevel1) {
+    if (m_level1 != nullptr) {
+        m_level1->exit();
+    }
+
+    m_level1 = std::move(nextLevel1);
+    if (m_level1 != nullptr) {
+        L1StateRegistry::rememberFrom(m_level1.get());
+        m_level1->setContext(m_context);
+        m_level1->entry();
+    }
+}
+
+void ActiveRegionState::handle(Event e) {
+    switch (e) {
+    case Event::CONNECTION_LOST:
+        std::cout << "[ActiveRegion] CONNECTION_LOST -> ConnectionLostState" << std::endl;
+        m_context->transitionTo(new ConnectionLostState());
+        return;
+
+    case Event::ESTOP_PRESSED:
+    case Event::PARTNER_ESTOP_PRESSED:
+        std::cout << "[ActiveRegion] ESTOP -> EStopState" << std::endl;
+        if (e == Event::ESTOP_PRESSED && m_context != nullptr && m_context->getDispatcher() != nullptr) {
+            m_context->getDispatcher()->turnLEDQ2BlinkFast();
+        }
+        m_context->transitionTo(new EStopState());
+        return;
+
+    default:
+        break;
+    }
+
+    if (m_level1 != nullptr) {
+        m_level1->handle(e);
+    }
+}
+
+} // namespace logik

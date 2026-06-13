@@ -103,8 +103,9 @@ namespace ipc {
     enum NetworkMessage : uint32_t {
         REQ_RECEIVE           = _PULSE_CODE_MINAVAIL + 1, // Darf ich übergeben?
         READY_RECEIVE         = _PULSE_CODE_MINAVAIL + 2, // Ja, ich bin bereit!
-        HANDOVER_SUCCESSFUL   = _PULSE_CODE_MINAVAIL + 3,                          // Anlage 2: "Habe es erhalten, du kannst stoppen"
+        HANDOVER_SUCCESSFUL   = _PULSE_CODE_MINAVAIL + 3,
         CHUTE                 = _PULSE_CODE_MINAVAIL + 4,
+        ESTOP_STATUS_QUERY    = _PULSE_CODE_MINAVAIL + 5, // Partner ESTOP-Status anfragen
  };
 
     enum State:uint16_t{

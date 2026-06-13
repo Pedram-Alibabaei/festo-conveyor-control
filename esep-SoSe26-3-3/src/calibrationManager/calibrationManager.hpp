@@ -20,6 +20,10 @@ class CalibrationManager : public I_CalibrationManager {
 private:
     i_Logik* m_logik;                 ///< Zeiger auf den Logik-Kontext (Dependency Injection)
     std::string m_filePath;           ///< Der absolute Speicherpfad zur Kalibrierungsdatei
+    bool m_validDataCached = false;     ///< true, wenn m_cachedData aus der Datei gelesen wurde
+    CalibrationData m_cachedData;       ///< Zuletzt validierte Kalibrierdaten (Boot-Cache)
+
+    bool readValidCalibration(CalibrationData& out);
 
 public:
     /**
@@ -45,9 +49,10 @@ public:
     void setLogikContext(i_Logik* logik) override;
 
     /**
-     * @brief Prueft, ob die Kalibrierungsdatei auf dem Festplattenpfad existiert.
-     * @details Nutzt intern standardisierte POSIX- oder C++-Dateipruefungen (z. B. std::ifstream).
-     * @return true, wenn die Datei physisch existiert, ansonsten false.
+     * @brief Prueft, ob die Kalibrierungsdatei existiert und gueltige Inhalte hat.
+     * @details Oeffnet die Datei, parst die Schluessel-Wert-Paare und validiert
+     * ADC-Schwellen sowie Band-Ticks auf Vollstaendigkeit und Plausibilitaet.
+     * @return true, wenn die Datei existiert und valide Kalibrierdaten enthaelt.
      */
     bool fileExists() override;
 

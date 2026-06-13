@@ -1,5 +1,4 @@
 #include "RunningState.hpp"
-#include "EStopState.hpp"
 #include "IdleState.hpp"
 #include "logik/logik.hpp"
 #include "logik/eventManager/eventManager.hpp"
@@ -8,7 +7,7 @@
 
 namespace logik {
 
-void RunningState::onEnter() {
+void RunningState::entry() {
     std::cout << "[RunningState] Entered." << std::endl;
 
     if (!m_context || !m_context->getDispatcher()) {
@@ -23,7 +22,7 @@ void RunningState::onEnter() {
     }
 }
 
-void RunningState::onExit() {
+void RunningState::exit() {
     if (!m_context) {
         return;
     }
@@ -51,15 +50,6 @@ void RunningState::handle(Event e) {
         std::cout << "[RunningState] STOP -> IdleState" << std::endl;
         dispatcher->lightRedBlinkSlow();
         m_context->transitionTo(new IdleState());
-        break;
-
-    case Event::ESTOP_PRESSED:
-    case Event::PARTNER_ESTOP_PRESSED:
-        std::cout << "[RunningState] ESTOP -> EStopState" << std::endl;
-        if (e == Event::ESTOP_PRESSED) {
-            dispatcher->turnLEDQ2BlinkFast();
-        }
-        m_context->transitionTo(new EStopState());
         break;
 
     case Event::MOTOR_RUN:

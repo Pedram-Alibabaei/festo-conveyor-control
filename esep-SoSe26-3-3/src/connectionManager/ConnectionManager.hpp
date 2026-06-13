@@ -34,6 +34,7 @@ private:
     std::thread m_connectThread;
     std::atomic<bool> m_isSearching;
     void connectionTask();
+    void scheduleReconnect();
 
 public:
     ConnectionManager();
