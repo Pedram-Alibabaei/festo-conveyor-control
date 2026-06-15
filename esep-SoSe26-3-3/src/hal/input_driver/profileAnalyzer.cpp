@@ -124,6 +124,13 @@ void ProfileAnalyzer::setAdcCalibrationsState()
     std::cout << "[Analyzer] State -> CALIBRATION" << std::endl;
 }
 
+void ProfileAnalyzer::setServiceTimingMeasureState()
+{
+    m_nextWaitingForWpIsServiceTiming = true;
+    setAdcWaitigForWpState();
+    std::cout << "[Analyzer] Service-Timing-Messung aktiviert (HEIGHT_BLOCKED/CLEARED)." << std::endl;
+}
+
 void ProfileAnalyzer::resetSmoothingBuffer()
 {
     std::fill(m_rawBuffer, m_rawBuffer + SMOOTHING_SAMPLE_COUNT, 0);

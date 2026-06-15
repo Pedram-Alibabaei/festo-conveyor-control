@@ -1,6 +1,9 @@
 #include "ServiceCalibSubState.hpp"
+#include "ServiceCalibRegistry.hpp"
+#include "logik/fsm/states/IdleState.hpp"
 #include "logik/fsm/states/ServiceState.hpp"
 #include "logik/logik.hpp"
+#include "logik/eventManager/eventManager.hpp"
 #include "dispatcher/i_Dispatcher.hpp"
 #include <iostream>
 
@@ -91,8 +94,8 @@ void actuateSlowPathOnEjectorBlocked(Logik* context) {
         return;
     }
 
-    dispatcher->pushEjector();
-    std::cout << "[Service] Auswerfer push bei EJECTOR_BLOCKED (1. Lauf)." << std::endl;
+    dispatcher->pushEjectorFor(1000);
+    std::cout << "[Service] Auswerfer push 1s bei EJECTOR_BLOCKED (1. Lauf)." << std::endl;
 }
 
 /** 2. Lauf (Normal): Weiche oeffnen, damit Werkstueck zum Bandende faehrt. */
@@ -131,6 +134,17 @@ void finishNormalPathSorter(Logik* context) {
     }
 }
 
+/** ADC-Hoehensensor fuer Service-Tick-Messung scharf schalten (2. Lauf). */
+void armHeightSensorForServiceTiming(Logik* context) {
+    if (context == nullptr) {
+        return;
+    }
+
+    if (auto* dispatcher = context->getDispatcher()) {
+        dispatcher->setServiceTimingMeasureState();
+    }
+}
+
 } // namespace
 
 std::unique_ptr<ServiceCalibSubStateBase> createInitialServiceCalibSubState() {
@@ -143,9 +157,18 @@ std::unique_ptr<ServiceCalibSubStateBase> createInitialServiceCalibSubState() {
 
 void ServiceInitEmptySubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Init_Empty entry" << std::endl;
+    std::cout << "[Service] Init_Empty entry"
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
 
     if (context == nullptr) {
+        return;
+    }
+
+    if (ServiceCalibRegistry::isResuming()) {
+        if (auto* dispatcher = context->getDispatcher()) {
+            dispatcher->lightGreenBlinkSlow();
+            dispatcher->driveStop();
+        }
         return;
     }
 
@@ -170,8 +193,11 @@ void ServiceInitEmptySubState::handle(Event e, Logik* context, ServiceState& par
 
 void ServiceMotorRightSlowSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Motor_Right_Slow entry" << std::endl;
-    startSlowMotor(context);
+    std::cout << "[Service] Motor_Right_Slow entry"
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
+    if (!ServiceCalibRegistry::isResuming()) {
+        startSlowMotor(context);
+    }
 }
 
 void ServiceMotorRightSlowSubState::handle(Event e, Logik* context, ServiceState& parent) {
@@ -183,9 +209,10 @@ void ServiceMotorRightSlowSubState::handle(Event e, Logik* context, ServiceState
 
 void ServiceSlowResetTickSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Reset_Tick (Slow) entry" << std::endl;
+    std::cout << "[Service] Reset_Tick (Slow) entry"
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
 
-    if (context != nullptr) {
+    if (context != nullptr && !ServiceCalibRegistry::isResuming()) {
         context->resetServiceTickCounter();
     }
 }
@@ -222,9 +249,10 @@ void ServiceWaitHeightClearedSubState::handle(Event e, Logik* context, ServiceSt
 
 void ServiceWaitEjectorBlockedSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Ticks_Height_b_To_Height_c_Slow (warte EJECTOR_BLOCKED)" << std::endl;
+    std::cout << "[Service] Ticks_Height_b_To_Height_c_Slow (warte EJECTOR_BLOCKED)"
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
 
-    if (context != nullptr) {
+    if (context != nullptr && !ServiceCalibRegistry::isResuming()) {
         prepareSlowPathSorter(context);
         startSlowMotor(context);
     }
@@ -246,8 +274,11 @@ void ServiceWaitEjectorBlockedSubState::handle(Event e, Logik* context, ServiceS
 
 void ServiceWaitEjectorClearedSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Ticks_Height_c_To_Ejector_b_Slow (warte EJECTOR_CLEARED)" << std::endl;
-    startSlowMotor(context);
+    std::cout << "[Service] Ticks_Height_c_To_Ejector_b_Slow (warte EJECTOR_CLEARED)"
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
+    if (!ServiceCalibRegistry::isResuming()) {
+        startSlowMotor(context);
+    }
 }
 
 void ServiceWaitEjectorClearedSubState::handle(Event e, Logik* context, ServiceState& parent) {
@@ -264,8 +295,11 @@ void ServiceWaitEjectorClearedSubState::handle(Event e, Logik* context, ServiceS
 
 void ServiceWaitChuteBlockedSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Ticks_Ejector_b_To_Ejector_c_Slow (warte CHUTE_BLOCKED)" << std::endl;
-    startSlowMotor(context);
+    std::cout << "[Service] Ticks_Ejector_b_To_Ejector_c_Slow (warte CHUTE_BLOCKED)"
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
+    if (!ServiceCalibRegistry::isResuming()) {
+        startSlowMotor(context);
+    }
 }
 
 void ServiceWaitChuteBlockedSubState::handle(Event e, Logik* context, ServiceState& parent) {
@@ -283,9 +317,9 @@ void ServiceWaitChuteBlockedSubState::handle(Event e, Logik* context, ServiceSta
 void ServiceSlowCalibDoneSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
     std::cout << "[Service] Slow-Kalibrierung abgeschlossen. Bitte 2. Werkstueck an Einlauf legen."
-              << std::endl;
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
 
-    if (context != nullptr) {
+    if (context != nullptr && !ServiceCalibRegistry::isResuming()) {
         context->recalculateSlowLimits();
         stopServiceMotor(context);
         if (auto* dispatcher = context->getDispatcher()) {
@@ -307,9 +341,11 @@ void ServiceSlowCalibDoneSubState::handle(Event e, Logik* context, ServiceState&
 
 void ServiceNormalStartSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Normal_Start: driveRight(), Normal-Ticks messen." << std::endl;
+    std::cout << "[Service] Normal_Start: driveRight(), Normal-Ticks messen."
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
 
-    if (context != nullptr) {
+    if (context != nullptr && !ServiceCalibRegistry::isResuming()) {
+        armHeightSensorForServiceTiming(context);
         context->resetServiceTickCounter();
         startNormalMotor(context);
     }
@@ -329,8 +365,11 @@ void ServiceNormalStartSubState::handle(Event e, Logik* context, ServiceState& p
 
 void ServiceNormalWaitHeightClearedSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Ticks_Entry_c_To_Height_b_Normal (warte HEIGHT_CLEARED)" << std::endl;
-    startNormalMotor(context);
+    std::cout << "[Service] Ticks_Entry_c_To_Height_b_Normal (warte HEIGHT_CLEARED)"
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
+    if (!ServiceCalibRegistry::isResuming()) {
+        startNormalMotor(context);
+    }
 }
 
 void ServiceNormalWaitHeightClearedSubState::handle(Event e, Logik* context, ServiceState& parent) {
@@ -350,8 +389,11 @@ void ServiceNormalWaitHeightClearedSubState::handle(Event e, Logik* context, Ser
 
 void ServiceNormalWaitEjectorBlockedSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Ticks_Height_b_To_Height_c_Normal (warte EJECTOR_BLOCKED)" << std::endl;
-    startNormalMotor(context);
+    std::cout << "[Service] Ticks_Height_b_To_Height_c_Normal (warte EJECTOR_BLOCKED)"
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
+    if (!ServiceCalibRegistry::isResuming()) {
+        startNormalMotor(context);
+    }
 }
 
 void ServiceNormalWaitEjectorBlockedSubState::handle(Event e, Logik* context, ServiceState& parent) {
@@ -368,8 +410,11 @@ void ServiceNormalWaitEjectorBlockedSubState::handle(Event e, Logik* context, Se
 
 void ServiceNormalWaitEjectorClearedSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Ticks_Height_c_To_Ejector_b_Normal (warte EJECTOR_CLEARED)" << std::endl;
-    startNormalMotor(context);
+    std::cout << "[Service] Ticks_Height_c_To_Ejector_b_Normal (warte EJECTOR_CLEARED)"
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
+    if (!ServiceCalibRegistry::isResuming()) {
+        startNormalMotor(context);
+    }
 }
 
 void ServiceNormalWaitEjectorClearedSubState::handle(Event e, Logik* context, ServiceState& parent) {
@@ -386,8 +431,11 @@ void ServiceNormalWaitEjectorClearedSubState::handle(Event e, Logik* context, Se
 
 void ServiceNormalWaitEndBlockedSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Ticks_Ejector_b_To_Ejector_c_Normal (warte END_BLOCKED)" << std::endl;
-    startNormalMotor(context);
+    std::cout << "[Service] Ticks_Ejector_b_To_Ejector_c_Normal (warte END_BLOCKED)"
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
+    if (!ServiceCalibRegistry::isResuming()) {
+        startNormalMotor(context);
+    }
 }
 
 void ServiceNormalWaitEndBlockedSubState::handle(Event e, Logik* context, ServiceState& parent) {
@@ -406,35 +454,81 @@ void ServiceNormalWaitEndBlockedSubState::handle(Event e, Logik* context, Servic
         dispatcher->lightGreenBlinkSlow();
     }
 
-    logTransition("Normal_Wait_End_Blocked", "Calib_Finished", e);
+    logTransition("Normal_Wait_End_Blocked", "Wait_Wp_Removed", e);
+    parent.replaceSubState(std::make_unique<ServiceWaitWpRemovedSubState>());
+}
+
+namespace {
+
+void enterCalibAwaitReset(Logik* context, ServiceState& parent) {
+    (void)context;
     parent.replaceSubState(std::make_unique<ServiceCalibFinishedSubState>());
+}
+
+} // namespace
+
+void ServiceWaitWpRemovedSubState::entry(Logik* context, ServiceState& parent) {
+    (void)parent;
+    std::cout << "[Service] Bandende erreicht. Bitte Werkstueck entfernen."
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
+
+    if (context == nullptr) {
+        return;
+    }
+
+    if (auto* eventManager = context->getEventManager()) {
+        if (!eventManager->isEndBlocked()) {
+            enterCalibAwaitReset(context, parent);
+        }
+    }
+}
+
+void ServiceWaitWpRemovedSubState::handle(Event e, Logik* context, ServiceState& parent) {
+    if (e != Event::END_CLEARED || context == nullptr) {
+        return;
+    }
+
+    logTransition("Wait_Wp_Removed", "Calib_Finished", e);
+    enterCalibAwaitReset(context, parent);
 }
 
 void ServiceCalibFinishedSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Normal-Kalibrierung abgeschlossen. RESET druecken zum Speichern."
+    std::cout << "[Service] Werkstueck entfernt. RESET-LED blinkt – RESET druecken zum Speichern."
               << std::endl;
+
+    if (context != nullptr) {
+        if (auto* dispatcher = context->getDispatcher()) {
+            dispatcher->turnLEDResetBlinkSlow();
+        }
+    }
 }
 
 void ServiceCalibFinishedSubState::handle(Event e, Logik* context, ServiceState& parent) {
-    if (e == Event::RESET_RELEASED || e == Event::PARTNER_RESET_RELEASED) {
-        logTransition("Calib_Finished", "Done", e);
-        if (context != nullptr) {
-            context->saveCurrentCalibration();
-            context->recalculateSlowLimits();
-
-            if (context->getEventManager() != nullptr) {
-                context->getEventManager()->setCalibrationDataReady(true);
-            }
-            if (auto* dispatcher = context->getDispatcher()) {
-                dispatcher->lightGreenOff();
-            }
-
-            context->processEvent(Event::DATA_EXIST);
-            context->notifyPartnerCalibStatus();
-        }
-        (void)parent;
+    if (e != Event::RESET_RELEASED || context == nullptr) {
+        return;
     }
+
+    logTransition("Calib_Finished", "Done", e);
+    if (auto* dispatcher = context->getDispatcher()) {
+        dispatcher->turnLEDResetOff();
+    }
+
+    if (context->saveCurrentCalibration()) {
+        if (auto* eventManager = context->getEventManager()) {
+            eventManager->setCalibrationDataReady(true);
+        }
+        std::cout << "[Service] Kalibrierung gespeichert -> IdleState" << std::endl;
+        context->transitionTo(new IdleState());
+    } else {
+        std::cout << "[Service] Speichern fehlgeschlagen. Kalibrierung wiederholen."
+                  << std::endl;
+        if (auto* dispatcher = context->getDispatcher()) {
+            dispatcher->lightYellowBlinkFast();
+            dispatcher->turnLEDResetBlinkSlow();
+        }
+    }
+    (void)parent;
 }
 
 } // namespace logik

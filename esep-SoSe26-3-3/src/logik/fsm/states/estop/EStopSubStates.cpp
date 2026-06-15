@@ -80,6 +80,7 @@ void EstopPartnerActiveSubState::handle(Event e, Logik* context, EStopState& par
         parent.replaceSubState(std::make_unique<EstopBothActiveSubState>());
         break;
     case Event::PARTNER_ESTOP_RELEASED:
+    case Event::PARTNER_ESTOP_SAFETY_SYNC:
         if (context != nullptr && context->getDispatcher() != nullptr
             && context->getDispatcher()->isEstopPressed()) {
             logTransition("PartnerActive", "LocalActive", e);
@@ -108,6 +109,7 @@ void EstopBothActiveSubState::entry(Logik* context, EStopState& parent) {
 void EstopBothActiveSubState::handle(Event e, Logik* context, EStopState& parent) {
     switch (e) {
     case Event::PARTNER_ESTOP_RELEASED:
+    case Event::PARTNER_ESTOP_SAFETY_SYNC:
         logTransition("BothActive", "LocalActive", e);
         parent.clearResetLatches();
         parent.replaceSubState(std::make_unique<EstopLocalActiveSubState>());

@@ -52,6 +52,8 @@ private:
     i_Logik* m_logik;
 
     std::atomic<bool> m_partnerEstopPressed;
+    bool m_awaitingPartnerEstopSync;
+    bool m_connectionLostHandled;
 
     // Temporäre Variablen im Dispatcher für die Live-Messung
     // Lokale Zwischenlage für den Einlernvorgang im Dispatcher
@@ -74,6 +76,9 @@ private:
     void sendLocalEstopStatusToPartner();
     void requestPartnerEstopStatus();
     void requestPartnerCalibStatus();
+    void finishConnectionRestoreIfPending();
+    void handleLocalConnectionLost();
+    void processHeartbeatTackt();
 
 public:
     Dispatcher();
@@ -119,11 +124,15 @@ public:
     bool isPartnerEstopPressed() const override;
     void sendeChuteStats(bool isVoll) override;
     void sendPartnerResetPressed() override;
+    void sendPartnerStartRunning() override;
+    void sendPartnerStartService() override;
+    void sendPartnerCalibStatus(bool ready) override;
     void sendLocalCalibStatusToPartner() override;
 
     void setAdcIdelState()override { if (m_sensors) m_sensors->setAdcIdelState();}
     void setAdcWaitigForWpState()override { if (m_sensors) m_sensors->setAdcWaitigForWpState();}
     void setAdcCalibrationsState() override{if (m_sensors) m_sensors->setAdcCalibrationsState();}
+    void setServiceTimingMeasureState() override { if (m_sensors) m_sensors->setServiceTimingMeasureState(); }
     // ========================================================================
     // AKTORIK - Durchreiche-Methoden (Inline)
     // ========================================================================
@@ -140,6 +149,9 @@ public:
     void openSwitch() override { if (m_actuators) m_actuators->openSwitch(); };
     void closeSwitch() override { if (m_actuators) m_actuators->closeSwitch(); }
     void pushEjector() override { if (m_actuators) m_actuators->pushEjector(); }
+    void pushEjectorFor(std::uint32_t holdMs) override {
+        if (m_actuators) m_actuators->pushEjectorFor(holdMs);
+    }
     void pullEjector() override { if (m_actuators) m_actuators->pullEjector(); }
 
     // Ampelsteuerung

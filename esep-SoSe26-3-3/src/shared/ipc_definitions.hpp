@@ -40,7 +40,7 @@ namespace ipc {
     // ============================================================================
     // Unterscheidet, woher der Pulse kommt. QNX verlangt für eigene Pulses
     // Werte oberhalb von _PULSE_CODE_MINAVAIL.
-    enum PulseCode : int8_t {
+    enum PulseCode {
         // ====================================================================
         // LOKALE HARDWARE & SYSTEM (1 - 9)
         // ====================================================================
@@ -109,6 +109,8 @@ namespace ipc {
         ESTOP_STATUS_QUERY    = _PULSE_CODE_MINAVAIL + 5, // Partner ESTOP-Status anfragen
         CALIB_STATUS_QUERY    = _PULSE_CODE_MINAVAIL + 6, // Partner Kalibrierungsstatus anfragen
         CALIB_STATUS          = _PULSE_CODE_MINAVAIL + 7, // Kalibrierungsstatus melden
+        START_RUNNING         = _PULSE_CODE_MINAVAIL + 8, // Gemeinsamer Running-Start
+        START_SERVICE         = _PULSE_CODE_MINAVAIL + 9, // Gemeinsamer Service-Start
  };
 
     enum State:uint16_t{

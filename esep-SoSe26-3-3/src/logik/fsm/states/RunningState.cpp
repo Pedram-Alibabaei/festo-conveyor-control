@@ -33,7 +33,7 @@ void RunningState::handle(Event e) {
     auto* eventManager = m_context->getEventManager();
 
     switch (e) {
-    case Event::STOP_PRESSED:
+    case Event::STOP_RELEASED:
         std::cout << "[RunningState] STOP -> IdleState" << std::endl;
         m_context->transitionTo(new IdleState());
         break;

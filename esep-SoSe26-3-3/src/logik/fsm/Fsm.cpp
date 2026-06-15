@@ -3,6 +3,8 @@
 #include "logik/eventManager/eventManager.hpp"
 #include "logik/fsm/states/ActiveRegionState.hpp"
 #include "logik/fsm/states/IdleState.hpp"
+#include "logik/fsm/states/ReadyForServiceState.hpp"
+#include "logik/fsm/states/ReadyForRunState.hpp"
 #include "logik/fsm/states/RunningState.hpp"
 #include "logik/fsm/states/ServiceState.hpp"
 #include <iostream>
@@ -28,6 +30,8 @@ void Fsm::processEvent(Event e) {
 
 bool Fsm::isLevel1State(const BaseState* state) const {
     return dynamic_cast<const IdleState*>(state) != nullptr
+        || dynamic_cast<const ReadyForServiceState*>(state) != nullptr
+        || dynamic_cast<const ReadyForRunState*>(state) != nullptr
         || dynamic_cast<const RunningState*>(state) != nullptr
         || dynamic_cast<const ServiceState*>(state) != nullptr;
 }

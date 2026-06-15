@@ -1,6 +1,10 @@
 #include "Level1Actions.hpp"
 #include "logik/eventManager/eventManager.hpp"
+#include "logik/logik.hpp"
+#include "logik/fsm/states/ReadyForServiceState.hpp"
+#include "logik/fsm/states/ReadyForRunState.hpp"
 #include "dispatcher/i_Dispatcher.hpp"
+#include <iostream>
 
 namespace logik {
 namespace level1 {
@@ -13,9 +17,74 @@ void applyIdleEntry(I_Dispatcher* dispatcher, EventManager* eventManager) {
     dispatcher->setAdcIdelState();
     dispatcher->driveStop();
     dispatcher->lightGreenOff();
+    dispatcher->lightYellowOff();
+    dispatcher->turnLEDResetOff();
+    dispatcher->turnLEDStartOff();
 
     if (eventManager != nullptr) {
         eventManager->setServiceMode(false);
+        eventManager->setMotorOn(false);
+        eventManager->setMotorSlow(false);
+    }
+}
+
+void applyReadyForServiceEntry(I_Dispatcher* dispatcher, EventManager* eventManager) {
+    if (dispatcher == nullptr) {
+        return;
+    }
+
+    dispatcher->setAdcIdelState();
+    dispatcher->driveStop();
+    dispatcher->lightGreenOff();
+    dispatcher->lightYellowOff();
+    dispatcher->turnLEDResetOff();
+    dispatcher->turnLEDStartBlinkSlow();
+
+    if (eventManager != nullptr) {
+        eventManager->setServiceMode(false);
+        eventManager->setMotorOn(false);
+        eventManager->setMotorSlow(false);
+    }
+}
+
+void applyReadyForServiceExit(I_Dispatcher* dispatcher, EventManager* eventManager) {
+    if (dispatcher != nullptr) {
+        dispatcher->turnLEDStartOff();
+    }
+
+    (void)eventManager;
+}
+
+void applyReadyForRunEntry(I_Dispatcher* dispatcher, EventManager* eventManager, Logik* logik) {
+    if (dispatcher == nullptr) {
+        return;
+    }
+
+    dispatcher->setAdcWaitigForWpState();
+    dispatcher->driveStop();
+    dispatcher->lightGreenOff();
+    dispatcher->lightYellowOff();
+    dispatcher->turnLEDResetOff();
+    dispatcher->turnLEDStartOn();
+
+    if (logik != nullptr) {
+        logik->loadCalibrationData();
+    }
+
+    if (eventManager != nullptr) {
+        eventManager->setServiceMode(false);
+        eventManager->setMotorOn(false);
+        eventManager->setMotorSlow(false);
+    }
+}
+
+void applyReadyForRunExit(I_Dispatcher* dispatcher, EventManager* eventManager) {
+    if (dispatcher != nullptr) {
+        dispatcher->driveStop();
+        dispatcher->turnLEDStartOff();
+    }
+
+    if (eventManager != nullptr) {
         eventManager->setMotorOn(false);
         eventManager->setMotorSlow(false);
     }
@@ -28,6 +97,7 @@ void applyRunningEntry(I_Dispatcher* dispatcher, EventManager* eventManager) {
 
     dispatcher->setAdcWaitigForWpState();
     dispatcher->lightGreenOn();
+    dispatcher->turnLEDStartOff();
 
     if (eventManager != nullptr) {
         eventManager->setServiceMode(false);
@@ -45,6 +115,21 @@ void applyRunningExit(I_Dispatcher* dispatcher, EventManager* eventManager) {
     }
 }
 
+void applyServiceResumeEntry(I_Dispatcher* dispatcher, EventManager* eventManager) {
+    if (dispatcher == nullptr) {
+        return;
+    }
+
+    if (eventManager != nullptr) {
+        eventManager->setServiceMode(true);
+        eventManager->setMotorOn(false);
+        eventManager->setMotorSlow(false);
+    }
+
+    dispatcher->driveStop();
+    dispatcher->lightGreenBlinkSlow();
+}
+
 void applyServiceEntry(I_Dispatcher* dispatcher, EventManager* eventManager) {
     if (dispatcher == nullptr) {
         return;
@@ -59,12 +144,14 @@ void applyServiceEntry(I_Dispatcher* dispatcher, EventManager* eventManager) {
     dispatcher->setAdcCalibrationsState();
     dispatcher->lightGreenBlinkFast();
     dispatcher->driveStop();
+    dispatcher->turnLEDStartOff();
 }
 
 void applyServiceExit(I_Dispatcher* dispatcher, EventManager* eventManager) {
     if (dispatcher != nullptr) {
         dispatcher->driveStop();
         dispatcher->lightGreenOff();
+        dispatcher->turnLEDResetOff();
     }
 
     if (eventManager != nullptr) {
@@ -142,6 +229,67 @@ bool canEnterRunning(EventManager* eventManager) {
     }
 
     return true;
+}
+
+bool tryEnterReadyForRun(Logik* logik) {
+    if (logik == nullptr) {
+        return false;
+    }
+
+    auto* eventManager = logik->getEventManager();
+    auto* dispatcher = logik->getDispatcher();
+
+    if (dispatcher != nullptr) {
+        const bool fileOk = dispatcher->requestFileExists();
+        if (eventManager != nullptr) {
+            eventManager->setCalibrationDataReady(fileOk);
+        }
+        if (!fileOk) {
+            return false;
+        }
+        logik->loadCalibrationData();
+    }
+
+    if (!canEnterRunning(eventManager)) {
+        return false;
+    }
+
+    std::cout << "[Level1] Lokal + Partner kalibriert -> ReadyForRun" << std::endl;
+    logik->transitionTo(new ReadyForRunState());
+    return true;
+}
+
+bool tryEnterReadyForService(Logik* logik) {
+    if (logik == nullptr) {
+        return false;
+    }
+
+    auto* dispatcher = logik->getDispatcher();
+    auto* eventManager = logik->getEventManager();
+
+    if (dispatcher != nullptr && dispatcher->requestFileExists()) {
+        return false;
+    }
+
+    if (eventManager != nullptr) {
+        eventManager->setCalibrationDataReady(false);
+    }
+
+    std::cout << "[Level1] Keine Kalibrierungsdatei -> ReadyForService" << std::endl;
+    logik->transitionTo(new ReadyForServiceState());
+    return true;
+}
+
+void routeFromIdle(Logik* logik) {
+    if (logik == nullptr) {
+        return;
+    }
+
+    if (tryEnterReadyForRun(logik)) {
+        return;
+    }
+
+    tryEnterReadyForService(logik);
 }
 
 } // namespace level1

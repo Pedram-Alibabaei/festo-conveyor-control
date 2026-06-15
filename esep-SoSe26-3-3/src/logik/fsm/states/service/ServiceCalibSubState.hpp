@@ -103,6 +103,14 @@ public:
     void handle(Event e, Logik* context, ServiceState& parent) override;
 };
 
+/** Warten bis Werkstueck vom Bandende entfernt wurde (END_CLEARED). */
+class ServiceWaitWpRemovedSubState : public ServiceCalibSubStateBase {
+public:
+    void entry(Logik* context, ServiceState& parent) override;
+    void handle(Event e, Logik* context, ServiceState& parent) override;
+};
+
+/** RESET-LED blinkt – Speichern bei RESET_RELEASED, danach Partner BEREIT. */
 class ServiceCalibFinishedSubState : public ServiceCalibSubStateBase {
 public:
     void entry(Logik* context, ServiceState& parent) override;

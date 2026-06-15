@@ -41,8 +41,13 @@ namespace hal {
             void openSwitch();
             void closeSwitch();
 
+            /** Auswerfer-Impuls in Service-Kalibrierung (1 s). */
+            static constexpr std::chrono::milliseconds kEjectorServicePushHold{1000};
+
             // --- Auswerfer-Steuerung ---
             void pushEjector();
+            /** Push, danach automatisch pull nach holdTime (Watchdog-Thread). */
+            void pushEjectorFor(std::chrono::milliseconds holdTime);
             void pullEjector();
 
         private:
@@ -61,6 +66,7 @@ namespace hal {
             std::condition_variable m_cv;         ///< Zum effizienten Schlafen/Wecken des Threads
 
             std::chrono::steady_clock::time_point m_startTime;
+            std::chrono::milliseconds m_activeHoldDuration{AUTOCLOSE_TIMEOUT};
             const std::chrono::milliseconds AUTOCLOSE_TIMEOUT;
         };
 

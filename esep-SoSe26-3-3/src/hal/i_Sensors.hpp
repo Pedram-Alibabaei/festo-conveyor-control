@@ -62,6 +62,11 @@ public:
     virtual void setAdcCalibrationsState() = 0;
 
     /**
+     * @brief Service-Kalibrierung: Hoehensensor nur fuer Tick-Messung (ohne Wp-Typ).
+     */
+    virtual void setServiceTimingMeasureState() = 0;
+
+    /**
      * @brief Pausiert oder reaktiviert die Profilauswertung bei stehendem Band.
      *
      * Die bisherigen Messdaten bleiben erhalten; nur neue ADC-Werte werden

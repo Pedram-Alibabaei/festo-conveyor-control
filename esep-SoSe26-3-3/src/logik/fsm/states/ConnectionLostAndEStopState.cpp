@@ -17,7 +17,7 @@ void ConnectionLostAndEStopState::entry() {
         return;
     }
 
-    level0::applyConnectionLostEntry(m_context->getDispatcher());
+    level0::applyConnectionLostEntry(m_context->getDispatcher(), m_context->getEventManager());
     level0::applyEstopSafetyClear(m_context);
 
     if (auto* dispatcher = m_context->getDispatcher()) {
@@ -50,7 +50,7 @@ void ConnectionLostAndEStopState::handle(Event e) {
                 level0::applyConnectionLostEstopWaitingResetEntry(dispatcher);
             }
         } else if (dispatcher != nullptr) {
-            level0::applyConnectionLostEntry(dispatcher);
+            level0::applyConnectionLostEntry(dispatcher, em);
             level0::syncLocalEstopPanelLed(dispatcher);
         }
         break;
@@ -73,7 +73,7 @@ void ConnectionLostAndEStopState::handle(Event e) {
     case Event::ESTOP_PRESSED:
     case Event::PARTNER_ESTOP_PRESSED:
         if (dispatcher != nullptr) {
-            level0::applyConnectionLostEntry(dispatcher);
+            level0::applyConnectionLostEntry(dispatcher, em);
             if (e == Event::ESTOP_PRESSED) {
                 level0::syncLocalEstopPanelLed(dispatcher);
             } else {
@@ -90,7 +90,7 @@ void ConnectionLostAndEStopState::handle(Event e) {
             if (!dispatcher->isEstopPressed() && !dispatcher->isPartnerEstopPressed()) {
                 level0::applyConnectionLostEstopWaitingResetEntry(dispatcher);
             } else {
-                level0::applyConnectionLostEntry(dispatcher);
+                level0::applyConnectionLostEntry(dispatcher, em);
                 level0::syncLocalEstopPanelLed(dispatcher);
             }
         }

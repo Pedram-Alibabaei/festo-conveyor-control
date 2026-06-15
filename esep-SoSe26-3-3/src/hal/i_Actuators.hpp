@@ -9,6 +9,8 @@
 #ifndef I_ACTUATORS_HPP
 #define I_ACTUATORS_HPP
 
+#include <cstdint>
+
 class i_Actuators {
 public:
     virtual ~i_Actuators() = default;
@@ -36,6 +38,7 @@ public:
     virtual void openSwitch()= 0;
     virtual void closeSwitch()= 0;
     virtual void pushEjector()= 0;
+    virtual void pushEjectorFor(std::uint32_t holdMs)= 0;
     virtual void pullEjector()= 0;
 
 

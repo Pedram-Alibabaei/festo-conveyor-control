@@ -75,6 +75,7 @@ void EjectorController::openSwitch() {
         m_isSortingOut.store(true);
 
         // Timer aktivieren und Thread anstoßen
+        m_activeHoldDuration = AUTOCLOSE_TIMEOUT;
         m_startTime = std::chrono::steady_clock::now();
         m_isTimerActive.store(true);
         m_cv.notify_one();
@@ -90,11 +91,15 @@ void EjectorController::closeSwitch() {
 }
 
 void EjectorController::pushEjector() {
+    pushEjectorFor(AUTOCLOSE_TIMEOUT);
+}
+
+void EjectorController::pushEjectorFor(std::chrono::milliseconds holdTime) {
     if (m_type == SorterHardwareType::AUSWERFER && !m_isSortingOut.load()) {
         pal::op::Ejector::data_set();
         m_isSortingOut.store(true);
 
-        // Timer aktivieren und Thread anstoßen
+        m_activeHoldDuration = holdTime;
         m_startTime = std::chrono::steady_clock::now();
         m_isTimerActive.store(true);
         m_cv.notify_one();
@@ -124,7 +129,7 @@ void EjectorController::watchdogWorker() {
         }
 
         while (m_isTimerActive.load() && m_keepRunning.load()) {
-            const auto deadline = m_startTime + AUTOCLOSE_TIMEOUT;
+            const auto deadline = m_startTime + m_activeHoldDuration;
             const bool deactivated = m_cv.wait_until(lock, deadline, [this] {
                 return !m_isTimerActive.load() || !m_keepRunning.load();
             });

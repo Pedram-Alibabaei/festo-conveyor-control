@@ -54,10 +54,7 @@ int main(int argc, char *argv[]) {
 
         hal::HalActuators actuators;
 
-        CalibrationManager calib_manager(
-            pos == AnlagenPosition::VORN_ANLAGE_1
-                ? "festo_calib_anlage1.txt"
-                : "festo_calib_anlage2.txt");
+        CalibrationManager calib_manager;
 
         logik::Logik logik(&dispatcher);
 

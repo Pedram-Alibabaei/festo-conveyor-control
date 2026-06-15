@@ -1,6 +1,8 @@
 #include "ServiceState.hpp"
 #include "IdleState.hpp"
+#include "logik/fsm/states/service/ServiceCalibRegistry.hpp"
 #include "logik/logik.hpp"
+#include "logik/eventManager/eventManager.hpp"
 #include "logik/fsm/level1/Level1Actions.hpp"
 #include <iostream>
 
@@ -13,7 +15,32 @@ void ServiceState::entry() {
         return;
     }
 
-    level1::applyServiceEntry(m_context->getDispatcher(), m_context->getEventManager());
+    auto* dispatcher = m_context->getDispatcher();
+    auto* eventManager = m_context->getEventManager();
+
+    if (ServiceCalibRegistry::hasSavedPhase()) {
+        const auto phase = ServiceCalibRegistry::savedPhase();
+        std::cout << "[ServiceState] Kalibrierung nach ConnectionLost fortsetzen (Phase="
+                  << static_cast<int>(phase) << ")." << std::endl;
+
+        level1::applyServiceResumeEntry(dispatcher, eventManager);
+
+        if (dispatcher != nullptr
+            && ServiceCalibRegistry::needsServiceTimingAdc(phase)) {
+            dispatcher->setServiceTimingMeasureState();
+        }
+
+        ServiceCalibRegistry::setResuming(true);
+        m_sub = ServiceCalibRegistry::createSavedSubState();
+        ServiceCalibRegistry::clear();
+        if (m_sub != nullptr) {
+            m_sub->entry(m_context, *this);
+        }
+        ServiceCalibRegistry::setResuming(false);
+        return;
+    }
+
+    level1::applyServiceEntry(dispatcher, eventManager);
 
     m_sub = createInitialServiceCalibSubState();
     if (m_sub != nullptr) {
@@ -23,6 +50,18 @@ void ServiceState::entry() {
 
 void ServiceState::exit() {
     if (m_sub != nullptr) {
+        if (m_context != nullptr) {
+            auto* eventManager = m_context->getEventManager();
+            if (eventManager != nullptr && eventManager->isConnectionLost()) {
+                ServiceCalibRegistry::savePhase(m_sub.get());
+                std::cout << "[ServiceState] Kalibrierungs-Phase gesichert fuer Restore."
+                          << std::endl;
+                m_sub->exit(m_context);
+                m_sub.reset();
+                return;
+            }
+        }
+
         m_sub->exit(m_context);
         m_sub.reset();
     }
@@ -32,6 +71,7 @@ void ServiceState::exit() {
     }
 
     level1::applyServiceExit(m_context->getDispatcher(), m_context->getEventManager());
+    ServiceCalibRegistry::clear();
 }
 
 void ServiceState::replaceSubState(std::unique_ptr<ServiceCalibSubStateBase> next) {
@@ -51,15 +91,16 @@ void ServiceState::handle(Event e) {
     }
 
     switch (e) {
-    case Event::STOP_PRESSED:
+    case Event::STOP_RELEASED:
         std::cout << "[ServiceState] STOP -> IdleState" << std::endl;
         m_context->transitionTo(new IdleState());
         return;
 
+    case Event::START_LONG_PRESSED:
+        std::cout << "[ServiceState] START lang (neu kalibrieren)" << std::endl;
+        return;
+
     case Event::DATA_EXIST:
-        if (auto* eventManager = m_context->getEventManager()) {
-            eventManager->setCalibrationDataReady(true);
-        }
         std::cout << "[ServiceState] Kalibrierung gespeichert / vorhanden." << std::endl;
         return;
 

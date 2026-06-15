@@ -51,6 +51,10 @@ namespace hal {
         m_analyzer.setAdcCalibrationsState();
     }
 
+    void HalSensors::setServiceTimingMeasureState() {
+        m_analyzer.setServiceTimingMeasureState();
+    }
+
     void HalSensors::setAdcTransportPaused(bool paused) {
         m_analyzer.setTransportPaused(paused);
     }

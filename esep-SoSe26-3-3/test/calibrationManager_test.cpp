@@ -10,7 +10,7 @@ namespace {
 
 CalibrationData makeValidCalibrationData() {
     CalibrationData data;
-    data.adc_emptyBelt = 800;
+    data.adc_emptyBelt = 1500;
     data.adc_flatCenter = 1200;
     data.limit_minSamplesForClass = 10;
     data.ticks_EntryC_to_HeightB_Normal = 200;
@@ -101,7 +101,7 @@ TEST_F(CalibrationManagerTest, PartialFile_FileExistsReturnsFalse) {
 
 TEST_F(CalibrationManagerTest, InvalidAdcOrder_FileExistsReturnsFalse) {
     writeTextFile(m_path,
-        "adc_emptyBelt=1500\n"
+        "adc_emptyBelt=800\n"
         "adc_flatCenter=1200\n"
         "limit_minSamplesForClass=10\n"
         "ticks_EntryC_to_HeightB_Normal=200\n"
@@ -122,7 +122,7 @@ TEST_F(CalibrationManagerTest, InvalidAdcOrder_FileExistsReturnsFalse) {
 
 TEST_F(CalibrationManagerTest, SlowTicksTooSmall_FileExistsReturnsFalse) {
     writeTextFile(m_path,
-        "adc_emptyBelt=800\n"
+        "adc_emptyBelt=1500\n"
         "adc_flatCenter=1200\n"
         "limit_minSamplesForClass=10\n"
         "ticks_EntryC_to_HeightB_Normal=200\n"
@@ -132,10 +132,14 @@ TEST_F(CalibrationManagerTest, SlowTicksTooSmall_FileExistsReturnsFalse) {
         "ticks_EjectorC_to_EndB_Normal=250\n"
         "ticks_EndB_to_EndC_Normal=100\n"
         "ticks_EntryC_to_HeightB_Slow=100\n"
-        "ticks_HeightB_to_HeightC_Slow=300\n");
+        "ticks_HeightB_to_HeightC_Slow=300\n"
+        "ticks_HeightC_to_EjectorB_Slow=360\n"
+        "ticks_EjectorB_to_EjectorC_Slow=120\n"
+        "ticks_EjectorC_to_ChuteB_Slow=280\n");
 
     CalibrationManager manager(m_path);
-    EXPECT_FALSE(manager.fileExists());
+    // Gemessene Slow-Ticks duerfen kleiner als Normal sein (unabhaengige Messung).
+    EXPECT_TRUE(manager.fileExists());
 }
 
 TEST_F(CalibrationManagerTest, NonNumericValue_FileExistsReturnsFalse) {
@@ -181,7 +185,7 @@ TEST_F(CalibrationManagerTest, FileWithSectionHeaders_IsAccepted) {
     writeTextFile(m_path,
         "# Kalibrierung\n"
         "[Analog-Thresholds]\n"
-        "adc_emptyBelt=800\n"
+        "adc_emptyBelt=1500\n"
         "adc_flatCenter=1200\n"
         "limit_minSamplesForClass=10\n"
         "[Normal-Speed-Ticks]\n"

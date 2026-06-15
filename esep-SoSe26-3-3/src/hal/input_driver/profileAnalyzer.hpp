@@ -122,6 +122,8 @@ public:
     void setAdcIdelState();
     void setAdcWaitigForWpState();
     void setAdcCalibrationsState();
+    /** Service-Kalibrierung: nur HEIGHT_BLOCKED/CLEARED fuer Tick-Messung, ohne Typklassifikation. */
+    void setServiceTimingMeasureState();
     void setTransportPaused(bool paused);
     void updateCalibrationThresholds(uint16_t calib_mode, uint16_t calib_value);
 };

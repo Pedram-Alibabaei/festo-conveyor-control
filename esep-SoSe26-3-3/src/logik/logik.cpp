@@ -155,14 +155,20 @@ void Logik::setLiveAdcCalibration(uint16_t emptyBelt, uint16_t flatCenter, uint3
     m_wpManager->setCalibrationData(m_calibData);
 }
 
-void Logik::saveCurrentCalibration() {
-    if (m_calibManager == nullptr) { return; }
+bool Logik::saveCurrentCalibration() {
+    if (m_calibManager == nullptr) {
+        return false;
+    }
 
-    // Limits vor dem Speichern aktualisieren
     recalculateSlowLimits();
 
-    m_calibManager->saveCalibrationData(m_calibData);
-    notifyPartnerCalibStatus();
+    const bool saved = m_calibManager->saveCalibrationData(m_calibData);
+    if (saved) {
+        notifyPartnerCalibStatus();
+    } else {
+        std::cerr << "[Logik] Kalibrierung konnte nicht gespeichert werden." << std::endl;
+    }
+    return saved;
 }
 
 void Logik::notifyPartnerCalibStatus() {

@@ -62,6 +62,7 @@ private:
 
     std::chrono::steady_clock::time_point m_startPressedStartTime;
     std::chrono::steady_clock::time_point m_partnerStartPressedTime;
+    bool m_startButtonHeld = false;
 
     bool canRouteToBandSubsystems() const;
     bool isFsmPassthroughEvent(Event e) const;
@@ -127,6 +128,11 @@ public:
 
     void setPartnerCalibrationReady(bool ready) { m_ctx.partnerCalibrationReady = ready; }
     bool isPartnerCalibrationReady() const { return m_ctx.partnerCalibrationReady; }
+
+    /** START-Druck-Baseline fuer kurz/lang-Erkennung zuruecksetzen. */
+    void resetStartPressTimer();
+
+    bool isStartButtonHeld() const { return m_startButtonHeld; }
 };
 
 } // namespace logik

@@ -26,12 +26,15 @@ private:
     bool readValidCalibration(CalibrationData& out);
 
 public:
+    /** Einheitlicher Dateiname pro Anlage (unabhaengig von VORN/HINTEN-Position). */
+    static const char CALIBRATION_FILE_NAME[];
+
     /**
      * @brief Konstruktor.
      * @details Initialisiert den Manager und setzt den Standard-Dateipfad für die Anlage fest.
-     * @param filePath Optionaler benutzerdefinierter Pfad, standardmaessig "festo_calibration.txt".
+     * @param filePath Optionaler benutzerdefinierter Pfad, standardmaessig CALIBRATION_FILE_NAME.
      */
-    CalibrationManager(const std::string& filePath = "festo_calibration.txt");
+    CalibrationManager(const std::string& filePath = CALIBRATION_FILE_NAME);
 
     /**
      * @brief Destruktor.

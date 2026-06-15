@@ -5,6 +5,7 @@
 #include "logik/fsm/states/IdleState.hpp"
 #include "logik/logik.hpp"
 #include "logik/eventManager/eventManager.hpp"
+#include <iostream>
 #include "logik/workpieceManager/WorkpieceManager.hpp"
 #include "dispatcher/i_Dispatcher.hpp"
 #include <memory>
@@ -12,7 +13,7 @@
 namespace logik {
 namespace level0 {
 
-void applyConnectionLostEntry(I_Dispatcher* dispatcher) {
+void applyConnectionLostEntry(I_Dispatcher* dispatcher, EventManager* eventManager) {
     if (dispatcher == nullptr) {
         return;
     }
@@ -22,7 +23,14 @@ void applyConnectionLostEntry(I_Dispatcher* dispatcher) {
     dispatcher->lightRedBlinkFast();
     dispatcher->lightYellowBlinkFast();
     dispatcher->lightGreenBlinkFast();
-    dispatcher->setAdcIdelState();
+
+    const bool inService = eventManager != nullptr && eventManager->isServiceMode();
+    if (inService) {
+        std::cout << "[Level0] ConnectionLost: Service-Modus – ADC-Zustand beibehalten."
+                  << std::endl;
+    } else {
+        dispatcher->setAdcIdelState();
+    }
 }
 
 void applyConnectionLostEstopWaitingResetEntry(I_Dispatcher* dispatcher) {

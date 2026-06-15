@@ -141,10 +141,7 @@ namespace logik {
         std::uint32_t readAndResetServiceTickCounter();
         void syncCalibrationToWorkpieceManager();
 
-        /**
-         * @brief Holt die aktuellen Live-Daten und triggert das permanente Speichern über den CalibManager.
-         */
-        void saveCurrentCalibration();
+        bool saveCurrentCalibration();
 
         // ========================================================================
         // GETTER-METHODEN FÜR COMPONENT-SHARING

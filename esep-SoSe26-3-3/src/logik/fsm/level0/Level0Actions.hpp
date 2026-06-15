@@ -6,10 +6,11 @@ class I_Dispatcher;
 namespace logik {
 
 class Logik;
+class EventManager;
 
 namespace level0 {
 
-void applyConnectionLostEntry(I_Dispatcher* dispatcher);
+void applyConnectionLostEntry(I_Dispatcher* dispatcher, EventManager* eventManager = nullptr);
 void applyConnectionLostEstopWaitingResetEntry(I_Dispatcher* dispatcher);
 void clearTrafficLightsForRestore(I_Dispatcher* dispatcher);
 void applyEstopPressedTraffic(I_Dispatcher* dispatcher);

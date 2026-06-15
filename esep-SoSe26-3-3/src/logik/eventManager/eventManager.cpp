@@ -22,7 +22,7 @@
 
 namespace {
 
-constexpr std::chrono::milliseconds START_LONG_THRESHOLD{2000};
+constexpr std::chrono::milliseconds START_LONG_THRESHOLD{1500};
 
 } // namespace
 
@@ -46,6 +46,7 @@ void EventManager::init(AnlagenPosition pos) {
     }
 
     m_fsm = std::make_unique<Fsm>(m_context, this);
+    resetStartPressTimer();
 
     std::cout << "[EventManager] Initialisiert (Position "
               << static_cast<int>(pos) << "). Rolle: Orchestrator + PlantContext."
@@ -91,6 +92,10 @@ bool EventManager::isFsmPassthroughEvent(Event e) const {
     case Event::MOTOR_STOP:
     case Event::ENTRY_FREI:
     case Event::ENTRY_NOT_FREI:
+    case Event::PARTNER_CALIB_READY:
+    case Event::PARTNER_CALIB_NOT_READY:
+    case Event::PARTNER_START_RUNNING:
+    case Event::PARTNER_START_SERVICE:
         return true;
     default:
         return false;
@@ -184,10 +189,13 @@ std::vector<Event> EventManager::preprocessForFsm(Event e) {
     // --- START: Roh-Event → kurz/lang (FSM sieht nie START_PRESSED/RELEASED) ---
     case Event::START_PRESSED:
         m_startPressedStartTime = std::chrono::steady_clock::now();
+        m_startButtonHeld = true;
         std::cout << "[EventManager] START gedrueckt (lokal)" << std::endl;
+        fsmEvents.push_back(Event::START_PRESSED);
         break;
 
     case Event::START_RELEASED: {
+        m_startButtonHeld = false;
         const auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - m_startPressedStartTime);
 
@@ -237,6 +245,12 @@ std::vector<Event> EventManager::preprocessForFsm(Event e) {
         } else {
             fsmEvents.push_back(Event::ENTRY_FREI);
             m_ctx.entryFrei = true;
+        }
+        break;
+
+    case Event::HEIGHT_CLEARED:
+        if (m_ctx.serviceMode) {
+            fsmEvents.push_back(e);
         }
         break;
 
@@ -357,6 +371,10 @@ void EventManager::transitionFsmState(std::unique_ptr<BaseState> nextState) {
     if (m_fsm != nullptr) {
         m_fsm->transitionTo(std::move(nextState));
     }
+}
+
+void EventManager::resetStartPressTimer() {
+    m_startPressedStartTime = std::chrono::steady_clock::now();
 }
 
 void EventManager::setPartnerChuteStatus(bool isFull) {

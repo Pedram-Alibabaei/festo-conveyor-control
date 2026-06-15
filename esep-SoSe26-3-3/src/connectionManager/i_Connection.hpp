@@ -28,13 +28,13 @@ public:
     /** Lokaler Watchdog/Sendefehler: Partner sofort benachrichtigen. */
     virtual void forceDisconnect() = 0;
 
-    /** Partner meldet Verlust per DISCONNECT-Puls (kein Ping-Pong). */
+    /** Partner meldet Verlust per DISCONNECT-Puls an lokalen Dispatcher. */
     virtual void acknowledgeConnectionLost() = 0;
 
     /** Hintergrund-Partnersuche starten (vom Dispatcher per RECONNECT_MSG). */
     virtual void performReconnect() = 0;
 
-    // 5. wird vom Dispatcher aufgerufen, wenn ein Puls vom Partner ankommt.
+    // 5. wird vom Dispatcher aufgerufen, wenn ein Partner-HEARTBEAT-Puls ankommt.
     virtual void partnerAlive() = 0;
 
     // 6. Status-Abfrage (Tür offen oder zu?)

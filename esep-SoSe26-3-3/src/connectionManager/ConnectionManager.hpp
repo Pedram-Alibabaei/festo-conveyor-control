@@ -17,34 +17,48 @@
 
 class ConnectionManager : public i_Connection {
 private:
-    // Kommunikation zum LOKALEN Dispatcher (für Not-Halt/Fehler)
     int m_localCoid;
-
-    // Die Adresse des PARTNERS (wird vom Dispatcher abgefragt)
     std::atomic<int> m_partnerCoid;
-
     AnlagenPosition m_pos;
 
-    // Die zentrale Status-Variable
-    std::atomic<bool> m_partner_Alive;
+    /** Partner-HEARTBEAT seit letztem HEARTBEATTACKT empfangen? */
+    std::atomic<bool> m_partnerAlive;
     std::atomic<bool> m_isConnected;
     std::atomic<int> m_connectGraceTicks;
 
-    // Hintergrund-Thread für name_open (blockiert nicht)
+    /** Anzahl aufeinanderfolgender Ticks ohne Partner-HEARTBEAT. */
+    std::atomic<int> m_missedHeartbeats;
+
+    static constexpr int kConnectGraceTicks = 6;
+    static constexpr int kHeartbeatSendIntervalMs = 50;
+
+    /** Erst nach so vielen verpassten Ticks wirklich trennen. Bei 50ms-Ticks
+     *  ergibt das ~100ms Erkennungszeit und ist robust gegen den leichten
+     *  Drift zwischen Sender-Thread (sleep_for) und Watchdog-Timer. */
+    static constexpr int kMaxMissedHeartbeats = 2;
+
     std::thread m_connectThread;
     std::atomic<bool> m_isSearching;
+
+    /** Eigener Thread fuer den HEARTBEAT-Versand an den Partner.
+     *  Entkoppelt den (potenziell ueber qnet blockierenden) Send vom
+     *  Dispatcher-Thread, damit der Watchdog-Tick nie eingefroren wird. */
+    std::thread m_heartbeatThread;
+    std::atomic<bool> m_heartbeatRunning;
+
     void connectionTask();
     void scheduleReconnect();
     void scheduleReconnectAsync();
-    void triggerConnectionLost(const char* reason);
+    void notifyLocalDisconnect();
+    void heartbeatSenderTask();
+    void startHeartbeatSender();
+    void stopHeartbeatSender();
 
 public:
     ConnectionManager();
     virtual ~ConnectionManager();
 
-    // Initialisierung
     void init(int localCoid, AnlagenPosition pos) override;
-
 
     void connectToPartner() override;
     void heartbeatTackt() override;
@@ -53,7 +67,6 @@ public:
     void performReconnect() override;
     void partnerAlive() override;
 
-    // Status-Abfragen für den Dispatcher
     bool isConnected() const override;
     int getPartnerCoid() const override;
 };
