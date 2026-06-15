@@ -40,6 +40,9 @@ bool HalActuators::isSwitch()         { return m_ejectorController.isSwitch(); }
 void HalActuators::openSwitch()       { m_ejectorController.openSwitch(); }
 void HalActuators::closeSwitch()      { m_ejectorController.closeSwitch(); }
 void HalActuators::pushEjector()      { m_ejectorController.pushEjector(); }
+void HalActuators::pushEjectorFor(std::uint32_t holdMs) {
+    m_ejectorController.pushEjectorFor(std::chrono::milliseconds(holdMs));
+}
 void HalActuators::pullEjector()      { m_ejectorController.pullEjector(); }
 
 // ============================================================================

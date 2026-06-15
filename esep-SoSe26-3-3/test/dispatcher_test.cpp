@@ -252,6 +252,24 @@ TEST_F(DispatcherPulseTest, PartnerEstopReleased_ForwardsAsPartnerEstopPressed) 
     EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::PARTNER_ESTOP_PRESSED));
 }
 
+TEST_F(DispatcherPulseTest, Disconnect_ClearsPartnerEstopCache) {
+    dispatcher->handlePartnerEStopPulse(halPayload(ipc::BTN_ESTOP, ipc::State::RELEASED));
+    EXPECT_TRUE(dispatcher->isPartnerEstopPressed());
+
+    sendPulse(ipc::DISCONNECT);
+    EXPECT_FALSE(dispatcher->isPartnerEstopPressed());
+}
+
+TEST_F(DispatcherPulseTest, ConnectionRestore_WaitsForPartnerEstopSync) {
+    fakeLogik->clear();
+    dispatcher->handleConnectionPulse(42);
+    EXPECT_FALSE(fakeLogik->hadEvent(logik::Event::CONNECTION_RESTORED));
+
+    dispatcher->handlePartnerEStopPulse(halPayload(ipc::BTN_ESTOP, ipc::State::PRESSED));
+    EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::CONNECTION_RESTORED));
+    EXPECT_FALSE(dispatcher->isPartnerEstopPressed());
+}
+
 TEST_F(DispatcherPulseTest, PartnerEstopPressed_ForwardsAsPartnerEstopReleased) {
     dispatcher->handlePartnerEStopPulse(halPayload(ipc::BTN_ESTOP, ipc::State::PRESSED));
     EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::PARTNER_ESTOP_RELEASED));

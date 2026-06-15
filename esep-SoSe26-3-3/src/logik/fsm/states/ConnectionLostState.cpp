@@ -13,7 +13,8 @@ void ConnectionLostState::entry() {
     std::cout << "[ConnectionLost] Entered (Ebene 0)." << std::endl;
 
     if (m_context != nullptr) {
-        level0::applyConnectionLostEntry(m_context->getDispatcher());
+        level0::applyConnectionLostEntry(m_context->getDispatcher(),
+                                         m_context->getEventManager());
     }
 }
 

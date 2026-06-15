@@ -60,6 +60,7 @@ public:
     void openSwitch() override;
     void closeSwitch() override;
     void pushEjector() override;
+    void pushEjectorFor(std::uint32_t holdMs) override;
     void pullEjector() override;
 
     // --- Ampelsteuerung ---

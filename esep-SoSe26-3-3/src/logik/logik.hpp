@@ -41,6 +41,7 @@ namespace logik {
         AnlagenPosition m_anlagenPosition;             ///< Die dieser Instanz zugewiesene physische Position (Anlage 1 oder 2)
         bool m_isPartnerChuteFull;                     ///< Statusflag für die Rutsche der jeweils anderen Teilanlage
         bool m_isMotorSlow;                            ///< Als Member-Variable statt global deklariert
+        std::uint32_t m_serviceTickCount;              ///< 10ms-Takte waehrend Service-Kalibrierung
 
     public:
         /**
@@ -131,14 +132,16 @@ namespace logik {
         // ========================================================================
 
         /**
-         * @brief Triggert die mathematische Hochrechnung der Slow-Grenzwerte manuell.
+         * @brief Triggert die mathematische Hochrechnung des Speed-Faktors (keine Slow-Tick-Schaetzung mehr).
          */
         void recalculateSlowLimits();
 
-        /**
-         * @brief Holt die aktuellen Live-Daten und triggert das permanente Speichern über den CalibManager.
-         */
-        void saveCurrentCalibration();
+        void resetServiceTickCounter();
+        void incrementServiceTickCounter();
+        std::uint32_t readAndResetServiceTickCounter();
+        void syncCalibrationToWorkpieceManager();
+
+        bool saveCurrentCalibration();
 
         // ========================================================================
         // GETTER-METHODEN FÜR COMPONENT-SHARING
@@ -175,6 +178,9 @@ namespace logik {
         * @brief Prueft beim Systemstart, ob die Kalibrierungsdatei existiert.
         */
         void checkCalibrationFile();
+
+        /** Meldet den lokalen Kalibrierungsstatus an die Partneranlage. */
+        void notifyPartnerCalibStatus();
     };
 
 } // namespace logik

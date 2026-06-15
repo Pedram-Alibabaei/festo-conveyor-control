@@ -68,6 +68,10 @@ public:
     virtual void updateWpListe(WpType type) = 0;
     virtual void sendeChuteStats(bool isVoll)=0;
     virtual void sendPartnerResetPressed() = 0;
+    virtual void sendPartnerStartRunning() = 0;
+    virtual void sendPartnerStartService() = 0;
+    virtual void sendPartnerCalibStatus(bool ready) = 0;
+    virtual void sendLocalCalibStatusToPartner() = 0;
 
     // ========================================================================
     // (Weiterleitung an HAL - ADC Zustand)
@@ -80,6 +84,9 @@ public:
 
     /** @brief Versetzt den Profilanalysator in den Kalibrierungs-Modus. */
     virtual void setAdcCalibrationsState() = 0;
+
+    /** @brief Service-Kalibrierung: Hoehensensor fuer Tick-Messung aktivieren. */
+    virtual void setServiceTimingMeasureState() = 0;
 
     virtual bool requestFileExists()= 0;
 
@@ -112,6 +119,7 @@ public:
     virtual void openSwitch()= 0;
     virtual void closeSwitch()= 0;
     virtual void pushEjector()= 0;
+    virtual void pushEjectorFor(std::uint32_t holdMs)= 0;
     virtual void pullEjector()= 0;
 
     // Ampelsteuerung (Gruen, Gelb, Rot)

@@ -1,40 +1,27 @@
 #include "RunningState.hpp"
 #include "IdleState.hpp"
 #include "logik/logik.hpp"
-#include "logik/eventManager/eventManager.hpp"
-#include "dispatcher/i_Dispatcher.hpp"
+#include "logik/fsm/level1/Level1Actions.hpp"
 #include <iostream>
 
 namespace logik {
 
 void RunningState::entry() {
-    std::cout << "[RunningState] Entered." << std::endl;
+    std::cout << "[RunningState] Entered (Ebene 1)." << std::endl;
 
-    if (!m_context || !m_context->getDispatcher()) {
+    if (m_context == nullptr) {
         return;
     }
 
-    m_context->getDispatcher()->setAdcWaitigForWpState();
-    m_context->getDispatcher()->lightGreenOn();
-
-    if (auto* em = m_context->getEventManager()) {
-        em->setServiceMode(false);
-    }
+    level1::applyRunningEntry(m_context->getDispatcher(), m_context->getEventManager());
 }
 
 void RunningState::exit() {
-    if (!m_context) {
+    if (m_context == nullptr) {
         return;
     }
 
-    if (auto* dispatcher = m_context->getDispatcher()) {
-        dispatcher->driveStop();
-    }
-
-    if (auto* em = m_context->getEventManager()) {
-        em->setMotorOn(false);
-        em->setMotorSlow(false);
-    }
+    level1::applyRunningExit(m_context->getDispatcher(), m_context->getEventManager());
 }
 
 void RunningState::handle(Event e) {
@@ -43,48 +30,34 @@ void RunningState::handle(Event e) {
     }
 
     auto* dispatcher = m_context->getDispatcher();
-    auto* em = m_context->getEventManager();
+    auto* eventManager = m_context->getEventManager();
 
     switch (e) {
-    case Event::STOP_PRESSED:
+    case Event::STOP_RELEASED:
         std::cout << "[RunningState] STOP -> IdleState" << std::endl;
         m_context->transitionTo(new IdleState());
         break;
 
     case Event::MOTOR_RUN:
         std::cout << "[RunningState] MOTOR_RUN -> Band rechts" << std::endl;
-        dispatcher->driveRight();
-        dispatcher->lightGreenBlinkSlow();
-        if (em) {
-            em->setMotorOn(true);
-        }
+        level1::applyMotorRun(dispatcher, eventManager, true);
         break;
 
     case Event::MOTOR_STOP:
     case Event::END_BLOCKED:
     case Event::CHUTE_BLOCKED:
         std::cout << "[RunningState] Band stoppen" << std::endl;
-        dispatcher->driveStop();
-        dispatcher->lightGreenOff();
-        if (em) {
-            em->setMotorOn(false);
-        }
+        level1::applyMotorStop(dispatcher, eventManager, true);
         break;
 
     case Event::SET_SLOW:
         std::cout << "[RunningState] SET_SLOW -> Langsamfahrt" << std::endl;
-        dispatcher->driveSlowRight();
-        if (em) {
-            em->setMotorSlow(true);
-        }
+        level1::applyMotorSlow(dispatcher, eventManager);
         break;
 
     case Event::HEIGHT_CLEARED:
         std::cout << "[RunningState] HEIGHT_CLEARED -> Normalfahrt" << std::endl;
-        dispatcher->driveRight();
-        if (em) {
-            em->setMotorSlow(false);
-        }
+        level1::applyHeightCleared(dispatcher, eventManager);
         break;
 
     default:

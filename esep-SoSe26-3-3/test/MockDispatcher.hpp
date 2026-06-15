@@ -32,6 +32,10 @@ public:
     MOCK_METHOD(void, openJunction, (), (override));
     MOCK_METHOD(void, closeJunction, (), (override));
 
+    MOCK_METHOD(void, pushEjector, (), (override));
+    MOCK_METHOD(void, pushEjectorFor, (std::uint32_t holdMs), (override));
+    MOCK_METHOD(void, pullEjector, (), (override));
+
     MOCK_METHOD(void, lightGreenOn, (), (override));
     MOCK_METHOD(void, lightGreenOff, (), (override));
     MOCK_METHOD(void, lightGreenBlinkFast, (), (override));
@@ -66,6 +70,17 @@ public:
     MOCK_METHOD(void, turnLEDQ2Off, (), (override));
     MOCK_METHOD(void, turnLEDQ2BlinkFast, (), (override));
     MOCK_METHOD(void, turnLEDQ2BlinkSlow, (), (override));
+
+    MOCK_METHOD(void, sendPartnerResetPressed, (), (override));
+    MOCK_METHOD(void, sendPartnerStartRunning, (), (override));
+    MOCK_METHOD(void, sendPartnerStartService, (), (override));
+    MOCK_METHOD(void, sendPartnerCalibStatus, (bool ready), (override));
+    MOCK_METHOD(void, sendLocalCalibStatusToPartner, (), (override));
+    MOCK_METHOD(void, forwardCalibrationToHal, (std::uint16_t, std::uint16_t, std::uint32_t), (override));
+    MOCK_METHOD(bool, requestFileExists, (), (override));
+    MOCK_METHOD(bool, isEstopPressed, (), (override));
+    MOCK_METHOD(bool, isPartnerEstopPressed, (), (const, override));
+    MOCK_METHOD(void, sendeChuteStats, (bool), (override));
 
     MOCK_METHOD(void, turnAllOff, (), (override));
 };

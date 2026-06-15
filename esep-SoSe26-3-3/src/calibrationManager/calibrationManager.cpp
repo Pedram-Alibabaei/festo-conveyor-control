@@ -9,8 +9,23 @@
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
+#include <unistd.h>
+#include <limits.h>
 
 namespace {
+
+std::string resolveCalibrationPath(const std::string& filePath) {
+    if (!filePath.empty() && filePath[0] == '/') {
+        return filePath;
+    }
+
+    char cwd[PATH_MAX];
+    if (getcwd(cwd, sizeof(cwd)) != nullptr) {
+        return std::string(cwd) + "/" + filePath;
+    }
+
+    return filePath;
+}
 
 constexpr std::uint16_t ADC_MAX_VALUE = 4095;
 constexpr std::uint32_t MAX_SEGMENT_TICKS = 600000;
@@ -34,6 +49,18 @@ bool assignCalibrationValue(const std::string& key, std::uint32_t val, Calibrati
     }
     if (key == "ticks_HeightB_to_HeightC_Slow") {
         data.ticks_HeightB_to_HeightC_Slow = val;
+        return true;
+    }
+    if (key == "ticks_HeightC_to_EjectorB_Slow") {
+        data.ticks_HeightC_to_EjectorB_Slow = val;
+        return true;
+    }
+    if (key == "ticks_EjectorB_to_EjectorC_Slow") {
+        data.ticks_EjectorB_to_EjectorC_Slow = val;
+        return true;
+    }
+    if (key == "ticks_EjectorC_to_ChuteB_Slow") {
+        data.ticks_EjectorC_to_ChuteB_Slow = val;
         return true;
     }
     if (key == "ticks_EntryC_to_HeightB_Normal") {
@@ -66,40 +93,51 @@ bool assignCalibrationValue(const std::string& key, std::uint32_t val, Calibrati
 
 bool isCalibrationDataValid(const CalibrationData& data) {
     if (data.adc_emptyBelt == 0 || data.adc_emptyBelt > ADC_MAX_VALUE) {
+        std::cerr << "[Calib-Manager] Validierung fehlgeschlagen: adc_emptyBelt="
+                  << data.adc_emptyBelt << std::endl;
         return false;
     }
     if (data.adc_flatCenter == 0 || data.adc_flatCenter > ADC_MAX_VALUE) {
+        std::cerr << "[Calib-Manager] Validierung fehlgeschlagen: adc_flatCenter="
+                  << data.adc_flatCenter << std::endl;
         return false;
     }
-    if (data.adc_flatCenter <= data.adc_emptyBelt) {
+    if (data.adc_flatCenter >= data.adc_emptyBelt) {
+        std::cerr << "[Calib-Manager] Validierung fehlgeschlagen: adc_flatCenter >= adc_emptyBelt ("
+                  << data.adc_flatCenter << " >= " << data.adc_emptyBelt
+                  << ", erwartet: flatCenter < emptyBelt)" << std::endl;
         return false;
     }
     if (data.limit_minSamplesForClass == 0) {
+        std::cerr << "[Calib-Manager] Validierung fehlgeschlagen: limit_minSamplesForClass=0"
+                  << std::endl;
         return false;
     }
 
-    const std::uint32_t segmentTicks[] = {
-        data.ticks_EntryC_to_HeightB_Normal,
-        data.ticks_HeightB_to_HeightC_Normal,
-        data.ticks_HeightC_to_EjectorB_Normal,
-        data.ticks_EjectorB_to_EjectorC_Normal,
-        data.ticks_EjectorC_to_EndB_Normal,
-        data.ticks_EndB_to_EndC_Normal,
-        data.ticks_EntryC_to_HeightB_Slow,
-        data.ticks_HeightB_to_HeightC_Slow
+    struct SegmentCheck {
+        const char* name;
+        std::uint32_t value;
     };
 
-    for (std::uint32_t ticks : segmentTicks) {
-        if (ticks == 0 || ticks > MAX_SEGMENT_TICKS) {
+    const SegmentCheck segmentTicks[] = {
+        {"ticks_EntryC_to_HeightB_Normal", data.ticks_EntryC_to_HeightB_Normal},
+        {"ticks_HeightB_to_HeightC_Normal", data.ticks_HeightB_to_HeightC_Normal},
+        {"ticks_HeightC_to_EjectorB_Normal", data.ticks_HeightC_to_EjectorB_Normal},
+        {"ticks_EjectorB_to_EjectorC_Normal", data.ticks_EjectorB_to_EjectorC_Normal},
+        {"ticks_EjectorC_to_EndB_Normal", data.ticks_EjectorC_to_EndB_Normal},
+        {"ticks_EntryC_to_HeightB_Slow", data.ticks_EntryC_to_HeightB_Slow},
+        {"ticks_HeightB_to_HeightC_Slow", data.ticks_HeightB_to_HeightC_Slow},
+        {"ticks_HeightC_to_EjectorB_Slow", data.ticks_HeightC_to_EjectorB_Slow},
+        {"ticks_EjectorB_to_EjectorC_Slow", data.ticks_EjectorB_to_EjectorC_Slow},
+        {"ticks_EjectorC_to_ChuteB_Slow", data.ticks_EjectorC_to_ChuteB_Slow}
+    };
+
+    for (const SegmentCheck& segment : segmentTicks) {
+        if (segment.value == 0 || segment.value > MAX_SEGMENT_TICKS) {
+            std::cerr << "[Calib-Manager] Validierung fehlgeschlagen: "
+                      << segment.name << "=" << segment.value << std::endl;
             return false;
         }
-    }
-
-    if (data.ticks_EntryC_to_HeightB_Slow < data.ticks_EntryC_to_HeightB_Normal) {
-        return false;
-    }
-    if (data.ticks_HeightB_to_HeightC_Slow < data.ticks_HeightB_to_HeightC_Normal) {
-        return false;
     }
 
     return true;
@@ -152,9 +190,11 @@ bool parseCalibrationFile(std::istream& file, CalibrationData& data) {
 
 } // namespace
 
+const char CalibrationManager::CALIBRATION_FILE_NAME[] = "festo_calabrationt_team_3_3.txt";
+
 CalibrationManager::CalibrationManager(const std::string& filePath)
     : m_logik(nullptr),
-      m_filePath(filePath)
+      m_filePath(resolveCalibrationPath(filePath))
 {
     std::cout << "[Calib-Manager] Instanziert mit Pfad: " << m_filePath << std::endl;
 }
@@ -249,11 +289,21 @@ bool CalibrationManager::saveCalibrationData(const CalibrationData& data) {
     file << "ticks_EjectorC_to_EndB_Normal=" << data.ticks_EjectorC_to_EndB_Normal << "\n";
     file << "ticks_EndB_to_EndC_Normal=" << data.ticks_EndB_to_EndC_Normal << "\n\n";
 
-    file << "[Slow-Speed-Base-Ticks]\n";
+    file << "[Slow-Speed-Ticks]\n";
     file << "ticks_EntryC_to_HeightB_Slow=" << data.ticks_EntryC_to_HeightB_Slow << "\n";
     file << "ticks_HeightB_to_HeightC_Slow=" << data.ticks_HeightB_to_HeightC_Slow << "\n";
+    file << "ticks_HeightC_to_EjectorB_Slow=" << data.ticks_HeightC_to_EjectorB_Slow << "\n";
+    file << "ticks_EjectorB_to_EjectorC_Slow=" << data.ticks_EjectorB_to_EjectorC_Slow << "\n";
+    file << "ticks_EjectorC_to_ChuteB_Slow=" << data.ticks_EjectorC_to_ChuteB_Slow << "\n";
 
+    file.flush();
     file.close();
+
+    if (!file.good()) {
+        std::cerr << "[Calib-Manager] CRITICAL: Schreiben fehlgeschlagen: " << m_filePath << std::endl;
+        return false;
+    }
+
     m_cachedData = data;
     m_validDataCached = true;
     std::cout << "[Calib-Manager] Alle Kalibrierungsdaten dauerhaft gesichert in: " << m_filePath << std::endl;

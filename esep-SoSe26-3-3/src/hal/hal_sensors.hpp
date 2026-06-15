@@ -38,6 +38,7 @@ namespace hal {
         void setAdcIdelState() override;
         void setAdcWaitigForWpState() override;
         void setAdcCalibrationsState() override;
+        void setServiceTimingMeasureState() override;
         void setAdcTransportPaused(bool paused) override;
 
         /**

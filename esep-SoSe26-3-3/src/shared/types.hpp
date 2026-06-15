@@ -88,16 +88,16 @@ struct CalibrationData {
 
     std::uint32_t ticks_EntryC_to_HeightB_Slow = 0;
     std::uint32_t ticks_HeightB_to_HeightC_Slow = 0;
+    std::uint32_t ticks_HeightC_to_EjectorB_Slow = 0;
+    std::uint32_t ticks_EjectorB_to_EjectorC_Slow = 0;
+    std::uint32_t ticks_EjectorC_to_ChuteB_Slow = 0;
+
     std::uint32_t ticks_EntryC_to_HeightB_Normal = 0;
     std::uint32_t ticks_HeightB_to_HeightC_Normal = 0;
     std::uint32_t ticks_HeightC_to_EjectorB_Normal = 0;
     std::uint32_t ticks_EjectorB_to_EjectorC_Normal = 0;
     std::uint32_t ticks_EjectorC_to_EndB_Normal = 0;
     std::uint32_t ticks_EndB_to_EndC_Normal = 0;
-
-    // Mathematisch über den Geschwindigkeitsfaktor hochgerechnete Werte
-    std::uint32_t ticks_HeightC_to_EjectorB_Slow = 0;
-    std::uint32_t ticks_EjectorC_to_EndB_Slow = 0;
 };
 
 #endif // TYPES_HPP_

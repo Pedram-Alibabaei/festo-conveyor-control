@@ -8,6 +8,8 @@ namespace logik {
 
 enum class L1StateId {
     IDLE,
+    READY_FOR_SERVICE,
+    READY_FOR_RUN,
     RUNNING,
     SERVICE
 };

@@ -21,7 +21,8 @@ namespace logik {
           m_eventManager(nullptr),
           m_anlagenPosition(AnlagenPosition::UNKNOWN_POSITION),
           m_isPartnerChuteFull(false),
-          m_isMotorSlow(false)
+          m_isMotorSlow(false),
+          m_serviceTickCount(0)
     {
         std::cout << "[Logik] System-Instanz inklusive ErrorHandler erfolgreich konstruiert." << std::endl;
     }
@@ -56,6 +57,8 @@ bool Logik::isEstopSafetyActive() const {
     void Logik::workpieceTypeFromHS(WpType type) {
         if (m_eventManager != nullptr) {
            m_eventManager->handleEvent(logik::Event::HEIGHT_CLEARED);
+        }
+        if (m_eventManager != nullptr && !m_eventManager->isServiceMode()) {
             m_wpManager->handleSensorSignal(logik::Event::HEIGHT_CLEARED, type);
         }
     }
@@ -108,19 +111,39 @@ void Logik::loadCalibrationData() {
 
     m_wpManager->setCalibrationData(m_calibData);
 
+    notifyPartnerCalibStatus();
 }
 
 void Logik::recalculateSlowLimits() {
-    double m_speedFactor;
-    if (m_calibData.ticks_EntryC_to_HeightB_Normal > 0) {
-       m_speedFactor = (double)m_calibData.ticks_EntryC_to_HeightB_Slow /
-                        (double)m_calibData.ticks_EntryC_to_HeightB_Normal;
+    double speedFactor = 1.0;
+    if (m_calibData.ticks_EntryC_to_HeightB_Normal > 0
+        && m_calibData.ticks_EntryC_to_HeightB_Slow > 0) {
+        speedFactor = static_cast<double>(m_calibData.ticks_EntryC_to_HeightB_Slow)
+                    / static_cast<double>(m_calibData.ticks_EntryC_to_HeightB_Normal);
     }
-        m_wpManager->setSpeedFactor(m_speedFactor);
-    m_calibData.ticks_HeightC_to_EjectorB_Slow = m_calibData.ticks_HeightC_to_EjectorB_Normal * m_speedFactor;
-    m_calibData.ticks_EjectorC_to_EndB_Slow    = m_calibData.ticks_EjectorC_to_EndB_Normal * m_speedFactor;
 
-    std::cout << "[Logik] Live-Grenzwerte neu berechnet. Speed-Faktor: " << m_speedFactor << std::endl;
+    m_wpManager->setSpeedFactor(speedFactor);
+
+    std::cout << "[Logik] Speed-Faktor aktualisiert: " << speedFactor
+              << " (Slow-Ticks ab HeightC werden gemessen)." << std::endl;
+}
+
+void Logik::resetServiceTickCounter() {
+    m_serviceTickCount = 0;
+}
+
+void Logik::incrementServiceTickCounter() {
+    ++m_serviceTickCount;
+}
+
+std::uint32_t Logik::readAndResetServiceTickCounter() {
+    const std::uint32_t value = m_serviceTickCount;
+    m_serviceTickCount = 0;
+    return value;
+}
+
+void Logik::syncCalibrationToWorkpieceManager() {
+    m_wpManager->setCalibrationData(m_calibData);
 }
 
 void Logik::setLiveAdcCalibration(uint16_t emptyBelt, uint16_t flatCenter, uint32_t minSamples) {
@@ -132,13 +155,26 @@ void Logik::setLiveAdcCalibration(uint16_t emptyBelt, uint16_t flatCenter, uint3
     m_wpManager->setCalibrationData(m_calibData);
 }
 
-void Logik::saveCurrentCalibration() {
-    if (m_calibManager == nullptr) { return; }
+bool Logik::saveCurrentCalibration() {
+    if (m_calibManager == nullptr) {
+        return false;
+    }
 
-    // Limits vor dem Speichern aktualisieren
     recalculateSlowLimits();
 
-    m_calibManager->saveCalibrationData(m_calibData);
+    const bool saved = m_calibManager->saveCalibrationData(m_calibData);
+    if (saved) {
+        notifyPartnerCalibStatus();
+    } else {
+        std::cerr << "[Logik] Kalibrierung konnte nicht gespeichert werden." << std::endl;
+    }
+    return saved;
+}
+
+void Logik::notifyPartnerCalibStatus() {
+    if (m_dispatcher != nullptr) {
+        m_dispatcher->sendLocalCalibStatusToPartner();
+    }
 }
 
 void Logik::checkCalibrationFile() {
@@ -152,6 +188,7 @@ void Logik::checkCalibrationFile() {
     else {
         std::cout << "[Logik] Keine gueltige Kalibrierungsdatei! Feuere Event: DATA_NOT_EXIST." << std::endl;
         this->processEvent(logik::Event::DATA_NOT_EXIST);
+        notifyPartnerCalibStatus();
     }
 }
 
