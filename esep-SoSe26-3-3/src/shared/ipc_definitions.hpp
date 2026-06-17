@@ -111,6 +111,7 @@ namespace ipc {
         CALIB_STATUS          = _PULSE_CODE_MINAVAIL + 7, // Kalibrierungsstatus melden
         START_RUNNING         = _PULSE_CODE_MINAVAIL + 8, // Gemeinsamer Running-Start
         START_SERVICE         = _PULSE_CODE_MINAVAIL + 9, // Gemeinsamer Service-Start
+        HANDOVER_WP_LOST      = _PULSE_CODE_MINAVAIL + 10, // Uebergabe fehlgeschlagen (WP verloren)
  };
 
     enum State:uint16_t{
@@ -150,8 +151,7 @@ namespace ipc {
         TICK_HEIGHT_B_TO_HEIGHT_C_NORMAL    = 14,
         TICK_HEIGHT_C_TO_EJECTOR_B_NORMAL   = 15,
         TICK_EJECTOR_B_TO_EJECTOR_C_NORMAL  = 16,
-        TICK_EJECTOR_C_TO_END_B_NORMAL      = 17,
-        TICK_END_B_TO_END_C_NORMAL          = 18
+        TICK_EJECTOR_C_TO_END_B_NORMAL      = 17
     };
 
 

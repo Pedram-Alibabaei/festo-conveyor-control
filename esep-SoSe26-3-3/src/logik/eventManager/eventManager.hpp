@@ -63,6 +63,7 @@ private:
     std::chrono::steady_clock::time_point m_startPressedStartTime;
     std::chrono::steady_clock::time_point m_partnerStartPressedTime;
     bool m_startButtonHeld = false;
+    bool m_entryDeferredWhileEndBlocked = false;
 
     bool canRouteToBandSubsystems() const;
     bool isFsmPassthroughEvent(Event e) const;
@@ -72,6 +73,7 @@ private:
     void routeToWorkpieceManager(Event e);
     void routeToFsm(Event e);
     std::vector<Event> preprocessForFsm(Event e);
+    void resumeEntryAfterEndCleared(std::vector<Event>& fsmEvents);
 
 public:
     explicit EventManager(Logik* context);

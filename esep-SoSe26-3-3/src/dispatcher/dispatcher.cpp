@@ -422,42 +422,24 @@ void Dispatcher::handleNetworkPulse(uint32_t payload) {
     uint16_t sensor_id = ipc::decodeSensorID(payload);
     uint16_t message_type = ipc::decodeSensorState(payload);
 
-    if (sensor_id == ipc::BTN_START) {
-        if (kVerboseNetworkPulseLog) {
-            std::cout << "[Dispatcher] Partner-START: "
-                      << (message_type == ipc::State::PRESSED ? "PRESSED" : "RELEASED") << std::endl;
-        }
-        m_logik->processEvent(message_type == ipc::State::PRESSED ? logik::Event::PARTNER_START_PRESSED : logik::Event::PARTNER_START_RELEASED);
-    }
-    else if (sensor_id == ipc::BTN_RESET) {
-        if (kVerboseNetworkPulseLog) {
-            std::cout << "[Dispatcher] Partner-RESET: "
-                      << (message_type == ipc::State::PRESSED ? "PRESSED" : "RELEASED") << std::endl;
-        }
-        m_logik->processEvent(message_type == ipc::State::PRESSED ? logik::Event::PARTNER_RESET_PRESSED : logik::Event::PARTNER_RESET_RELEASED);
-    }
-    else if (sensor_id == ipc::NetworkMessage::REQ_RECEIVE) {
-        if (kVerboseNetworkPulseLog) {
-            std::cout << "[Dispatcher] Netzwerk: REQ_TO_GIVE_WP" << std::endl;
-        }
+    // Netzwerk-Nachrichten ZUERST: REQ_RECEIVE/BTN_START etc. teilen sich MINAVAIL+1!
+    // Nur sensor_id pruefen (state=0), NICHT message_type: PRESSED/BLOCKED/CLEARED
+    // nutzen dieselben Werte wie NetworkMessage und wuerden sonst Fehltrigger erzeugen.
+    if (sensor_id == ipc::NetworkMessage::REQ_RECEIVE) {
+        std::cout << "[Dispatcher] Netzwerk: REQ_TO_GIVE_WP" << std::endl;
         m_logik->processEvent(logik::Event::REQ_TO_GIVE_WP);
     }
     else if (sensor_id == ipc::NetworkMessage::READY_RECEIVE) {
-        if (kVerboseNetworkPulseLog) {
-            std::cout << "[Dispatcher] Netzwerk: READY_TO_RECEIVE_WP" << std::endl;
-        }
+        std::cout << "[Dispatcher] Netzwerk: READY_TO_RECEIVE_WP" << std::endl;
         m_logik->processEvent(logik::Event::READY_TO_RECEIVE_WP);
     }
-    else if (sensor_id == ipc::NetworkMessage::CHUTE){
-        if (kVerboseNetworkPulseLog) {
-            std::cout << "[Dispatcher] Partner-Rutsche: "
-                      << (message_type == ipc::VOLL ? "VOLL" : "LEER") << std::endl;
-        }
-        bool isFull = (message_type == ipc::VOLL);
-        if (m_logik != nullptr) {
-            m_logik->setPartnerChuteStatus(isFull);
-        }
-
+    else if (sensor_id == ipc::NetworkMessage::HANDOVER_SUCCESSFUL && message_type == 0) {
+        std::cout << "[Dispatcher] Netzwerk: HANDOVER_SUCCESSFUL" << std::endl;
+        m_logik->processEvent(logik::Event::PARTNER_HANDOVER_COMPLETE);
+    }
+    else if (sensor_id == ipc::NetworkMessage::HANDOVER_WP_LOST && message_type == 0) {
+        std::cout << "[Dispatcher] Netzwerk: HANDOVER_WP_LOST" << std::endl;
+        m_logik->processEvent(logik::Event::PARTNER_HANDOVER_WP_LOST);
     }
     else if (message_type == ipc::NetworkMessage::ESTOP_STATUS_QUERY) {
         std::cout << "[Dispatcher] Partner fragt ESTOP-Status an -> antworte." << std::endl;
@@ -483,6 +465,30 @@ void Dispatcher::handleNetworkPulse(uint32_t payload) {
         std::cout << "[Dispatcher] Partner-Befehl: START_SERVICE" << std::endl;
         m_logik->processEvent(logik::Event::PARTNER_START_SERVICE);
     }
+    else if (sensor_id == ipc::NetworkMessage::CHUTE) {
+        if (kVerboseNetworkPulseLog) {
+            std::cout << "[Dispatcher] Partner-Rutsche: "
+                      << (message_type == ipc::VOLL ? "VOLL" : "LEER") << std::endl;
+        }
+        bool isFull = (message_type == ipc::VOLL);
+        if (m_logik != nullptr) {
+            m_logik->setPartnerChuteStatus(isFull);
+        }
+    }
+    else if (sensor_id == ipc::BTN_START) {
+        if (kVerboseNetworkPulseLog) {
+            std::cout << "[Dispatcher] Partner-START: "
+                      << (message_type == ipc::State::PRESSED ? "PRESSED" : "RELEASED") << std::endl;
+        }
+        m_logik->processEvent(message_type == ipc::State::PRESSED ? logik::Event::PARTNER_START_PRESSED : logik::Event::PARTNER_START_RELEASED);
+    }
+    else if (sensor_id == ipc::BTN_RESET) {
+        if (kVerboseNetworkPulseLog) {
+            std::cout << "[Dispatcher] Partner-RESET: "
+                      << (message_type == ipc::State::PRESSED ? "PRESSED" : "RELEASED") << std::endl;
+        }
+        m_logik->processEvent(message_type == ipc::State::PRESSED ? logik::Event::PARTNER_RESET_PRESSED : logik::Event::PARTNER_RESET_RELEASED);
+    }
     else {
         std::cout << "[Dispatcher] Unbekannte Partner-Nachricht id=" << sensor_id
                   << " state=" << message_type << std::endl;
@@ -500,17 +506,47 @@ void Dispatcher::sendWorkpieceInfo(int id, WpType type) {
 }
 
 void Dispatcher::RequestToReceiveWp() {
-    if (m_partnerCoid != -1) {
-        uint32_t payload = ipc::encodeHalPayload(0, ipc::NetworkMessage::REQ_RECEIVE);
-        MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_MSG, payload);
+    if (m_partnerCoid == -1) {
+        std::cout << "[Dispatcher] REQ_TO_GIVE nicht gesendet (kein Partner)." << std::endl;
+        return;
     }
+    const uint32_t payload = ipc::encodeHalPayload(
+        static_cast<uint16_t>(ipc::NetworkMessage::REQ_RECEIVE), 0);
+    MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_MSG, payload);
+    std::cout << "[Dispatcher] REQ_TO_GIVE an Partner gesendet." << std::endl;
 }
 
 void Dispatcher::readyToReceiveWp() {
-    if (m_partnerCoid != -1) {
-        uint32_t payload = ipc::encodeHalPayload(0, ipc::NetworkMessage::READY_RECEIVE);
-        MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_MSG, payload);
+    if (m_partnerCoid == -1) {
+        std::cout << "[Dispatcher] READY_TO_RECEIVE nicht gesendet (kein Partner)." << std::endl;
+        return;
     }
+    const uint32_t payload = ipc::encodeHalPayload(
+        static_cast<uint16_t>(ipc::NetworkMessage::READY_RECEIVE), 0);
+    MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_MSG, payload);
+    std::cout << "[Dispatcher] READY_TO_RECEIVE an Partner gesendet." << std::endl;
+}
+
+void Dispatcher::sendHandoverSuccessful() {
+    if (m_partnerCoid == -1) {
+        std::cout << "[Dispatcher] HANDOVER_SUCCESSFUL nicht gesendet (kein Partner)." << std::endl;
+        return;
+    }
+    const uint32_t payload = ipc::encodeHalPayload(
+        static_cast<uint16_t>(ipc::NetworkMessage::HANDOVER_SUCCESSFUL), 0);
+    MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_MSG, payload);
+    std::cout << "[Dispatcher] HANDOVER_SUCCESSFUL an Partner gesendet." << std::endl;
+}
+
+void Dispatcher::sendHandoverWpLost() {
+    if (m_partnerCoid == -1) {
+        std::cout << "[Dispatcher] HANDOVER_WP_LOST nicht gesendet (kein Partner)." << std::endl;
+        return;
+    }
+    const uint32_t payload = ipc::encodeHalPayload(
+        static_cast<uint16_t>(ipc::NetworkMessage::HANDOVER_WP_LOST), 0);
+    MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_MSG, payload);
+    std::cout << "[Dispatcher] HANDOVER_WP_LOST an Partner gesendet." << std::endl;
 }
 
 void Dispatcher::updateWpListe(WpType type) {

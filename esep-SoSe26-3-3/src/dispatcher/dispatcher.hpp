@@ -117,6 +117,8 @@ public:
     void sendWorkpieceInfo(int id, WpType type) override;
     void RequestToReceiveWp() override;
     void readyToReceiveWp() override;
+    void sendHandoverSuccessful() override;
+    void sendHandoverWpLost() override;
     void updateWpListe(WpType type) override;
 
     bool requestFileExists() override;

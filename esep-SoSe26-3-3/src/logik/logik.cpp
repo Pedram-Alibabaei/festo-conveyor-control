@@ -76,7 +76,14 @@ bool Logik::isEstopSafetyActive() const {
 void Logik::workpieceInfo(int id, WpType type) {
     if (m_anlagenPosition == AnlagenPosition::HINTEN_ANLAGE_2) {
         if (m_wpManager != nullptr) {
-            m_wpManager->addNetworkWorkpiece(id, type);
+            m_wpManager->storePendingNetworkWorkpiece(id, type);
+        }
+        if (m_eventManager != nullptr
+            && !m_eventManager->isServiceMode()
+            && !m_eventManager->isErrorActive()) {
+            std::cout << "[Logik] Anlage 2: WP-Info von Anlage 1 -> MOTOR_RUN, "
+                      << "warte auf ENTRY_BLOCKED." << std::endl;
+            m_eventManager->handleEvent(logik::Event::MOTOR_RUN);
         }
     }
 }

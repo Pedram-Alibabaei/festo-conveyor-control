@@ -28,12 +28,6 @@ void ErrorState::exit() {
 void ErrorState::enterPendingUnacknowledged() {
     m_subState = SubState::PendingUnacknowledged;
 
-    if (m_context != nullptr && m_context->getEventManager() != nullptr) {
-        auto* eventManager = m_context->getEventManager();
-        m_resumeMotorOn = eventManager->isMotorOn();
-        m_resumeMotorSlow = eventManager->isMotorSlow();
-    }
-
     if (m_context != nullptr && m_context->getDispatcher() != nullptr) {
         auto* dispatcher = m_context->getDispatcher();
         dispatcher->driveStop();
@@ -85,18 +79,9 @@ void ErrorState::leaveErrorState() {
     }
 
     bool chuteWarningActive = false;
-    bool resumeMotor = false;
-    bool resumeSlow = false;
     if (auto* eventManager = m_context->getEventManager()) {
         eventManager->setErrorActive(false);
         chuteWarningActive = eventManager->isChuteFull();
-        resumeMotor = m_resumeMotorOn;
-        resumeSlow = m_resumeMotorSlow;
-        if (auto* wpManager = m_context->getWorkpieceManager()) {
-            resumeMotor = resumeMotor && wpManager->hasActiveWorkpieces();
-        } else {
-            resumeMotor = false;
-        }
     }
 
     std::cout << "[ErrorState] Fehler abgeschlossen -> ActiveRegion (H*)" << std::endl;
@@ -112,12 +97,18 @@ void ErrorState::leaveErrorState() {
             eventManager->handleEvent(Event::WARNING_CLEARED);
         }
 
-        if (resumeMotor) {
-            std::cout << "[ErrorState] Aktive WPs vorhanden -> Motor "
-                      << (resumeSlow ? "Slow" : "Fast") << " fortsetzen" << std::endl;
-            eventManager->handleEvent(Event::MOTOR_RUN);
-            if (resumeSlow) {
-                eventManager->handleEvent(Event::SET_SLOW);
+        if (auto* wpManager = m_context->getWorkpieceManager()) {
+            if (wpManager->hasActiveWorkpieces()) {
+                const bool useSlow = wpManager->shouldUseSlowMotor();
+                std::cout << "[ErrorState] Aktive WPs vorhanden -> Motor "
+                          << (useSlow ? "Slow" : "Fast") << std::endl;
+                eventManager->handleEvent(Event::MOTOR_RUN);
+                if (useSlow) {
+                    eventManager->handleEvent(Event::SET_SLOW);
+                }
+            } else {
+                std::cout << "[ErrorState] Keine aktiven WPs -> BAND_EMPTY" << std::endl;
+                eventManager->handleEvent(Event::BAND_EMPTY);
             }
         }
     }

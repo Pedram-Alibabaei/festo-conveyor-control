@@ -65,6 +65,8 @@ public:
     virtual void sendWorkpieceInfo(int id, WpType type) = 0;
     virtual void RequestToReceiveWp() = 0;
     virtual void readyToReceiveWp() = 0;
+    virtual void sendHandoverSuccessful() = 0;
+    virtual void sendHandoverWpLost() = 0;
     virtual void updateWpListe(WpType type) = 0;
     virtual void sendeChuteStats(bool isVoll)=0;
     virtual void sendPartnerResetPressed() = 0;

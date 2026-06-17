@@ -22,8 +22,6 @@ private:
     };
 
     SubState m_subState = SubState::PendingUnacknowledged;
-    bool m_resumeMotorOn = false;
-    bool m_resumeMotorSlow = false;
 
     void enterPendingUnacknowledged();
     void enterPendingAcknowledged();

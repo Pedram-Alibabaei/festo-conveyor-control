@@ -21,6 +21,8 @@ public:
     MOCK_METHOD(void, workpieceInfo, (int id, WpType type), (override));
     MOCK_METHOD(void, RequestToReceiveWp, (), (override));
     MOCK_METHOD(void, readyToReceiveWp, (), (override));
+    MOCK_METHOD(void, sendHandoverSuccessful, (), (override));
+    MOCK_METHOD(void, sendHandoverWpLost, (), (override));
     MOCK_METHOD(void, updateWpListe, (WpType type), (override));
 
     MOCK_METHOD(void, driveRight, (), (override));

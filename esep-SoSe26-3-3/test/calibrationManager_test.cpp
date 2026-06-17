@@ -18,7 +18,7 @@ CalibrationData makeValidCalibrationData() {
     data.ticks_HeightC_to_EjectorB_Normal = 300;
     data.ticks_EjectorB_to_EjectorC_Normal = 80;
     data.ticks_EjectorC_to_EndB_Normal = 250;
-    data.ticks_EndB_to_EndC_Normal = 100;
+    data.ticks_EntryB_to_EntryC_Normal = 50;
     data.ticks_EntryC_to_HeightB_Slow = 400;
     data.ticks_HeightB_to_HeightC_Slow = 300;
     data.ticks_HeightC_to_EjectorB_Slow = 360;
@@ -36,7 +36,7 @@ void expectCalibrationDataEqual(const CalibrationData& expected, const Calibrati
     EXPECT_EQ(expected.ticks_HeightC_to_EjectorB_Normal, actual.ticks_HeightC_to_EjectorB_Normal);
     EXPECT_EQ(expected.ticks_EjectorB_to_EjectorC_Normal, actual.ticks_EjectorB_to_EjectorC_Normal);
     EXPECT_EQ(expected.ticks_EjectorC_to_EndB_Normal, actual.ticks_EjectorC_to_EndB_Normal);
-    EXPECT_EQ(expected.ticks_EndB_to_EndC_Normal, actual.ticks_EndB_to_EndC_Normal);
+    EXPECT_EQ(expected.ticks_EntryB_to_EntryC_Normal, actual.ticks_EntryB_to_EntryC_Normal);
     EXPECT_EQ(expected.ticks_EntryC_to_HeightB_Slow, actual.ticks_EntryC_to_HeightB_Slow);
     EXPECT_EQ(expected.ticks_HeightB_to_HeightC_Slow, actual.ticks_HeightB_to_HeightC_Slow);
     EXPECT_EQ(expected.ticks_HeightC_to_EjectorB_Slow, actual.ticks_HeightC_to_EjectorB_Slow);
@@ -109,7 +109,7 @@ TEST_F(CalibrationManagerTest, InvalidAdcOrder_FileExistsReturnsFalse) {
         "ticks_HeightC_to_EjectorB_Normal=300\n"
         "ticks_EjectorB_to_EjectorC_Normal=80\n"
         "ticks_EjectorC_to_EndB_Normal=250\n"
-        "ticks_EndB_to_EndC_Normal=100\n"
+        "ticks_EntryB_to_EntryC_Normal=50\n"
         "ticks_EntryC_to_HeightB_Slow=400\n"
         "ticks_HeightB_to_HeightC_Slow=300\n"
         "ticks_HeightC_to_EjectorB_Slow=360\n"
@@ -130,7 +130,7 @@ TEST_F(CalibrationManagerTest, SlowTicksTooSmall_FileExistsReturnsFalse) {
         "ticks_HeightC_to_EjectorB_Normal=300\n"
         "ticks_EjectorB_to_EjectorC_Normal=80\n"
         "ticks_EjectorC_to_EndB_Normal=250\n"
-        "ticks_EndB_to_EndC_Normal=100\n"
+        "ticks_EntryB_to_EntryC_Normal=50\n"
         "ticks_EntryC_to_HeightB_Slow=100\n"
         "ticks_HeightB_to_HeightC_Slow=300\n"
         "ticks_HeightC_to_EjectorB_Slow=360\n"
@@ -194,7 +194,7 @@ TEST_F(CalibrationManagerTest, FileWithSectionHeaders_IsAccepted) {
         "ticks_HeightC_to_EjectorB_Normal=300\n"
         "ticks_EjectorB_to_EjectorC_Normal=80\n"
         "ticks_EjectorC_to_EndB_Normal=250\n"
-        "ticks_EndB_to_EndC_Normal=100\n"
+        "ticks_EntryB_to_EntryC_Normal=50\n"
         "[Slow-Speed-Base-Ticks]\n"
         "ticks_EntryC_to_HeightB_Slow=400\n"
         "ticks_HeightB_to_HeightC_Slow=300\n"

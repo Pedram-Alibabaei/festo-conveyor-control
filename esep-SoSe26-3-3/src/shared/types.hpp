@@ -98,7 +98,6 @@ struct CalibrationData {
     std::uint32_t ticks_HeightC_to_EjectorB_Normal = 0;
     std::uint32_t ticks_EjectorB_to_EjectorC_Normal = 0;
     std::uint32_t ticks_EjectorC_to_EndB_Normal = 0;
-    std::uint32_t ticks_EndB_to_EndC_Normal = 0;
 };
 
 #endif // TYPES_HPP_

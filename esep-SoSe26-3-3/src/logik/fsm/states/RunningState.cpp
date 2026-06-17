@@ -57,7 +57,9 @@ void RunningState::enterRunningWarning() {
 void RunningState::enterEntryFree() {
     m_entryState = EntrySubState::Free;
 
-    if (m_context != nullptr && m_context->getDispatcher() != nullptr) {
+    if (m_context != nullptr && m_context->getDispatcher() != nullptr
+        && m_context->getEventManager() != nullptr
+        && m_context->getEventManager()->context().position == AnlagenPosition::VORN_ANLAGE_1) {
         m_context->getDispatcher()->turnLEDQ1On();
     }
     if (m_context != nullptr && m_context->getEventManager() != nullptr) {
@@ -70,7 +72,9 @@ void RunningState::enterEntryFree() {
 void RunningState::enterEntryNotFree() {
     m_entryState = EntrySubState::NotFree;
 
-    if (m_context != nullptr && m_context->getDispatcher() != nullptr) {
+    if (m_context != nullptr && m_context->getDispatcher() != nullptr
+        && m_context->getEventManager() != nullptr
+        && m_context->getEventManager()->context().position == AnlagenPosition::VORN_ANLAGE_1) {
         m_context->getDispatcher()->turnLEDQ1Off();
     }
     if (m_context != nullptr && m_context->getEventManager() != nullptr) {
@@ -169,11 +173,23 @@ void RunningState::handle(Event e) {
     case Event::MOTOR_STOP:
     case Event::END_BLOCKED:
     case Event::CHUTE_BLOCKED:
-    case Event::BAND_EMPTY:
-        if (m_motorState != MotorSubState::Idle) {
+    case Event::BAND_EMPTY: {
+        const bool handoverMotorActive =
+            m_context->getWorkpieceManager() != nullptr
+            && m_context->getWorkpieceManager()->isHandoverMotorActive();
+        if (!handoverMotorActive && m_motorState != MotorSubState::Idle) {
             enterMotorIdle();
         }
+        if (m_context->getWorkpieceManager() != nullptr
+            && !m_context->getWorkpieceManager()->hasActiveWorkpieces()
+            && m_context->getEventManager() != nullptr
+            && m_context->getEventManager()->context().position == AnlagenPosition::VORN_ANLAGE_1
+            && m_entryState != EntrySubState::Free
+            && !handoverMotorActive) {
+            enterEntryFree();
+        }
         break;
+    }
 
     case Event::SET_SLOW:
         if (m_motorState == MotorSubState::Fast) {

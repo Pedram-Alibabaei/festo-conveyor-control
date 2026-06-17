@@ -32,6 +32,15 @@ namespace logik {
         AnlagenPosition m_myPosition;               ///< Speichert, ob dieser Manager auf Anlage 1 (VORN) oder Anlage 2 (HINTEN) läuft
         bool m_isAnlage2Ready;                      ///< Flag: Ist Anlage 2 bereit zur Materialaufnahme?
 
+        // Netzwerk-Uebergabe Anlage 1 -> Anlage 2
+        bool m_awaitingHandoverReady;               ///< Anlage 1: END_BLOCKED, wartet auf READY_TO_RECEIVE
+        bool m_handoverInfoSent;                    ///< Anlage 1: WP-Info gesendet, END_CLEARED erlaubt
+        bool m_handoverMotorActive;                 ///< Anlage 1: Motor laeuft bis Partner ENTRY_BLOCKED meldet
+        bool m_handoverReceiveActive;               ///< Anlage 2: WP-Info erhalten, wartet auf ENTRY_BLOCKED
+        bool m_hasPendingNetworkWp;                  ///< Anlage 2: WP-Info erhalten, wartet auf ENTRY_BLOCKED
+        int m_pendingNetworkWpId;
+        WpType m_pendingNetworkWpType;
+
         // ====================================================================
         // TAKT-BASIERTE AKTOR-ZEITSTEUERUNG
         // ====================================================================
@@ -126,11 +135,51 @@ namespace logik {
 
        bool hasActiveWorkpieces() const { return !m_activeWorkpieces.empty(); }
 
+       bool hasPendingNetworkWorkpiece() const { return m_hasPendingNetworkWp; }
+
+       /** Anlage 2: REQ_TO_GIVE vom Partner – bereit antworten? */
+       void onPartnerHandoverRequest();
+
+       /** Anlage 1: READY_TO_RECEIVE – WP-Info senden und Band an. */
+       void onPartnerReadyToReceive();
+
+       /** Anlage 1: Partner meldet WP am Einlauf -> Motor aus. */
+       void onPartnerHandoverComplete();
+
+       /** Anlage 1: Partner meldet WP verloren bei Uebergabe -> Motor aus. */
+       void onPartnerHandoverWpLost();
+
+       /** Anlage 2: WP-Info zwischenspeichern bis ENTRY_BLOCKED. */
+       void storePendingNetworkWorkpiece(int id, WpType type);
+
+       /** Anlage 2: Pending-WP physisch am Einlauf -> in Liste. */
+       void commitPendingNetworkWorkpieceAtEntry();
+
+       /** Handover-Flags zuruecksetzen (clearAll, Fehler). */
+       void resetHandoverState();
+
+       /** Anlage 1: Motor laeuft fuer laufende Netzwerk-Uebergabe. */
+       bool isHandoverMotorActive() const { return m_handoverMotorActive; }
+
+       /** Anlage 2: Wartet auf physisches ENTRY_BLOCKED nach WP-Info. */
+       bool isHandoverReceiveActive() const { return m_handoverReceiveActive; }
+
+       /** Anlage 2: Partner ueber fehlgeschlagene Uebergabe informieren. */
+       void notifyPartnerHandoverFailed();
+
+       /** Slow-Motor noetig fuer mindestens ein aktives WP (Error-Rueckkehr). */
+       bool shouldUseSlowMotor() const;
+
     private:
+        bool canAcceptNetworkHandover();
+
         /**
          * @brief Prüft den Werkstücktyp gegen das Rezept, speichert das Flag im WP und schaltet die Weiche.
          */
         void checkAndSetJunction(Workpiece* wp);
+
+        std::uint32_t scaleNormalToSlowTicks(std::uint32_t normalTicks) const;
+        void updateTargetLimitForMotor(Workpiece& wp, bool isMotorSlow) const;
     };
 
 } // namespace logik

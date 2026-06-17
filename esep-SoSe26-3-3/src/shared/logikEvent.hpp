@@ -78,6 +78,8 @@ namespace logik {
 
         REQ_TO_GIVE_WP,         ///< Anlage 1 fragt an: "Darf ich Werkstueck uebergeben?"
         READY_TO_RECEIVE_WP,    ///< Anlage 2 antwortet: "Bereit! Ich nehme das Teil auf."
+        PARTNER_HANDOVER_COMPLETE, ///< Anlage 2: WP physisch am Einlauf (Uebergabe erfolgreich)
+        PARTNER_HANDOVER_WP_LOST,  ///< Anlage 2: WP bei Uebergabe verloren
 
         // ====================================================================
         // KALIBRIERUNG (DATEISYSTEM / BOOT)
