@@ -253,8 +253,7 @@ void Dispatcher::handleConnectionPulse(uint32_t payload) {
         MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::ANLAGE_2_CIID, 1);
     }
 
-    turnLEDQ1Off();
-    std::cout << "[Dispatcher] Partner verbunden (coid=" << m_partnerCoid << ") -> Q1 AUS." << std::endl;
+    std::cout << "[Dispatcher] Partner verbunden (coid=" << m_partnerCoid << ")." << std::endl;
 
     m_connectionLostHandled = false;
     m_partnerEstopPressed = false;
@@ -272,9 +271,6 @@ void Dispatcher::handleLocalConnectionLost() {
     if (m_connectionLostHandled) {
         return;
     }
-
-    turnLEDQ1On();
-    std::cout << "[Dispatcher] DISCONNECT empfangen -> Q1 AN." << std::endl;
 
     m_connectionLostHandled = true;
 

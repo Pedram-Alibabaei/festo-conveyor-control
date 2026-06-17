@@ -110,10 +110,6 @@ void ErrorHandler::processEvent(logik::Event e) {
             m_isEntryTimerRunning = true;
             m_entryStartTime = std::chrono::steady_clock::now();
 
-            // Sequenz-Fehler am Einlauf meldet ein UNEXPECTED_EVENT
-            if (m_context->getEventManager() != nullptr && !m_context->getEventManager()->isEntryFrei()) {
-                handleEscalation(ErrorType::UNEXPECTED_EVENT, e);
-            }
             break;
 
         case logik::Event::ENTRY_CLEARED:

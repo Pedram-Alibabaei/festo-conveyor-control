@@ -55,11 +55,21 @@ bool Logik::isEstopSafetyActive() const {
 }
 
     void Logik::workpieceTypeFromHS(WpType type) {
-        if (m_eventManager != nullptr) {
-           m_eventManager->handleEvent(logik::Event::HEIGHT_CLEARED);
+        std::cout << "[Logik] HEIGHT_TYPE empfangen: type="
+                  << static_cast<int>(type) << std::endl;
+
+        if (m_eventManager != nullptr && m_eventManager->isServiceMode()) {
+            m_eventManager->handleEvent(logik::Event::HEIGHT_CLEARED);
+            return;
         }
-        if (m_eventManager != nullptr && !m_eventManager->isServiceMode()) {
+
+        if (m_wpManager != nullptr) {
             m_wpManager->handleSensorSignal(logik::Event::HEIGHT_CLEARED, type);
+        }
+        if (m_eventManager != nullptr) {
+            std::cout << "[Logik] SEND SET_FAST: trigger=HEIGHT_TYPE/HEIGHT_CLEARED"
+                      << std::endl;
+            m_eventManager->handleEvent(logik::Event::SET_FAST);
         }
     }
 

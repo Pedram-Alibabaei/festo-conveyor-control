@@ -99,7 +99,6 @@ void ConnectionManager::connectionTask() {
 
     while (m_isSearching) {
         if (access(fullPath.c_str(), F_OK) != -1) {
-            std::cout << "........................" << std::flush;
             int coid = name_open(targetName.c_str(), NAME_FLAG_ATTACH_GLOBAL);
 
             if (coid != -1) {

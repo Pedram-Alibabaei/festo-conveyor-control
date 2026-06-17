@@ -1,4 +1,5 @@
 #include "IdleState.hpp"
+#include "ServiceState.hpp"
 
 #include "logik/logik.hpp"
 
@@ -156,13 +157,15 @@ void IdleState::handle(Event e) {
 
 
     case Event::START_SHORT_PRESSED:
-
-    case Event::START_LONG_PRESSED:
-
-        std::cout << "[IdleState] START ignoriert – zuerst ReadyForRun/ReadyForService." << std::endl;
-
+        std::cout << "[IdleState] START kurz ignoriert – zuerst ReadyForRun/ReadyForService." << std::endl;
         break;
 
+    case Event::START_LONG_PRESSED:
+        std::cout << "[IdleState] START lang -> ServiceState" << std::endl;
+        dispatcher->sendPartnerStartService();
+        dispatcher->sendPartnerCalibStatus(false);
+        m_context->transitionTo(new ServiceState());
+        break;
 
 
     case Event::STOP_PRESSED:

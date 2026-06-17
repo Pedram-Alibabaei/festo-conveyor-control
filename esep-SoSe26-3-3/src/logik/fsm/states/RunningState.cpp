@@ -14,6 +14,16 @@ void RunningState::entry() {
     }
 
     level1::applyRunningEntry(m_context->getDispatcher(), m_context->getEventManager());
+    const bool hasActiveWorkpieces =
+        m_context->getWorkpieceManager() != nullptr
+        && m_context->getWorkpieceManager()->hasActiveWorkpieces();
+    if (hasActiveWorkpieces) {
+        enterEntryNotFree();
+    } else {
+        enterEntryFree();
+    }
+    enterRunningNormal();
+    enterMotorIdle();
 }
 
 void RunningState::exit() {
@@ -24,40 +34,158 @@ void RunningState::exit() {
     level1::applyRunningExit(m_context->getDispatcher(), m_context->getEventManager());
 }
 
+void RunningState::enterRunningNormal() {
+    m_warningState = WarningSubState::Normal;
+
+    if (m_context != nullptr && m_context->getDispatcher() != nullptr) {
+        m_context->getDispatcher()->lightYellowOff();
+    }
+
+    std::cout << "[RunningState] Running_Normal" << std::endl;
+}
+
+void RunningState::enterRunningWarning() {
+    m_warningState = WarningSubState::Warning;
+
+    if (m_context != nullptr && m_context->getDispatcher() != nullptr) {
+        m_context->getDispatcher()->lightYellowOn();
+    }
+
+    std::cout << "[RunningState] Running_Warning" << std::endl;
+}
+
+void RunningState::enterEntryFree() {
+    m_entryState = EntrySubState::Free;
+
+    if (m_context != nullptr && m_context->getDispatcher() != nullptr) {
+        m_context->getDispatcher()->turnLEDQ1On();
+    }
+    if (m_context != nullptr && m_context->getEventManager() != nullptr) {
+        m_context->getEventManager()->setEntryFrei(true);
+    }
+
+    std::cout << "[RunningState] Entry_Free" << std::endl;
+}
+
+void RunningState::enterEntryNotFree() {
+    m_entryState = EntrySubState::NotFree;
+
+    if (m_context != nullptr && m_context->getDispatcher() != nullptr) {
+        m_context->getDispatcher()->turnLEDQ1Off();
+    }
+    if (m_context != nullptr && m_context->getEventManager() != nullptr) {
+        m_context->getEventManager()->setEntryFrei(false);
+    }
+
+    std::cout << "[RunningState] Entry_Not_Free" << std::endl;
+}
+
+void RunningState::enterMotorIdle() {
+    m_motorState = MotorSubState::Idle;
+
+    auto* dispatcher = m_context != nullptr ? m_context->getDispatcher() : nullptr;
+    auto* eventManager = m_context != nullptr ? m_context->getEventManager() : nullptr;
+    level1::applyMotorStop(dispatcher, eventManager, false);
+    if (eventManager != nullptr) {
+        eventManager->setMotorSlow(false);
+    }
+
+    std::cout << "[RunningState] Motor_Idle" << std::endl;
+}
+
+void RunningState::enterMotorFast() {
+    m_motorState = MotorSubState::Fast;
+
+    auto* dispatcher = m_context != nullptr ? m_context->getDispatcher() : nullptr;
+    auto* eventManager = m_context != nullptr ? m_context->getEventManager() : nullptr;
+    level1::applyMotorRun(dispatcher, eventManager, false);
+    if (eventManager != nullptr) {
+        eventManager->setMotorSlow(false);
+    }
+
+    std::cout << "[RunningState] Motor_Fast" << std::endl;
+}
+
+void RunningState::enterMotorSlow() {
+    m_motorState = MotorSubState::Slow;
+
+    auto* dispatcher = m_context != nullptr ? m_context->getDispatcher() : nullptr;
+    auto* eventManager = m_context != nullptr ? m_context->getEventManager() : nullptr;
+    level1::applyMotorSlow(dispatcher, eventManager);
+    if (eventManager != nullptr) {
+        eventManager->setMotorOn(true);
+    }
+
+    std::cout << "[RunningState] Motor_Slow" << std::endl;
+}
+
 void RunningState::handle(Event e) {
     if (!m_context || !m_context->getDispatcher()) {
         return;
     }
 
-    auto* dispatcher = m_context->getDispatcher();
-    auto* eventManager = m_context->getEventManager();
-
     switch (e) {
     case Event::STOP_RELEASED:
-        std::cout << "[RunningState] STOP -> IdleState" << std::endl;
-        m_context->transitionTo(new IdleState());
+        if (m_warningState == WarningSubState::Normal
+            && (m_context->getEventManager() == nullptr
+                || !m_context->getEventManager()->isChuteFull())) {
+            std::cout << "[RunningState] STOP -> IdleState" << std::endl;
+            m_context->transitionTo(new IdleState());
+        } else {
+            std::cout << "[RunningState] STOP ignoriert – Warnung noch aktiv." << std::endl;
+        }
+        break;
+
+    case Event::WARNING:
+        if (m_warningState != WarningSubState::Warning) {
+            enterRunningWarning();
+        }
+        break;
+
+    case Event::WARNING_CLEARED:
+        if (m_warningState != WarningSubState::Normal) {
+            enterRunningNormal();
+        }
+        break;
+
+    case Event::ENTRY_FREI:
+        if (m_entryState != EntrySubState::Free) {
+            enterEntryFree();
+        }
+        break;
+
+    case Event::ENTRY_NOT_FREI:
+        if (m_entryState != EntrySubState::NotFree) {
+            enterEntryNotFree();
+        }
         break;
 
     case Event::MOTOR_RUN:
-        std::cout << "[RunningState] MOTOR_RUN -> Band rechts" << std::endl;
-        level1::applyMotorRun(dispatcher, eventManager, true);
+        if (m_motorState == MotorSubState::Idle) {
+            enterMotorFast();
+        }
         break;
 
     case Event::MOTOR_STOP:
     case Event::END_BLOCKED:
     case Event::CHUTE_BLOCKED:
-        std::cout << "[RunningState] Band stoppen" << std::endl;
-        level1::applyMotorStop(dispatcher, eventManager, true);
+    case Event::BAND_EMPTY:
+        if (m_motorState != MotorSubState::Idle) {
+            enterMotorIdle();
+        }
         break;
 
     case Event::SET_SLOW:
-        std::cout << "[RunningState] SET_SLOW -> Langsamfahrt" << std::endl;
-        level1::applyMotorSlow(dispatcher, eventManager);
+        if (m_motorState == MotorSubState::Fast) {
+            enterMotorSlow();
+        }
         break;
 
+    case Event::SET_FAST:
     case Event::HEIGHT_CLEARED:
-        std::cout << "[RunningState] HEIGHT_CLEARED -> Normalfahrt" << std::endl;
-        level1::applyHeightCleared(dispatcher, eventManager);
+        if (m_motorState == MotorSubState::Slow) {
+            enterMotorFast();
+        }
         break;
 
     default:

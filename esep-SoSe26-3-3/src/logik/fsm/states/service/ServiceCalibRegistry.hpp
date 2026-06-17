@@ -19,6 +19,7 @@ enum class ServiceCalibPhase {
     WaitChuteBlocked,
     SlowCalibDone,
     NormalStart,
+    NormalResetTick,
     NormalWaitHeightCleared,
     NormalWaitEjectorBlocked,
     NormalWaitEjectorCleared,

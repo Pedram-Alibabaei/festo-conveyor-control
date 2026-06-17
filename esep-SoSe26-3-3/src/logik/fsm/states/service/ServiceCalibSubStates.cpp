@@ -341,7 +341,7 @@ void ServiceSlowCalibDoneSubState::handle(Event e, Logik* context, ServiceState&
 
 void ServiceNormalStartSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Normal_Start: driveRight(), Normal-Ticks messen."
+    std::cout << "[Service] Normal_Start: driveRight(), warte ENTRY_CLEARED."
               << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
 
     if (context != nullptr && !ServiceCalibRegistry::isResuming()) {
@@ -352,6 +352,29 @@ void ServiceNormalStartSubState::entry(Logik* context, ServiceState& parent) {
 }
 
 void ServiceNormalStartSubState::handle(Event e, Logik* context, ServiceState& parent) {
+    if (e != Event::ENTRY_CLEARED || context == nullptr) {
+        return;
+    }
+
+    storeMeasuredTick(context,
+                      context->getCalibrationData().ticks_EntryB_to_EntryC_Normal,
+                      "ticks_EntryB_to_EntryC_Normal");
+    logTransition("Normal_Start", "Normal_Reset_Tick", e);
+    parent.replaceSubState(std::make_unique<ServiceNormalResetTickSubState>());
+}
+
+void ServiceNormalResetTickSubState::entry(Logik* context, ServiceState& parent) {
+    (void)parent;
+    std::cout << "[Service] Reset_Tick (Normal) entry"
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
+
+    if (context != nullptr && !ServiceCalibRegistry::isResuming()) {
+        context->resetServiceTickCounter();
+        startNormalMotor(context);
+    }
+}
+
+void ServiceNormalResetTickSubState::handle(Event e, Logik* context, ServiceState& parent) {
     if (e != Event::HEIGHT_BLOCKED || context == nullptr) {
         return;
     }
@@ -359,7 +382,7 @@ void ServiceNormalStartSubState::handle(Event e, Logik* context, ServiceState& p
     storeMeasuredTick(context,
                       context->getCalibrationData().ticks_EntryC_to_HeightB_Normal,
                       "ticks_EntryC_to_HeightB_Normal");
-    logTransition("Normal_Start", "Normal_Wait_Height_Cleared", e);
+    logTransition("Normal_Reset_Tick", "Normal_Wait_Height_Cleared", e);
     parent.replaceSubState(std::make_unique<ServiceNormalWaitHeightClearedSubState>());
 }
 

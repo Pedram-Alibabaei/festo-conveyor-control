@@ -92,6 +92,7 @@ struct CalibrationData {
     std::uint32_t ticks_EjectorB_to_EjectorC_Slow = 0;
     std::uint32_t ticks_EjectorC_to_ChuteB_Slow = 0;
 
+    std::uint32_t ticks_EntryB_to_EntryC_Normal = 0;
     std::uint32_t ticks_EntryC_to_HeightB_Normal = 0;
     std::uint32_t ticks_HeightB_to_HeightC_Normal = 0;
     std::uint32_t ticks_HeightC_to_EjectorB_Normal = 0;

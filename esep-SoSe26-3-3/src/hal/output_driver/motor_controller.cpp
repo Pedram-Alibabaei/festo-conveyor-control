@@ -51,6 +51,11 @@ void MotorController::stop() {
 
 void MotorController::driveRight() {
     if (m_currentState == MotorState::RIGHT) {
+        // Falls der physische Slow-Ausgang durch Stoerung/Altzustand noch aktiv ist,
+        // Rechtslauf immer explizit als "nicht langsam" absichern.
+        pal::op::Slow::data_clear();
+        pal::op::Forward::data_set();
+        pal::op::Stop::data_clear();
         return;
     }
 

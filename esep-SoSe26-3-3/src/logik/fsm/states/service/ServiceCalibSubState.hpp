@@ -79,6 +79,12 @@ public:
     void handle(Event e, Logik* context, ServiceState& parent) override;
 };
 
+class ServiceNormalResetTickSubState : public ServiceCalibSubStateBase {
+public:
+    void entry(Logik* context, ServiceState& parent) override;
+    void handle(Event e, Logik* context, ServiceState& parent) override;
+};
+
 class ServiceNormalWaitHeightClearedSubState : public ServiceCalibSubStateBase {
 public:
     void entry(Logik* context, ServiceState& parent) override;

@@ -88,6 +88,8 @@ bool EventManager::isFsmPassthroughEvent(Event e) const {
     case Event::CHUTE_BLOCKED:
     case Event::HEIGHT_CLEARED:
     case Event::SET_SLOW:
+    case Event::SET_FAST:
+    case Event::BAND_EMPTY:
     case Event::MOTOR_RUN:
     case Event::MOTOR_STOP:
     case Event::ENTRY_FREI:
@@ -144,6 +146,14 @@ void EventManager::updateContextFlags(Event e) {
         m_ctx.endBlocked = false;
         break;
 
+    case Event::ENTRY_FREI:
+        m_ctx.entryFrei = true;
+        break;
+
+    case Event::ENTRY_NOT_FREI:
+        m_ctx.entryFrei = false;
+        break;
+
     case Event::CONNECTION_LOST:
         m_ctx.connectionLost = true;
         m_ctx.partnerCalibrationReady = false;
@@ -169,12 +179,8 @@ void EventManager::updateContextFlags(Event e) {
         m_ctx.partnerCalibrationReady = false;
         break;
 
-    case Event::RESET_RELEASED:
-    case Event::PARTNER_RESET_RELEASED:
-        if (m_ctx.errorActive) {
-            std::cout << "[EventManager] Fehler quittiert (RESET)." << std::endl;
-            m_ctx.errorActive = false;
-        }
+    case Event::ERROR:
+        m_ctx.errorActive = true;
         break;
 
     default:
@@ -223,11 +229,11 @@ std::vector<Event> EventManager::preprocessForFsm(Event e) {
             fsmEvents.push_back(e);
             break;
         }
+        fsmEvents.push_back(Event::ENTRY_NOT_FREI);
         if (m_ctx.entryFrei && !m_ctx.endBlocked) {
             fsmEvents.push_back(Event::MOTOR_RUN);
-            fsmEvents.push_back(Event::ENTRY_NOT_FREI);
-            m_ctx.entryFrei = false;
         }
+        m_ctx.entryFrei = false;
         break;
 
     case Event::ENTRY_CLEARED:
@@ -251,6 +257,9 @@ std::vector<Event> EventManager::preprocessForFsm(Event e) {
     case Event::HEIGHT_CLEARED:
         if (m_ctx.serviceMode) {
             fsmEvents.push_back(e);
+        } else {
+            std::cout << "[EventManager] SEND SET_FAST: trigger=HEIGHT_CLEARED" << std::endl;
+            fsmEvents.push_back(Event::SET_FAST);
         }
         break;
 
@@ -317,6 +326,8 @@ void EventManager::routeToWorkpieceManager(Event e) {
         if (m_ctx.entryFrei
             && (m_ctx.position == AnlagenPosition::VORN_ANLAGE_1 || m_ctx.serviceMode)) {
             m_wpManager->addWorkpiece();
+        } else if (m_ctx.position == AnlagenPosition::HINTEN_ANLAGE_2) {
+            m_wpManager->handleSensorSignal(e);
         }
         break;
 

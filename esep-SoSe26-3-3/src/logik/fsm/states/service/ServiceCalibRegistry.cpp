@@ -40,6 +40,8 @@ void ServiceCalibRegistry::savePhase(const ServiceCalibSubStateBase* sub) {
         s_savedPhase = ServiceCalibPhase::SlowCalibDone;
     } else if (dynamic_cast<const ServiceNormalStartSubState*>(sub) != nullptr) {
         s_savedPhase = ServiceCalibPhase::NormalStart;
+    } else if (dynamic_cast<const ServiceNormalResetTickSubState*>(sub) != nullptr) {
+        s_savedPhase = ServiceCalibPhase::NormalResetTick;
     } else if (dynamic_cast<const ServiceNormalWaitHeightClearedSubState*>(sub) != nullptr) {
         s_savedPhase = ServiceCalibPhase::NormalWaitHeightCleared;
     } else if (dynamic_cast<const ServiceNormalWaitEjectorBlockedSubState*>(sub) != nullptr) {
@@ -81,6 +83,8 @@ std::unique_ptr<ServiceCalibSubStateBase> ServiceCalibRegistry::createSavedSubSt
         return std::make_unique<ServiceSlowCalibDoneSubState>();
     case ServiceCalibPhase::NormalStart:
         return std::make_unique<ServiceNormalStartSubState>();
+    case ServiceCalibPhase::NormalResetTick:
+        return std::make_unique<ServiceNormalResetTickSubState>();
     case ServiceCalibPhase::NormalWaitHeightCleared:
         return std::make_unique<ServiceNormalWaitHeightClearedSubState>();
     case ServiceCalibPhase::NormalWaitEjectorBlocked:
@@ -110,6 +114,7 @@ void ServiceCalibRegistry::setResuming(bool value) {
 bool ServiceCalibRegistry::needsServiceTimingAdc(ServiceCalibPhase phase) {
     switch (phase) {
     case ServiceCalibPhase::NormalStart:
+    case ServiceCalibPhase::NormalResetTick:
     case ServiceCalibPhase::NormalWaitHeightCleared:
     case ServiceCalibPhase::NormalWaitEjectorBlocked:
     case ServiceCalibPhase::NormalWaitEjectorCleared:

@@ -30,6 +30,7 @@ private:
     std::uint32_t m_targetLimitForState;  ///< Das aktuell gültige Takt-Limit für diese Zone
     bool m_isCorrectInSequence;           ///< Flag, ob das Teil an der aktuellen Weiche korrekt im Rezept ist
     bool m_isExpectedFromNetwork;         ///< Flag für Anlage 2: Passte der übertragene Netzwerk-Typ zum lokalen Rezept?
+    bool m_entryBlockedSeen;              ///< Physische ENTRY_BLOCKED-Flanke fuer dieses WP gesehen?
 
 public:
     /**
@@ -43,7 +44,8 @@ public:
         m_ticksInCurrentState(0),
         m_targetLimitForState(0),
         m_isCorrectInSequence(true),
-        m_isExpectedFromNetwork(true)
+        m_isExpectedFromNetwork(true),
+        m_entryBlockedSeen(false)
     {}
 
     // --- Getter & Setter für die ID ---
@@ -120,6 +122,15 @@ public:
      */
     std::uint32_t getTargetLimit() const {
         return m_targetLimitForState;
+    }
+
+    void markEntryBlockedSeen() {
+        m_entryBlockedSeen = true;
+        m_ticksInCurrentState = 0;
+    }
+
+    bool hasEntryBlockedSeen() const {
+        return m_entryBlockedSeen;
     }
 
     // --- Getter & Setter für die Rezeptur-Flags ---

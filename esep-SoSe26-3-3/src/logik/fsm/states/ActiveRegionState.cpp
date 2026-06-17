@@ -1,6 +1,7 @@
 #include "ActiveRegionState.hpp"
 #include "ConnectionLostState.hpp"
 #include "EStopState.hpp"
+#include "ErrorState.hpp"
 #include "IdleState.hpp"
 #include "logik/fsm/level0/L1StateRegistry.hpp"
 #include "logik/logik.hpp"
@@ -81,12 +82,9 @@ void ActiveRegionState::handle(Event e) {
         return;
 
     case Event::ERROR:
-        if (m_context != nullptr && m_context->getDispatcher() != nullptr) {
-            m_context->getDispatcher()->driveStop();
-            m_context->getDispatcher()->lightRedOn();
-        }
-        if (m_level1 != nullptr) {
-            m_level1->handle(e);
+        if (m_context != nullptr) {
+            std::cout << "[ActiveRegion] ERROR -> ErrorState" << std::endl;
+            m_context->transitionTo(new ErrorState());
         }
         return;
 
@@ -100,14 +98,14 @@ void ActiveRegionState::handle(Event e) {
         return;
 
     case Event::WARNING:
-        if (m_context != nullptr && m_context->getDispatcher() != nullptr) {
-            m_context->getDispatcher()->lightYellowBlinkSlow();
+        if (m_level1 != nullptr) {
+            m_level1->handle(e);
         }
         return;
 
     case Event::WARNING_CLEARED:
-        if (m_context != nullptr && m_context->getDispatcher() != nullptr) {
-            m_context->getDispatcher()->lightYellowOff();
+        if (m_level1 != nullptr) {
+            m_level1->handle(e);
         }
         return;
 

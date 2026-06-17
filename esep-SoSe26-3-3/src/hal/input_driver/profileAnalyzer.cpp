@@ -577,9 +577,10 @@ void ProfileAnalyzer::finishMeasurement()
         evaluationFinished(finalWpType);
     }
 
-    m_currentState = AnalyzerState::IDLE;
-    std::cout << "[Analyzer] State -> IDLE" << std::endl;
+    m_currentState = AnalyzerState::WAITING_FOR_WP;
+    std::cout << "[Analyzer] State -> WAITING_FOR_WP" << std::endl;
     resetMeasurementData();
+    resetSmoothingBuffer();
 }
 
 // KALIBRIERUNG UND SCHWELLEN

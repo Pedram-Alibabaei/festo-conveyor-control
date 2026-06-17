@@ -63,6 +63,10 @@ bool assignCalibrationValue(const std::string& key, std::uint32_t val, Calibrati
         data.ticks_EjectorC_to_ChuteB_Slow = val;
         return true;
     }
+    if (key == "ticks_EntryB_to_EntryC_Normal") {
+        data.ticks_EntryB_to_EntryC_Normal = val;
+        return true;
+    }
     if (key == "ticks_EntryC_to_HeightB_Normal") {
         data.ticks_EntryC_to_HeightB_Normal = val;
         return true;
@@ -120,6 +124,7 @@ bool isCalibrationDataValid(const CalibrationData& data) {
     };
 
     const SegmentCheck segmentTicks[] = {
+        {"ticks_EntryB_to_EntryC_Normal", data.ticks_EntryB_to_EntryC_Normal},
         {"ticks_EntryC_to_HeightB_Normal", data.ticks_EntryC_to_HeightB_Normal},
         {"ticks_HeightB_to_HeightC_Normal", data.ticks_HeightB_to_HeightC_Normal},
         {"ticks_HeightC_to_EjectorB_Normal", data.ticks_HeightC_to_EjectorB_Normal},
@@ -282,6 +287,7 @@ bool CalibrationManager::saveCalibrationData(const CalibrationData& data) {
     file << "limit_minSamplesForClass=" << data.limit_minSamplesForClass << "\n\n";
 
     file << "[Normal-Speed-Ticks]\n";
+    file << "ticks_EntryB_to_EntryC_Normal=" << data.ticks_EntryB_to_EntryC_Normal << "\n";
     file << "ticks_EntryC_to_HeightB_Normal=" << data.ticks_EntryC_to_HeightB_Normal << "\n";
     file << "ticks_HeightB_to_HeightC_Normal=" << data.ticks_HeightB_to_HeightC_Normal << "\n";
     file << "ticks_HeightC_to_EjectorB_Normal=" << data.ticks_HeightC_to_EjectorB_Normal << "\n";

@@ -21,6 +21,7 @@ extern "C"
 namespace
 {
 constexpr int intr_gpio_port_0 = 97;
+constexpr bool kVerboseGpioPulseLog = false;
 } // namespace
 
 using namespace hal::input_driver;
@@ -235,12 +236,12 @@ void Gpio0Interrupt::handle_interrupt() const noexcept
                 if (rc != 0) {
                     std::cerr << "[GPIO] MsgSendPulse fehlgeschlagen fuer Sensor "
                               << pin.sensor_id << " errno=" << errno << std::endl;
-                } else if (!pin.is_button) {
+                } else if (kVerboseGpioPulseLog && !pin.is_button) {
                     const char* stateLabel =
                         (state_value == ipc::State::BLOCKED) ? "BLOCKED" : "CLEARED";
                     std::cout << "[GPIO] Sensor id=" << pin.sensor_id
                               << " -> " << stateLabel << std::endl;
-                } else if (pin.is_button) {
+                } else if (kVerboseGpioPulseLog && pin.is_button) {
                     std::cout << "[GPIO] Taster id=" << pin.sensor_id
                               << " -> " << (pin.active ? "PRESSED" : "RELEASED") << std::endl;
                 }
