@@ -1,8 +1,8 @@
-#include "logik/fsm/states/BaseState.hpp"
+#include "logik/fsm/common/BaseState.hpp"
 #include "Level0Actions.hpp"
-#include "logik/fsm/level0/L1StateRegistry.hpp"
-#include "logik/fsm/states/ActiveRegionState.hpp"
-#include "logik/fsm/states/IdleState.hpp"
+#include "logik/fsm/level1/L1StateRegistry.hpp"
+#include "logik/fsm/level0/ActiveRegionState.hpp"
+#include "logik/fsm/level1/IdleState.hpp"
 #include "logik/logik.hpp"
 #include "logik/eventManager/eventManager.hpp"
 #include <iostream>

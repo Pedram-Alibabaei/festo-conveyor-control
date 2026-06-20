@@ -7,7 +7,7 @@
 #define FSM_HPP
 
 #include <memory>
-#include "logik/fsm/states/BaseState.hpp"
+#include "logik/fsm/common/BaseState.hpp"
 
 namespace logik {
 

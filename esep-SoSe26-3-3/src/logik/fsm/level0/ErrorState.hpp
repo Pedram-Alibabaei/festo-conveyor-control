@@ -1,7 +1,7 @@
 #ifndef ERROR_STATE_HPP
 #define ERROR_STATE_HPP
 
-#include "BaseState.hpp"
+#include "logik/fsm/common/BaseState.hpp"
 
 namespace logik {
 

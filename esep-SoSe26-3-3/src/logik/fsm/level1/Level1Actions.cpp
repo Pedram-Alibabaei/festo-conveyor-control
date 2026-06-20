@@ -1,8 +1,8 @@
 #include "Level1Actions.hpp"
 #include "logik/eventManager/eventManager.hpp"
 #include "logik/logik.hpp"
-#include "logik/fsm/states/ReadyForServiceState.hpp"
-#include "logik/fsm/states/ReadyForRunState.hpp"
+#include "ReadyForServiceState.hpp"
+#include "ReadyForRunState.hpp"
 #include "dispatcher/i_Dispatcher.hpp"
 #include <iostream>
 

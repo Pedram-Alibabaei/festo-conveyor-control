@@ -1,9 +1,9 @@
 #include "L1StateRegistry.hpp"
-#include "logik/fsm/states/IdleState.hpp"
-#include "logik/fsm/states/ReadyForServiceState.hpp"
-#include "logik/fsm/states/ReadyForRunState.hpp"
-#include "logik/fsm/states/RunningState.hpp"
-#include "logik/fsm/states/ServiceState.hpp"
+#include "IdleState.hpp"
+#include "ReadyForServiceState.hpp"
+#include "ReadyForRunState.hpp"
+#include "RunningState.hpp"
+#include "ServiceState.hpp"
 
 namespace logik {
 

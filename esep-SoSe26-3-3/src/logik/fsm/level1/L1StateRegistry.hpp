@@ -1,7 +1,7 @@
 #ifndef L1_STATE_REGISTRY_HPP
 #define L1_STATE_REGISTRY_HPP
 
-#include "logik/fsm/states/BaseState.hpp"
+#include "logik/fsm/common/BaseState.hpp"
 #include <memory>
 
 namespace logik {

@@ -1,7 +1,7 @@
 #ifndef ESTOP_STATE_HPP
 #define ESTOP_STATE_HPP
 
-#include "BaseState.hpp"
+#include "logik/fsm/common/BaseState.hpp"
 #include "estop/EStopSubState.hpp"
 #include <memory>
 

@@ -15,7 +15,7 @@
 #include "logik/workpieceManager/WorkpieceManager.hpp"
 #include "logik/errorHandler/errorHandler.hpp"
 #include "logik/fsm/Fsm.hpp"
-#include "logik/fsm/states/BaseState.hpp"
+#include "logik/fsm/common/BaseState.hpp"
 #include "dispatcher/i_Dispatcher.hpp"
 
 #include <iostream>

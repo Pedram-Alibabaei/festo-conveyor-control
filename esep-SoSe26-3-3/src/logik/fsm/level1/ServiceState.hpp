@@ -1,7 +1,7 @@
 #ifndef SERVICE_STATE_HPP
 #define SERVICE_STATE_HPP
 
-#include "BaseState.hpp"
+#include "logik/fsm/common/BaseState.hpp"
 #include "service/ServiceCalibSubState.hpp"
 #include <memory>
 

@@ -1,12 +1,12 @@
 #include "logik/fsm/Fsm.hpp"
 #include "logik/logik.hpp"
 #include "logik/eventManager/eventManager.hpp"
-#include "logik/fsm/states/ActiveRegionState.hpp"
-#include "logik/fsm/states/IdleState.hpp"
-#include "logik/fsm/states/ReadyForServiceState.hpp"
-#include "logik/fsm/states/ReadyForRunState.hpp"
-#include "logik/fsm/states/RunningState.hpp"
-#include "logik/fsm/states/ServiceState.hpp"
+#include "logik/fsm/level0/ActiveRegionState.hpp"
+#include "logik/fsm/level1/IdleState.hpp"
+#include "logik/fsm/level1/ReadyForServiceState.hpp"
+#include "logik/fsm/level1/ReadyForRunState.hpp"
+#include "logik/fsm/level1/RunningState.hpp"
+#include "logik/fsm/level1/ServiceState.hpp"
 #include <iostream>
 
 namespace logik {

@@ -1,7 +1,7 @@
 #ifndef IDLE_STATE_HPP
 #define IDLE_STATE_HPP
 
-#include "BaseState.hpp"
+#include "logik/fsm/common/BaseState.hpp"
 
 namespace logik {
 

@@ -1,7 +1,7 @@
 #ifndef CONNECTION_LOST_AND_ESTOP_STATE_HPP
 #define CONNECTION_LOST_AND_ESTOP_STATE_HPP
 
-#include "BaseState.hpp"
+#include "logik/fsm/common/BaseState.hpp"
 
 namespace logik {
 
