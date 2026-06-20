@@ -16,45 +16,157 @@ Zwei gekoppelte Teilanlagen sortieren Werkstücke und übergeben sie per Netzwer
 esep-2026sose-team-3-3/
 ├── README.md
 ├── .gitignore
-└── esep-SoSe26-3-3/              # QNX-Momentics-Projekt
+├── docs/
+│   └── architecture/               # SysML-Diagramme (Systemkontext, IBD)
+└── esep-SoSe26-3-3/                    # QNX-Momentics-Projekt
     ├── Makefile
-    ├── .project / .cproject      # Eclipse CDT
-    ├── diagrams/                 # UML-Zustandsdiagramme (UMLET)
-    ├── manual_tests/             # Hardwarenahe Einzeltests
-    ├── test/                       # Google-Test / GMock
+    ├── .project / .cproject            # Eclipse CDT
+    ├── manual_tests/                   # Hardwarenahe Einzeltests
+    │   ├── connection_gns_test_main.cpp
+    │   ├── dispatcher_hal_test_main.cpp
+    │   ├── ejector_controller_test_main.cpp
+    │   └── profile_analyzer_test_main.cpp
+    ├── test/                           # Google-Test / GMock
+    │   ├── main_test.cpp
+    │   ├── logik_test.cpp
+    │   ├── dispatcher_test.cpp
+    │   ├── calibrationManager_test.cpp
+    │   ├── MockDispatcher.hpp
+    │   ├── FakeLogik.hpp
+    │   └── FakeConnection.hpp
     └── src/
-        ├── esep-SoSe26-3-3.cpp   # main(): Threads, Init, Start
-        ├── shared/               # types, Events, IPC
-        ├── hal/                  # Hardware-Abstraktion (Sensoren/Aktoren)
-        ├── dispatcher/           # Zentrale Nachrichten- & HW-Schnittstelle
-        ├── connectionManager/    # Heartbeat, Partner-Sync, Connection Lost
-        ├── calibrationManager/   # Kalibrierdaten persistent speichern/laden
-        ├── timer/                # Belt-/Sorter-Timer
-        └── logik/                  # FSM, Werkstücke, Fehlerbehandlung
-            ├── logik.cpp/hpp
-            ├── eventManager/       # Events → FSM
-            ├── errorHandler/       # Timeouts, STUCK, Eskalation → ERROR
-            ├── workpieceManager/   # Digitales Schieberegister (max. 2 WPs A2)
+        ├── esep-SoSe26-3-3.cpp         # main(): Init, Threads, Start (-s / -c)
+        │
+        ├── shared/                     # Gemeinsame Typen & Protokoll
+        │   ├── types.hpp               # WpType, WpLocation, CalibrationData, AnlagenPosition
+        │   ├── logikEvent.hpp          # Event-Enum (FSM, Sensoren, Netzwerk)
+        │   └── ipc_definitions.hpp     # QNX-Pulse-Codes, IPC-Nachrichten
+        │
+        ├── hal/                        # Hardware-Abstraktion
+        │   ├── hal_sensors.cpp/hpp     # Fassade: Sensoren (Pulse, ADC, ESTOP)
+        │   ├── hal_actuators.cpp/hpp   # Fassade: Aktoren (Motor, Weiche, LEDs, …)
+        │   ├── i_Sensors.hpp
+        │   ├── i_Actuators.hpp
+        │   ├── input_driver/           # Eingänge
+        │   │   ├── interrupt.cpp/hpp   # GPIO-Interrupt-Basis
+        │   │   ├── gpio_0_interrupt    # Lichtschranken-Pulse
+        │   │   ├── adc_interrupt       # ADC-Messung (Höhensensor)
+        │   │   └── profileAnalyzer     # Werkstück-Klassifikation (FLAT/TALL/…)
+        │   ├── output_driver/          # Ausgänge
+        │   │   ├── motor_controller    # Band-Motor (schnell/langsam/stop)
+        │   │   ├── ejector_controller  # Auswerfer (Anlage 2)
+        │   │   ├── traffic_light_controller
+        │   │   ├── panel_led_controller  # START/RESET/Q2-LEDs
+        │   │   └── blink_timer         # LED-Blink-Logik
+        │   └── pal/                    # Platform Abstraction Layer
+        │       ├── device.cpp/hpp      # MMIO / Hardware-Zugriff
+        │       ├── adc.cpp/hpp
+        │       ├── gpio.hpp
+        │       └── mapped_address.hpp
+        │
+        ├── dispatcher/                 # Zentrale Nachrichten- & HW-Schnittstelle
+        │   ├── dispatcher.cpp/hpp    # Pulse-Routing, HW-Aufrufe, Partner-IPC
+        │   └── i_Dispatcher.hpp        # Interface für Logik & Tests
+        │
+        ├── connectionManager/          # Netzwerk & Partner-Sync
+        │   ├── ConnectionManager.cpp/hpp  # Heartbeat, Timeout, CONNECTION_LOST
+        │   └── i_Connection.hpp
+        │
+        ├── calibrationManager/         # Persistente Kalibrierdaten
+        │   ├── calibrationManager.cpp/hpp  # Laden/Speichern (Datei)
+        │   └── i_CalibrationManager.hpp
+        │
+        ├── timer/                      # System-Timer
+        │   ├── timer.cpp/hpp         # BeltTimer, SorterTimer, Heartbeat-Timer
+        │   └── i_Timer.hpp
+        │
+        └── logik/                      # Steuerungslogik & FSM
+            ├── logik.cpp/hpp           # Zentrale Logik, Kalibrierdaten, Partner-Flags
+            ├── i_logik.hpp             # Interface für Dispatcher/Netzwerk
+            ├── eventManager/           # Events → FSM weiterleiten
+            │   ├── eventManager.cpp/hpp
+            ├── errorHandler/           # Timeouts, STUCK, Eskalation → ERROR
+            │   ├── errorHandler.cpp/hpp
+            │   └── errorTypes.hpp
+            ├── workpieceManager/       # Digitales Schieberegister
+            │   ├── WorkpieceManager.cpp/hpp
+            │   ├── Workpiece.hpp
+            │   └── targetSequence.hpp
             └── fsm/
-                ├── Fsm.cpp         # Root-FSM
-                ├── common/         # BaseState
-                ├── level0/         # Safety & Connectivity
-                │   ├── ActiveRegionState
-                │   ├── ErrorState, EStopState
-                │   ├── ConnectionLostState, ConnectionLostAndEStopState
-                │   ├── Level0Actions
-                │   └── estop/      # ESTOP-Unterzustände
-                └── level1/         # Betriebszustände (nur in ActiveRegion)
-                    ├── Idle, ReadyForService, ReadyForRun
-                    ├── Running, Service
-                    ├── L1StateRegistry (Deep History H*)
-                    ├── Level1Actions
-                    └── service/      # Service-Kalibrierungs-Sub-FSM
+                ├── Fsm.cpp/hpp         # Root-FSM
+                ├── common/
+                │   └── BaseState.hpp
+                ├── level0/             # Safety & Connectivity (Ebene 0)
+                │   ├── ActiveRegionState.cpp/hpp
+                │   ├── ErrorState.cpp/hpp
+                │   ├── EStopState.cpp/hpp
+                │   ├── ConnectionLostState.cpp/hpp
+                │   ├── ConnectionLostAndEStopState.cpp/hpp
+                │   ├── Level0Actions.cpp/hpp
+                │   └── estop/
+                │       ├── EStopSubState.hpp
+                │       └── EStopSubStates.cpp
+                └── level1/             # Betriebszustände (nur in ActiveRegion)
+                    ├── IdleState.cpp/hpp
+                    ├── ReadyForServiceState.cpp/hpp
+                    ├── ReadyForRunState.cpp/hpp
+                    ├── RunningState.cpp/hpp
+                    ├── ServiceState.cpp/hpp
+                    ├── L1StateRegistry.cpp/hpp   # Deep History H*
+                    ├── Level1Actions.cpp/hpp
+                    └── service/                  # Service-Kalibrierungs-Sub-FSM
+                        ├── ServiceCalibSubStates.cpp
+                        ├── ServiceCalibSubState.hpp
+                        ├── ServiceCalibRegistry.cpp/hpp
 ```
 
 ---
 
-## Architektur (Kurzüberblick)
+## Architektur
+
+### Systemkontext — Sortieranlage (Hardware)
+
+Zwei identische Module (**Modul 1** / **Modul 2**), jeweils mit Steuerungscomputer, Sensorik, Aktorik und Bedienkonsole.  
+Werkstücke wandern von Modul 1 nach Modul 2; die Computer kommunizieren über **Qnet/Ethernet**.
+
+![Systemkontext Sortieranlage](docs/architecture/systemkontext-sortieranlage.png)
+
+| Hardware | Anzahl | Signal / Steuerung |
+|----------|--------|-------------------|
+| Lichtschranken | 5 | binär `[0, 1]` |
+| Metallsensoren | 2 | binär `[0, 1]` |
+| Bedientasten (START, STOP, RESET, ESTOP) | 4 | binär `[0, 1]` |
+| Höhensensor (ADC) | 1 | `[Wert: Int]` |
+| Förderbandmotor | 1 | GPIO-Bitmaske: forward, reverse, slow, stop |
+| Signallampen (Rot/Gelb/Grün) | 3 | binär |
+| Tasten-LEDs / Tastenlampen (Q1, Q2) | 4 | binär |
+| Weiche (A1) / Auswerfer (A2) | 1 | binär |
+
+→ Abgebildet in `src/hal/` (PAL, input_driver, output_driver)
+
+---
+
+### Softwarearchitektur — Steuerungscomputer (IBD)
+
+Jeder Steuerungscomputer hat dieselbe Modulstruktur. Der **Dispatcher** ist die zentrale Nachrichtendrehscheibe; alle Komponenten kommunizieren über **QNX-Pulse** und definierte Interfaces.
+
+![Softwarearchitektur IBD](docs/architecture/software-architektur-ibd.png)
+
+| Komponente | Rolle | Schnittstellen |
+|------------|-------|----------------|
+| **hal** | Hardware-Abstraktion | `i_Sensors`, `i_Actuators` → Pulse an Dispatcher |
+| **dispatcher** | Routing, HW-Aufrufe, Partner-IPC | `i_Dispatcher` ↔ Logik, Connection, Timer |
+| **logik** | FSM, Werkstücke, Fehler | `i_Logik` ↔ Dispatcher, CalibrationManager |
+| **connectionManager** | Heartbeat, CONNECTION_LOST | `i_Connection`, Pulse ↔ Dispatcher |
+| **calibrationManager** | Kalibrierdaten laden/speichern | `i_CalibrationManager` ↔ Logik |
+| **timer** | Belt-, Sorter-, Heartbeat-Timer | `i_Timer`, Pulse ↔ Dispatcher |
+| **shared** | Typen, Events, IPC (`<<use>>`) | von allen Modulen genutzt |
+
+**Partner-Verbindung:** Dispatcher ↔ Dispatcher (QNX-Pulse über Qnet) zwischen Steuerungscomputer 1 und 2.
+
+---
+
+### Datenfluss (Logik)
 
 ```
 Sensoren/HW ──► HAL ──► Dispatcher ◄──► ConnectionManager
@@ -67,7 +179,7 @@ Sensoren/HW ──► HAL ──► Dispatcher ◄──► ConnectionManager
         WorkpieceManager  ErrorHandler  CalibrationManager
 ```
 
-**Datenfluss:** Hardware-Ereignisse (Pulse/ADC) → `Dispatcher` → `EventManager` → FSM.  
+Hardware-Ereignisse (Pulse/ADC) → `Dispatcher` → `EventManager` → FSM.  
 Der `WorkpieceManager` trackt Werkstücke tickbasiert anhand kalibrierter Segmentzeiten.
 
 ---
@@ -82,8 +194,6 @@ Der `WorkpieceManager` trackt Werkstücke tickbasiert anhand kalibrierter Segmen
 | **ConnectionLost** | Netz weg, WPs bleiben | **H\*** bei RESTORED |
 | **ConnectionLost+EStop** | Netz weg + ESTOP | H\* oder EStop |
 
-Diagramme: `esep-SoSe26-3-3/diagrams/Level0FSM.uxf`, `Start.uxd`
-
 ---
 
 ## FSM — Ebene 1 (Betrieb)
@@ -94,9 +204,6 @@ Diagramme: `esep-SoSe26-3-3/diagrams/Level0FSM.uxf`, `Start.uxd`
 | **ReadyForService / ReadyForRun** | START-Vorstufen (kurz/lang) |
 | **Running** | Sortierbetrieb, Werkstück-Tracking |
 | **Service** | Kalibrierung (Slow + Normal Lauf) |
-
-Service-Sub-FSM: `diagrams/ServiceCalibFSM.uxf`  
-Ebene 1: `diagrams/ActiveLevel1.uxd`
 
 ---
 
@@ -153,9 +260,3 @@ make clean              # Build-Artefakte entfernen
 - **Kurs:** Embedded Systems Engineering (ESE), HAW Hamburg, SoSe 2026
 - **Team:** 3-3
 - **Remote:** `https://git.haw-hamburg.de/ese2026-team-3-3/esep-2026sose-team-3-3`
-
----
-
-## Diagramme öffnen
-
-UML-Diagramme liegen im Ordner `esep-SoSe26-3-3/diagrams/` und können mit **[UMLET](https://www.umlet.com/)** geöffnet werden (`.uxf` / `.uxd`).
