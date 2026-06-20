@@ -1,0 +1,722 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<diagram program="UMLET" version="15.1">
+  <zoom_level>8</zoom_level>
+
+  <element>
+    <id>Text</id>
+    <coordinates>
+      <x>20</x>
+      <y>10</y>
+      <w>1100</w>
+      <h>36</h>
+    </coordinates>
+    <panel_attributes>style=plain
+fontsize=18
+Ebene 0 FSM — ActiveRegion / Error / Estop / ConnectionLost (Implementierung Team 3-3)</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLNote</id>
+    <coordinates>
+      <x>20</x>
+      <y>620</y>
+      <w>1100</w>
+      <h>120</h>
+    </coordinates>
+    <panel_attributes>fontsize=11
+Legende Ebene 0
+--
+• Start (Fsm): ActiveRegion + Idle (L1) | Ebene 1 lebt nur in ActiveRegion
+• H* = Deep History: nach Error / ConnectionLost → letzter L1-Zustand (Idle, Running, Service, …)
+• Estop-Reset: immer Idle (shallow), WPs + Rutsche geleert — kein H*
+• Error: RESET quittieren → START → ActiveRegion(H*) | Motor ggf. wieder an
+• ConnectionLost: WPs bleiben, Service-Phase in ServiceCalibRegistry
+• Code: level0/*.cpp, estop/EStopSubStates.cpp</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <!-- ========== OUTER COMPOSITE Ebene 0 ========== -->
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>20</x>
+      <y>50</y>
+      <w>1060</w>
+      <h>550</h>
+    </coordinates>
+    <panel_attributes>Ebene 0 FSM
+symbol=composite
+valign=top
+fontsize=14
+--
+Root-FSM (Fsm.cpp): Safety &amp; Connectivity Layer
+Alle Zustaende auf Top-Level — Ebene 1 nur in ActiveRegion</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <!-- Initial -->
+  <element>
+    <id>UMLSpecialState</id>
+    <coordinates>
+      <x>50</x>
+      <y>110</y>
+      <w>20</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>type=initial</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <!-- ========== ZEILE 1: ACTIVEREGION ========== -->
+
+  <element>
+    <id>Text</id>
+    <coordinates>
+      <x>90</x>
+      <y>88</y>
+      <w>200</w>
+      <h>22</h>
+    </coordinates>
+    <panel_attributes>style=plain
+fontsize=12
+ActiveRegion — Normalbetrieb</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>90</x>
+      <y>105</y>
+      <w>200</w>
+      <h>70</h>
+    </coordinates>
+    <panel_attributes>ActiveRegion
++ Idle
+--
+entry: L1 aus History H*
+  oder Idle (Start)
+exit: L1 in Registry speichern</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>320</x>
+      <y>105</y>
+      <w>720</w>
+      <h>70</h>
+    </coordinates>
+    <panel_attributes>Ebene 1 (Sub-FSM in ActiveRegion)
+--
+Idle | ReadyForService | ReadyForRun | Running | Service
+Events werden an m_level1 weitergeleitet
+ERROR_CLEARED / WARNING → L1</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLSpecialState</id>
+    <coordinates>
+      <x>280</x>
+      <y>150</y>
+      <w>28</w>
+      <h>22</h>
+    </coordinates>
+    <panel_attributes>type=history_deep
+H*</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <!-- ========== ZEILE 2: ERRORSTATE ========== -->
+
+  <element>
+    <id>Text</id>
+    <coordinates>
+      <x>90</x>
+      <y>195</y>
+      <w>220</w>
+      <h>22</h>
+    </coordinates>
+    <panel_attributes>style=plain
+fontsize=12
+ErrorState — Fehler quittieren &amp; START</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>90</x>
+      <y>215</y>
+      <w>170</w>
+      <h>80</h>
+    </coordinates>
+    <panel_attributes>Pending_Unacknowledged
+--
+entry: driveStop()
+ lightRedBlinkFast()
+ turnLEDResetBlinkFast()
+ errorActive=true</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>290</x>
+      <y>215</y>
+      <w>170</w>
+      <h>80</h>
+    </coordinates>
+    <panel_attributes>Pending_Acknowledged
+--
+entry: lightRedOn()
+ turnLEDResetOn()
+ turnLEDStartBlinkSlow()
+ERROR → Pending_Unacknowledged</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>490</x>
+      <y>215</y>
+      <w>170</w>
+      <h>80</h>
+    </coordinates>
+    <panel_attributes>Gone_Unacknowledged
+--
+entry: lightRedBlinkSlow()
+ turnLEDResetBlinkFast()
+ERROR → Pending_Unacknowledged</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>690</x>
+      <y>220</y>
+      <w>170</w>
+      <h>70</h>
+    </coordinates>
+    <panel_attributes>leaveErrorState()
+--
+START_SHORT/LONG
+→ ActiveRegion(H*)
+ Motor ggf. wieder an</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <!-- ========== ZEILE 3: ESTOPSTATE ========== -->
+
+  <element>
+    <id>Text</id>
+    <coordinates>
+      <x>90</x>
+      <y>315</y>
+      <w>240</w>
+      <h>22</h>
+    </coordinates>
+    <panel_attributes>style=plain
+fontsize=12
+EStopState — ESTOP-Unterzustaende</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>90</x>
+      <y>335</y>
+      <w>180</w>
+      <h>75</h>
+    </coordinates>
+    <panel_attributes>Local_Active
+--
+entry: applyEstopLocalActiveEntry()
+ESTOP_RELEASED
+ [Partner frei] → Both_Not_Active
+ [Partner aktiv] → Partner_Active
+PARTNER_ESTOP_PRESSED → Both_Active</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>300</x>
+      <y>335</y>
+      <w>180</w>
+      <h>75</h>
+    </coordinates>
+    <panel_attributes>Partner_Active
+--
+entry: applyEstopPartnerActiveEntry()
+PARTNER_ESTOP_RELEASED
+ [Lokal frei] → Both_Not_Active
+ [Lokal aktiv] → Local_Active
+ESTOP_PRESSED → Both_Active</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>510</x>
+      <y>335</y>
+      <w>180</w>
+      <h>75</h>
+    </coordinates>
+    <panel_attributes>Both_Active
+--
+entry: lightRedBlinkFast()
+ESTOP_RELEASED → Partner_Active
+PARTNER_ESTOP_RELEASED → Local_Active</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>720</x>
+      <y>335</y>
+      <w>200</w>
+      <h>85</h>
+    </coordinates>
+    <panel_attributes>Both_Not_Active
+--
+entry: applyEstopBothNotActiveEntry()
+RESET_PRESSED + PARTNER_RESET_PRESSED
+ (beide latched)
+→ finishEstopReset()
+→ ActiveRegion + Idle</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLSpecialState</id>
+    <coordinates>
+      <x>960</x>
+      <y>360</y>
+      <w>20</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>type=final</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>Text</id>
+    <coordinates>
+      <x>990</x>
+      <y>355</y>
+      <w>70</w>
+      <h>30</h>
+    </coordinates>
+    <panel_attributes>Idle (L1)</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <!-- ========== ZEILE 4: CONNECTION LOST ========== -->
+
+  <element>
+    <id>Text</id>
+    <coordinates>
+      <x>90</x>
+      <y>440</y>
+      <w>260</w>
+      <h>22</h>
+    </coordinates>
+    <panel_attributes>style=plain
+fontsize=12
+ConnectionLost — Verbindung unterbrochen</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>90</x>
+      <y>460</y>
+      <w>220</w>
+      <h>85</h>
+    </coordinates>
+    <panel_attributes>ConnectionLostState
+--
+entry: applyConnectionLostEntry()
+ driveStop(), closeSwitch()
+ lightRed/Yellow/Green BlinkFast
+Kein removeAllWorkpieces()
+History H* bleibt</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>340</x>
+      <y>460</y>
+      <w>260</w>
+      <h>90</h>
+    </coordinates>
+    <panel_attributes>ConnectionLostAndEStopState
+--
+entry: applyConnectionLostEntry()
+ + applyEstopSafetyClear()
+ eStopActive=true, motorOff
+Beide ESTOPs frei + offline:
+ applyConnectionLostEstopWaitingResetEntry()</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>630</x>
+      <y>465</y>
+      <w>200</w>
+      <h>75</h>
+    </coordinates>
+    <panel_attributes>restore ActiveRegion(H*)
+--
+CONNECTION_RESTORED
+[!isAnyEstopActive]
+clearTrafficLightsForRestore()</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <!-- ========== RELATIONEN ZEILE 1 ========== -->
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>55</x>
+      <y>120</y>
+      <w>45</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;</panel_attributes>
+    <additional_attributes>10;10;35;10</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>285</x>
+      <y>135</y>
+      <w>45</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+delegiert Events</panel_attributes>
+    <additional_attributes>10;10;35;10</additional_attributes>
+  </element>
+
+  <!-- Active → Error -->
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>170</x>
+      <y>170</y>
+      <w>30</w>
+      <h>55</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+ERROR</panel_attributes>
+    <additional_attributes>15;10;15;45</additional_attributes>
+  </element>
+
+  <!-- Active → Estop -->
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>130</x>
+      <y>170</y>
+      <w>30</w>
+      <h>170</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+ESTOP_PRESSED
+PARTNER_ESTOP_PRESSED
+PARTNER_ESTOP_SAFETY_SYNC</panel_attributes>
+    <additional_attributes>15;10;15;160</additional_attributes>
+  </element>
+
+  <!-- Active → ConnectionLost -->
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>170</x>
+      <y>170</y>
+      <w>30</w>
+      <h>300</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+CONNECTION_LOST</panel_attributes>
+    <additional_attributes>15;10;15;290</additional_attributes>
+  </element>
+
+  <!-- ========== RELATIONEN ERROR ZEILE 2 ========== -->
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>255</x>
+      <y>250</y>
+      <w>45</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+RESET_RELEASED
+PARTNER_RESET_RELEASED</panel_attributes>
+    <additional_attributes>10;10;35;10</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>175</x>
+      <y>250</y>
+      <w>120</w>
+      <h>35</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+ERROR_CLEARED</panel_attributes>
+    <additional_attributes>10;10;110;30</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>395</x>
+      <y>235</y>
+      <w>105</w>
+      <h>30</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;-
+RESET_RELEASED
+PARTNER_RESET_RELEASED</panel_attributes>
+    <additional_attributes>100;20;10;20</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>455</x>
+      <y>250</y>
+      <w>245</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+START_SHORT/LONG</panel_attributes>
+    <additional_attributes>10;10;235;10</additional_attributes>
+  </element>
+
+  <!-- Error → Active (back up) -->
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>750</x>
+      <y>215</y>
+      <w>120</w>
+      <h>60</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;-
+leaveErrorState()</panel_attributes>
+    <additional_attributes>110;50;10;50</additional_attributes>
+  </element>
+
+  <!-- Error → Estop / ConnLost -->
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>255</x>
+      <y>290</y>
+      <w>60</w>
+      <h>55</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+ESTOP_*</panel_attributes>
+    <additional_attributes>30;50;30;10</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>175</x>
+      <y>290</y>
+      <w>30</w>
+      <h>175</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+CONNECTION_LOST</panel_attributes>
+    <additional_attributes>15;10;15;165</additional_attributes>
+  </element>
+
+  <!-- ========== RELATIONEN ESTOP ZEILE 3 ========== -->
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>265</x>
+      <y>370</y>
+      <w>45</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+ESTOP_RELEASED
+[Partner aktiv]</panel_attributes>
+    <additional_attributes>10;10;35;10</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>475</x>
+      <y>370</y>
+      <w>45</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+PARTNER_ESTOP_RELEASED
+[Lokal aktiv]</panel_attributes>
+    <additional_attributes>10;10;35;10</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>685</x>
+      <y>370</y>
+      <w>45</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+beide ESTOPs frei
+→ Both_Not_Active</panel_attributes>
+    <additional_attributes>10;10;35;10</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>915</x>
+      <y>370</y>
+      <w>55</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+finishEstopReset()</panel_attributes>
+    <additional_attributes>10;10;45;10</additional_attributes>
+  </element>
+
+  <!-- Estop → ConnLostAndEstop -->
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>450</x>
+      <y>405</y>
+      <w>30</w>
+      <h>65</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+CONNECTION_LOST</panel_attributes>
+    <additional_attributes>15;10;15;55</additional_attributes>
+  </element>
+
+  <!-- ========== RELATIONEN CONNECTION ZEILE 4 ========== -->
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>305</x>
+      <y>500</y>
+      <w>45</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+ESTOP_PRESSED
+PARTNER_ESTOP_PRESSED
+PARTNER_ESTOP_SAFETY_SYNC</panel_attributes>
+    <additional_attributes>10;10;35;10</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>595</x>
+      <y>500</y>
+      <w>45</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+CONNECTION_RESTORED
+[!isAnyEstopActive]</panel_attributes>
+    <additional_attributes>10;10;35;10</additional_attributes>
+  </element>
+
+  <!-- ConnLost → Active H* (up) -->
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>720</x>
+      <y>465</y>
+      <w>80</w>
+      <h>60</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;-
+→ ActiveRegion(H*)</panel_attributes>
+    <additional_attributes>70;50;10;50</additional_attributes>
+  </element>
+
+  <!-- ConnLost alone → Active -->
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>195</x>
+      <y>170</y>
+      <w>540</w>
+      <h>300</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;-
+CONNECTION_RESTORED
+[!isAnyEstopActive]</panel_attributes>
+    <additional_attributes>10;290;530;290;530;10</additional_attributes>
+  </element>
+
+  <!-- ConnLost → Estop on restore with estop -->
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>195</x>
+      <y>430</y>
+      <w>200</w>
+      <h>40</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+CONNECTION_RESTORED
+[isAnyEstopActive]</panel_attributes>
+    <additional_attributes>10;30;190;10</additional_attributes>
+  </element>
+
+  <!-- ConnLostAndEstop → Estop -->
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>450</x>
+      <y>430</y>
+      <w>80</w>
+      <h>40</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+CONNECTION_RESTORED
+[estop aktiv]</panel_attributes>
+    <additional_attributes>40;35;40;10</additional_attributes>
+  </element>
+
+</diagram>

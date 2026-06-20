@@ -1,0 +1,609 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<diagram program="UMLET" version="15.1">
+  <zoom_level>8</zoom_level>
+
+  <element>
+    <id>Text</id>
+    <coordinates>
+      <x>20</x>
+      <y>10</y>
+      <w>1100</w>
+      <h>36</h>
+    </coordinates>
+    <panel_attributes>style=plain
+fontsize=18
+Service FSM (Ebene 1) — ServiceState + ServiceCalibSubStates (Implementierung Team 3-3)</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLNote</id>
+    <coordinates>
+      <x>20</x>
+      <y>620</y>
+      <w>1100</w>
+      <h>120</h>
+    </coordinates>
+    <panel_attributes>fontsize=11
+Legende / Abweichung zur alten UML
+--
+• Einstieg: IdleState oder ReadyForServiceState — START lang → ServiceState
+• Abbruch: STOP_RELEASED → IdleState | ConnectionLost: ServiceCalibRegistry speichert Phase → Resume
+• Entfernt (alt): WP_2, adjust_wp, Back_to_Entry, driveLeft, Start_Tick_measuring
+• Neu: getrennte Wait-Zustaende je Messsegment | Slow endet CHUTE | Normal endet END | Speichern erst nach Wait_Wp_Removed + RESET_RELEASED
+• Anlage 1 (Weiche): Slow → Rutsche (CHUTE) | Normal → Weiche offen bis END
+• Anlage 2 (Auswerfer): pushEjector 1s bei EJECTOR_BLOCKED (Slow) | Normal bis END</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <!-- ServiceState Composite -->
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>20</x>
+      <y>50</y>
+      <w>1060</w>
+      <h>550</h>
+    </coordinates>
+    <panel_attributes>ServiceState
+symbol=composite
+valign=top
+fontsize=14
+--
+Composite: leitet Events an aktuellen Sub-State (m_sub)
+entry: applyServiceEntry() | exit: applyServiceExit()
+STOP_RELEASED → IdleState</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <!-- Initial -->
+  <element>
+    <id>UMLSpecialState</id>
+    <coordinates>
+      <x>50</x>
+      <y>110</y>
+      <w>20</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>type=initial</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <!-- ========== 1. LAUF SLOW (Zeile 1) ========== -->
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>90</x>
+      <y>95</y>
+      <w>150</w>
+      <h>75</h>
+    </coordinates>
+    <panel_attributes>Init_Empty
+--
+entry:
+ setAdcCalibrationsState()
+ lightGreenBlinkSlow()
+ driveStop()
+ resetServiceTickCounter()</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>270</x>
+      <y>95</y>
+      <w>150</w>
+      <h>55</h>
+    </coordinates>
+    <panel_attributes>Motor_Right_Slow
+--
+entry: driveSlowRight()</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>450</x>
+      <y>95</y>
+      <w>150</w>
+      <h>65</h>
+    </coordinates>
+    <panel_attributes>Slow_Reset_Tick
+--
+entry: resetServiceTickCounter()
+HEIGHT_BLOCKED:
+ store ticks_EntryC_to_HeightB_Slow</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>630</x>
+      <y>95</y>
+      <w>150</w>
+      <h>65</h>
+    </coordinates>
+    <panel_attributes>Wait_Height_Cleared
+--
+HEIGHT_CLEARED:
+ store ticks_HeightB_to_HeightC_Slow</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>810</x>
+      <y>95</y>
+      <w>150</w>
+      <h>75</h>
+    </coordinates>
+    <panel_attributes>Wait_Ejector_Blocked
+--
+entry: Weiche zu (A1) / Auswerfer bereit (A2)
+ driveSlowRight()
+EJECTOR_BLOCKED:
+ store ticks_HeightC_to_EjectorB_Slow
+ [A2: pushEjector 1s]</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <!-- ========== 1. LAUF SLOW (Zeile 2) ========== -->
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>90</x>
+      <y>210</y>
+      <w>150</w>
+      <h>65</h>
+    </coordinates>
+    <panel_attributes>Wait_Ejector_Cleared
+--
+entry: driveSlowRight()
+EJECTOR_CLEARED:
+ store ticks_EjectorB_to_EjectorC_Slow</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>270</x>
+      <y>210</y>
+      <w>150</w>
+      <h>65</h>
+    </coordinates>
+    <panel_attributes>Wait_Chute_Blocked
+--
+entry: driveSlowRight()
+CHUTE_BLOCKED:
+ store ticks_EjectorC_to_ChuteB_Slow</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>450</x>
+      <y>200</y>
+      <w>170</w>
+      <h>85</h>
+    </coordinates>
+    <panel_attributes>Slow_Calib_Done
+--
+entry:
+ recalculateSlowLimits()
+ driveStop()
+ lightGreenBlinkSlow()
+ENTRY_BLOCKED → 2. WP</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <!-- ========== 2. LAUF NORMAL (Zeile 3) ========== -->
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>90</x>
+      <y>330</y>
+      <w>150</w>
+      <h>75</h>
+    </coordinates>
+    <panel_attributes>Normal_Start
+--
+entry:
+ setServiceTimingMeasureState()
+ resetServiceTickCounter()
+ driveRight()
+ENTRY_CLEARED:
+ store ticks_EntryB_to_EntryC_Normal</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>270</x>
+      <y>330</y>
+      <w>150</w>
+      <h>70</h>
+    </coordinates>
+    <panel_attributes>Normal_Reset_Tick
+--
+entry: resetTickCounter(), driveRight()
+HEIGHT_BLOCKED:
+ store ticks_EntryC_to_HeightB_Normal</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>450</x>
+      <y>330</y>
+      <w>170</w>
+      <h>75</h>
+    </coordinates>
+    <panel_attributes>Normal_Wait_Height_Cleared
+--
+entry: driveRight()
+HEIGHT_CLEARED:
+ store ticks_HeightB_to_HeightC_Normal
+ Weiche offen (A1)</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>650</x>
+      <y>330</y>
+      <w>170</w>
+      <h>65</h>
+    </coordinates>
+    <panel_attributes>Normal_Wait_Ejector_Blocked
+--
+entry: driveRight()
+EJECTOR_BLOCKED:
+ store ticks_HeightC_to_EjectorB_Normal</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>850</x>
+      <y>330</y>
+      <w>170</w>
+      <h>65</h>
+    </coordinates>
+    <panel_attributes>Normal_Wait_Ejector_Cleared
+--
+entry: driveRight()
+EJECTOR_CLEARED:
+ store ticks_EjectorB_to_EjectorC_Normal</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <!-- ========== 2. LAUF NORMAL (Zeile 4) + Abschluss ========== -->
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>90</x>
+      <y>450</y>
+      <w>170</w>
+      <h>75</h>
+    </coordinates>
+    <panel_attributes>Normal_Wait_End_Blocked
+--
+entry: driveRight()
+END_BLOCKED:
+ store ticks_EjectorC_to_EndB_Normal
+ driveStop(), Weiche zu (A1)</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>290</x>
+      <y>450</y>
+      <w>150</w>
+      <h>70</h>
+    </coordinates>
+    <panel_attributes>Wait_Wp_Removed
+--
+entry: "WP vom Bandende entfernen"
+END_CLEARED → Calib_Finished
+[END schon frei → direkt]</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLState</id>
+    <coordinates>
+      <x>470</x>
+      <y>450</y>
+      <w>150</w>
+      <h>70</h>
+    </coordinates>
+    <panel_attributes>Calib_Finished
+--
+entry: turnLEDResetBlinkSlow()
+RESET_RELEASED:
+ saveCurrentCalibration()
+ → IdleState</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>UMLSpecialState</id>
+    <coordinates>
+      <x>660</x>
+      <y>470</y>
+      <w>20</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>type=final</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <element>
+    <id>Text</id>
+    <coordinates>
+      <x>690</x>
+      <y>465</y>
+      <w>80</w>
+      <h>30</h>
+    </coordinates>
+    <panel_attributes>IdleState</panel_attributes>
+    <additional_attributes/>
+  </element>
+
+  <!-- ========== RELATIONEN SLOW ZEILE 1 ========== -->
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>55</x>
+      <y>120</y>
+      <w>45</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;</panel_attributes>
+    <additional_attributes>10;10;35;10</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>235</x>
+      <y>120</y>
+      <w>45</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+ENTRY_BLOCKED</panel_attributes>
+    <additional_attributes>10;10;35;10</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>415</x>
+      <y>120</y>
+      <w>45</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+ENTRY_CLEARED</panel_attributes>
+    <additional_attributes>10;10;35;10</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>595</x>
+      <y>120</y>
+      <w>45</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+HEIGHT_BLOCKED</panel_attributes>
+    <additional_attributes>10;10;35;10</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>775</x>
+      <y>120</y>
+      <w>45</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+HEIGHT_CLEARED</panel_attributes>
+    <additional_attributes>10;10;35;10</additional_attributes>
+  </element>
+
+  <!-- EJECTOR_BLOCKED nach Zeile 2 (ab Wait_Ejector_Blocked) -->
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>885</x>
+      <y>165</y>
+      <w>30</w>
+      <h>55</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+EJECTOR_BLOCKED</panel_attributes>
+    <additional_attributes>15;10;15;45</additional_attributes>
+  </element>
+
+  <!-- SLOW ZEILE 2 horizontal -->
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>235</x>
+      <y>235</y>
+      <w>45</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+EJECTOR_CLEARED</panel_attributes>
+    <additional_attributes>10;10;35;10</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>415</x>
+      <y>235</y>
+      <w>45</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+CHUTE_BLOCKED</panel_attributes>
+    <additional_attributes>10;10;35;10</additional_attributes>
+  </element>
+
+  <!-- Slow_Calib_Done → Normal_Start -->
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>130</x>
+      <y>285</y>
+      <w>30</w>
+      <h>55</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+ENTRY_BLOCKED</panel_attributes>
+    <additional_attributes>15;45;15;10</additional_attributes>
+  </element>
+
+  <!-- NORMAL ZEILE 3 -->
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>235</x>
+      <y>355</y>
+      <w>45</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+ENTRY_CLEARED</panel_attributes>
+    <additional_attributes>10;10;35;10</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>415</x>
+      <y>355</y>
+      <w>45</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+HEIGHT_BLOCKED</panel_attributes>
+    <additional_attributes>10;10;35;10</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>615</x>
+      <y>355</y>
+      <w>45</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+HEIGHT_CLEARED</panel_attributes>
+    <additional_attributes>10;10;35;10</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>815</x>
+      <y>355</y>
+      <w>45</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+EJECTOR_BLOCKED</panel_attributes>
+    <additional_attributes>10;10;35;10</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1015</x>
+      <y>355</y>
+      <w>45</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+EJECTOR_CLEARED</panel_attributes>
+    <additional_attributes>10;10;35;10</additional_attributes>
+  </element>
+
+  <!-- Normal_Wait_End von Zeile 3 nach unten -->
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>935</x>
+      <y>395</y>
+      <w>30</w>
+      <h>65</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+END_BLOCKED</panel_attributes>
+    <additional_attributes>15;10;15;55</additional_attributes>
+  </element>
+
+  <!-- ABSCHLUSS ZEILE 4 -->
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>255</x>
+      <y>475</y>
+      <w>45</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+END_CLEARED</panel_attributes>
+    <additional_attributes>10;10;35;10</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>415</x>
+      <y>475</y>
+      <w>45</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;
+RESET_RELEASED</panel_attributes>
+    <additional_attributes>10;10;35;10</additional_attributes>
+  </element>
+
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>615</x>
+      <y>475</y>
+      <w>55</w>
+      <h>20</h>
+    </coordinates>
+    <panel_attributes>lt=-&gt;</panel_attributes>
+    <additional_attributes>10;10;45;10</additional_attributes>
+  </element>
+
+</diagram>

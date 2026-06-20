@@ -7,3 +7,6 @@
 **/.settings/
 .metadata/
 .idea/
+
+# QNX Momentics remote target stubs (auto-generated per lab machine)
+192.168.101.*/

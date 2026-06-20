@@ -1,93 +1,161 @@
-# ESEP-2026SoSe-Team-3-3
+# ESEP SoSe 2026 — Team 3-3
 
+Steuerungssoftware für die **Festo-Förderanlage** (QNX Neutrino, C++14).  
+Zwei gekoppelte Teilanlagen sortieren Werkstücke und übergeben sie per Netzwerk.
 
+| Anlage | Rolle | Besonderheit |
+|--------|-------|--------------|
+| **Anlage 1** (`-s`) | Vorn / Master | Sortierweiche → Rutsche |
+| **Anlage 2** (`-c`) | Hinten / Slave | Auswerfer → Bandende, Netzwerk-Handover |
 
-## Getting started
+---
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
-
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+## Projektstruktur
 
 ```
-cd existing_repo
-git remote add origin https://git.haw-hamburg.de/ese2026-team-3-3/esep-2026sose-team-3-3.git
-git branch -M main
-git push -uf origin main
+esep-2026sose-team-3-3/
+├── README.md
+├── .gitignore
+└── esep-SoSe26-3-3/              # QNX-Momentics-Projekt
+    ├── Makefile
+    ├── .project / .cproject      # Eclipse CDT
+    ├── diagrams/                 # UML-Zustandsdiagramme (UMLET)
+    ├── manual_tests/             # Hardwarenahe Einzeltests
+    ├── test/                       # Google-Test / GMock
+    └── src/
+        ├── esep-SoSe26-3-3.cpp   # main(): Threads, Init, Start
+        ├── shared/               # types, Events, IPC
+        ├── hal/                  # Hardware-Abstraktion (Sensoren/Aktoren)
+        ├── dispatcher/           # Zentrale Nachrichten- & HW-Schnittstelle
+        ├── connectionManager/    # Heartbeat, Partner-Sync, Connection Lost
+        ├── calibrationManager/   # Kalibrierdaten persistent speichern/laden
+        ├── timer/                # Belt-/Sorter-Timer
+        └── logik/                  # FSM, Werkstücke, Fehlerbehandlung
+            ├── logik.cpp/hpp
+            ├── eventManager/       # Events → FSM
+            ├── errorHandler/       # Timeouts, STUCK, Eskalation → ERROR
+            ├── workpieceManager/   # Digitales Schieberegister (max. 2 WPs A2)
+            └── fsm/
+                ├── Fsm.cpp         # Root-FSM
+                ├── common/         # BaseState
+                ├── level0/         # Safety & Connectivity
+                │   ├── ActiveRegionState
+                │   ├── ErrorState, EStopState
+                │   ├── ConnectionLostState, ConnectionLostAndEStopState
+                │   ├── Level0Actions
+                │   └── estop/      # ESTOP-Unterzustände
+                └── level1/         # Betriebszustände (nur in ActiveRegion)
+                    ├── Idle, ReadyForService, ReadyForRun
+                    ├── Running, Service
+                    ├── L1StateRegistry (Deep History H*)
+                    ├── Level1Actions
+                    └── service/      # Service-Kalibrierungs-Sub-FSM
 ```
 
-## Integrate with your tools
+---
 
-* [Set up project integrations](https://git.haw-hamburg.de/ese2026-team-3-3/esep-2026sose-team-3-3/-/settings/integrations)
+## Architektur (Kurzüberblick)
 
-## Collaborate with your team
+```
+Sensoren/HW ──► HAL ──► Dispatcher ◄──► ConnectionManager
+                           │
+                           ▼
+                      EventManager ──► FSM (Ebene 0 + 1)
+                           │
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+        WorkpieceManager  ErrorHandler  CalibrationManager
+```
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+**Datenfluss:** Hardware-Ereignisse (Pulse/ADC) → `Dispatcher` → `EventManager` → FSM.  
+Der `WorkpieceManager` trackt Werkstücke tickbasiert anhand kalibrierter Segmentzeiten.
 
-## Test and Deploy
+---
 
-Use the built-in continuous integration in GitLab.
+## FSM — Ebene 0 (Safety & Netz)
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+| Zustand | Zweck | Rückkehr |
+|---------|-------|----------|
+| **ActiveRegion** | Normalbetrieb, Ebene 1 inside | — |
+| **ErrorState** | Fehler quittieren → START | **H\*** (letzter L1-Zustand) |
+| **EStopState** | Not-Aus (lokal + Partner) | **Immer Idle** (kein H*) |
+| **ConnectionLost** | Netz weg, WPs bleiben | **H\*** bei RESTORED |
+| **ConnectionLost+EStop** | Netz weg + ESTOP | H\* oder EStop |
 
-***
+Diagramme: `esep-SoSe26-3-3/diagrams/Level0FSM.uxf`, `Start.uxd`
 
-# Editing this README
+---
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+## FSM — Ebene 1 (Betrieb)
 
-## Suggestions for a good README
+| Zustand | Beschreibung |
+|---------|--------------|
+| **Idle** | Anlage bereit, keine Förderung |
+| **ReadyForService / ReadyForRun** | START-Vorstufen (kurz/lang) |
+| **Running** | Sortierbetrieb, Werkstück-Tracking |
+| **Service** | Kalibrierung (Slow + Normal Lauf) |
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+Service-Sub-FSM: `diagrams/ServiceCalibFSM.uxf`  
+Ebene 1: `diagrams/ActiveLevel1.uxd`
 
-## Name
-Choose a self-explaining name for your project.
+---
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+## Build & Start
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+**Voraussetzungen:** QNX SDP 7.x, Momentics/Eclipse CDT, ARM-Target (`armv7le`)
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+```bash
+cd esep-SoSe26-3-3
+make                    # → build/armv7le-debug/esep-SoSe26-3-3
+make clean              # Build-Artefakte entfernen
+```
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+**Auf dem Target deployen und starten:**
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+```bash
+# Anlage 1 (Server / Weiche)
+./esep-SoSe26-3-3 -s
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+# Anlage 2 (Client / Auswerfer)
+./esep-SoSe26-3-3 -c
+```
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+> E-Stop muss beim Start **frei** sein, sonst bricht `main` ab.
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+---
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+## Tests
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+| Target | Beschreibung |
+|--------|--------------|
+| `make tests` | Google-Test-Suite (Logik, Dispatcher, …) |
+| `make calibration_manager_tests` | CalibrationManager |
+| `make dispatcher_tests` | Dispatcher |
+| `make ejector_test` | Auswerfer (Manual) |
+| `make profile_analyzer_test` | Profilanalyse / ADC |
+| `make dispatcher_hal_test` | Dispatcher + HAL |
+| `make connection_gns_test` | Connection / GNS |
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+---
 
-## License
-For open source projects, say how it is licensed.
+## Wichtige Regeln (Implementierung)
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+- **Max. 2 aktive Werkstücke** auf Anlage 2 (inkl. pending Handover)
+- **Handover:** Werkstück wartet am Bandende (A1) → Netzwerk an A2
+- **Estop-Reset:** beide Reset-Taster (lokal + Partner) → Idle, Anlage geleert
+- **Connection Lost:** Werkstücke bleiben, Service-Phase in `ServiceCalibRegistry`
+- **Error:** RESET quittieren → START → Rückkehr mit Deep History **H\***
+
+---
+
+## Team & Repo
+
+- **Kurs:** Embedded Systems Engineering (ESE), HAW Hamburg, SoSe 2026
+- **Team:** 3-3
+- **Remote:** `https://git.haw-hamburg.de/ese2026-team-3-3/esep-2026sose-team-3-3`
+
+---
+
+## Diagramme öffnen
+
+UML-Diagramme liegen im Ordner `esep-SoSe26-3-3/diagrams/` und können mit **[UMLET](https://www.umlet.com/)** geöffnet werden (`.uxf` / `.uxd`).
