@@ -83,6 +83,7 @@ public:
     MOCK_METHOD(bool, isEstopPressed, (), (override));
     MOCK_METHOD(bool, isPartnerEstopPressed, (), (const, override));
     MOCK_METHOD(void, sendeChuteStats, (bool), (override));
+    MOCK_METHOD(bool, isChuteLightBarrierClear, (), (const, override));
 
     MOCK_METHOD(void, turnAllOff, (), (override));
 };

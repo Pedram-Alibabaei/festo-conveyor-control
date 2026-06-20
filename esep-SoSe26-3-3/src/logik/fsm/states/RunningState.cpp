@@ -2,6 +2,10 @@
 #include "IdleState.hpp"
 #include "logik/logik.hpp"
 #include "logik/fsm/level1/Level1Actions.hpp"
+#include "logik/eventManager/eventManager.hpp"
+#include "logik/workpieceManager/workpieceManager.hpp"
+#include "logik/errorHandler/errorHandler.hpp"
+#include "dispatcher/i_Dispatcher.hpp"
 #include <iostream>
 
 namespace logik {
@@ -22,7 +26,17 @@ void RunningState::entry() {
     } else {
         enterEntryFree();
     }
-    enterRunningNormal();
+
+    if (auto* errorHandler = m_context->getErrorHandler()) {
+        errorHandler->reconcileChuteWarningOnOperationalEntry();
+    }
+
+    EventManager* eventManager = m_context->getEventManager();
+    if (eventManager != nullptr && eventManager->isChuteFull()) {
+        enterRunningWarning();
+    } else {
+        enterRunningNormal();
+    }
     enterMotorIdle();
 }
 
@@ -177,7 +191,24 @@ void RunningState::handle(Event e) {
         const bool handoverMotorActive =
             m_context->getWorkpieceManager() != nullptr
             && m_context->getWorkpieceManager()->isHandoverMotorActive();
-        if (!handoverMotorActive && m_motorState != MotorSubState::Idle) {
+        WorkpieceManager* wpManager = m_context->getWorkpieceManager();
+        EventManager* eventManager = m_context->getEventManager();
+        const bool wpWaitingAtEndOnA1 =
+            eventManager != nullptr
+            && eventManager->context().position == AnlagenPosition::VORN_ANLAGE_1
+            && wpManager != nullptr
+            && wpManager->getFirstWorkpieceAt(WpLocation::AT_END) != nullptr
+            && !handoverMotorActive;
+        const bool forceStopAtEnd =
+            (e == Event::END_BLOCKED
+                && eventManager != nullptr
+                && eventManager->context().position == AnlagenPosition::HINTEN_ANLAGE_2)
+            || wpWaitingAtEndOnA1;
+        const bool allowMotorStop =
+            forceStopAtEnd
+            || wpManager == nullptr
+            || wpManager->shouldAllowMotorStop();
+        if (!handoverMotorActive && allowMotorStop && m_motorState != MotorSubState::Idle) {
             enterMotorIdle();
         }
         if (m_context->getWorkpieceManager() != nullptr

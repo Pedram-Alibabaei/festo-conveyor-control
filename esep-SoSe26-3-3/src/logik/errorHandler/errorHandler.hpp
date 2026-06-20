@@ -70,16 +70,36 @@ namespace logik {
         // ========================================================================
         /**
          * @brief Nimmt detaillierte Fehlermeldungen aus allen Systemkomponenten entgegen.
-         * @details Friert das Schieberegister ein, leitet spezifische Diagnoseausgaben
-         * ein und triggert das finale ERROR-Event an die Zustandsmaschine.
-         * * @param type Die exakte Fehlerursache (z.B. BOTH_CHUTES_FULL, WP_LOST).
-         * @param triggerEvent Das HAL-Sensor-Event, bei dem der Fehler auffiel.
-         * @param wpId Die ID des betroffenen Werkstücks (Standard: -1, falls unbekannt).
          */
-     void handleEscalation(ErrorType type,
-                          logik::Event triggerEvent = logik::Event::UNKNOWN,
-                          WpLocation location = WpLocation::UNKNOWN_LOCATION,
-                          int wpId = -1);
+        void handleEscalation(ErrorType type,
+                              logik::Event triggerEvent = logik::Event::UNKNOWN,
+                              WpLocation location = WpLocation::UNKNOWN_LOCATION,
+                              int wpId = -1);
+
+        /** Chute-Watchdog laeuft oder Warnung bereits ausgeloest. */
+        bool isChuteOccupancyWatchActive() const {
+            return m_isChuteTimerRunning || m_isChuteWarningActive;
+        }
+
+        /** Setzt isChuteFull + WARNING, falls Watchdog noch nicht eskaliert hat. */
+        void ensureChuteWarningRaised();
+
+        /** Lichtschranke frei oder CHUTE_CLEARED -> Warning zuruecksetzen. */
+        void clearChuteWarningState();
+
+        /** Nach ErrorState: Warning nur wenn Rutsche physisch noch blockiert. */
+        void reconcileChuteWarningAfterErrorRecovery();
+
+        /**
+         * Betriebsstart (Idle/Error -> Running): Rutsche per LS-Level pruefen.
+         * Keine Flanke noetig – auch wenn CHUTE_BLOCKED schon vor Running aktiv war.
+         */
+        void reconcileChuteWarningOnOperationalEntry();
+
+    private:
+        bool isChutePhysicallyBlocked() const;
+        void raiseChuteFullWarning();
+        void updateChuteLevelWatchdog();
     };
 
 } // namespace logik

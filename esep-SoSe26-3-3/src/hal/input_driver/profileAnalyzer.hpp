@@ -65,6 +65,7 @@ private:
     bool m_transportPaused = false;
     bool m_heightErrorActive = false;
     bool m_serviceTimingOnly = false;
+    bool m_waitForTunnelClear = false;
     bool m_nextWaitingForWpIsServiceTiming = false;
     bool m_isTallDrilled = false;
     uint32_t m_tallBeforeDrilledCounter = 0;

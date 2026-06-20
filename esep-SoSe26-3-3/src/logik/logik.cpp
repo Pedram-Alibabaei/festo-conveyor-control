@@ -80,10 +80,18 @@ void Logik::workpieceInfo(int id, WpType type) {
         }
         if (m_eventManager != nullptr
             && !m_eventManager->isServiceMode()
-            && !m_eventManager->isErrorActive()) {
+            && !m_eventManager->isErrorActive()
+            && !m_eventManager->isEndBlocked()
+            && m_wpManager != nullptr
+            && m_wpManager->hasPendingNetworkWorkpiece()
+            && m_wpManager->isAnlage2Ready()
+            && m_wpManager->getFirstWorkpieceAt(WpLocation::AT_END) == nullptr) {
             std::cout << "[Logik] Anlage 2: WP-Info von Anlage 1 -> MOTOR_RUN, "
                       << "warte auf ENTRY_BLOCKED." << std::endl;
             m_eventManager->handleEvent(logik::Event::MOTOR_RUN);
+        } else if (m_eventManager != nullptr && !m_eventManager->isServiceMode()) {
+            std::cout << "[Logik] Anlage 2: WP-Info gespeichert – Motor bleibt aus "
+                      << "(Bandende belegt oder nicht bereit)." << std::endl;
         }
     }
 }
@@ -105,8 +113,22 @@ void Logik::takt() {
 }
 
 void Logik::setPartnerChuteStatus(bool isFull) {
-    if (m_eventManager != nullptr) {
-        m_eventManager->setPartnerChuteStatus(isFull);
+    if (m_eventManager == nullptr) {
+        return;
+    }
+
+    m_eventManager->setPartnerChuteStatus(isFull);
+
+    if (m_eventManager->isServiceMode() || m_eventManager->isErrorActive()) {
+        return;
+    }
+
+    if (isFull) {
+        std::cout << "[Logik] Partner-Rutsche voll -> WARNING." << std::endl;
+        m_eventManager->handleEvent(logik::Event::WARNING);
+    } else if (!m_eventManager->isChuteFull()) {
+        std::cout << "[Logik] Partner-Rutsche frei (lokal frei) -> WARNING_CLEARED." << std::endl;
+        m_eventManager->handleEvent(logik::Event::WARNING_CLEARED);
     }
 }
 

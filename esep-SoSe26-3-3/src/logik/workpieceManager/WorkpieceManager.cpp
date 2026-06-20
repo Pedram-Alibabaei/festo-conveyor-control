@@ -23,9 +23,16 @@ constexpr double kWorstCaseExtraPathCm = 6.9;
 constexpr double kSetSlowFactor = 0.65;
 constexpr std::uint32_t kMinSetSlowTick = 20;
 constexpr std::uint32_t kTransitToHeightSafetyTicks = 50;
+constexpr std::uint32_t kTransitToEjectorSafetyTicks = 50;
 constexpr std::uint32_t kTimeoutToleranceTicks = 30;
 /** Weiche laenger offen (10ms-Takte); 150 = 1,5 s. */
 constexpr int kSwitchOpenHoldTicks = 150;
+/** Anlage 1: REQ_TO_GIVE erneut senden, wenn Anlage 2 vorher blockiert war (1 s). */
+constexpr int kHandoverRetryIntervalTicks = 100;
+/** Anlage 2: maximal gleichzeitig aktive WPs (inkl. ausstehende Netzwerk-Uebergabe). */
+constexpr std::size_t kMaxActiveWorkpiecesAnlage2 = 2;
+/** Auswerfer-Anlage: Wartezeit auf Metall-Sensor nach EJECTOR_BLOCKED (10ms-Takte). */
+constexpr int kMetalSensorWaitTicks = 40;
 
 std::uint32_t calculateWorstCaseExtraTicks(std::uint32_t entryBlockedTicks) {
     if (entryBlockedTicks == 0) {
@@ -59,16 +66,68 @@ WorkpieceManager::WorkpieceManager(Logik* context)
       m_hasPendingNetworkWp(false),
       m_pendingNetworkWpId(-1),
       m_pendingNetworkWpType(WpType::UNKNOWN),
+      m_handoverRetryTicks(0),
       m_isSwitchOpen(false),
       m_switchOpenTicks(0),
       m_isEjectorPushed(false),
       m_ejectorPushTicks(0),
+      m_metalWaitWpId(-1),
+      m_metalWaitTicks(0),
+      m_ejectorLsBlocked(false),
       TICKS_ONE_SECOND(100)
 {}
 
 void WorkpieceManager::setCalibrationData(const CalibrationData& data) {
     m_calibData = data;
 
+}
+
+bool WorkpieceManager::hasWorkpiecesNeedingMotor() const {
+    for (const auto& wp : m_activeWorkpieces) {
+        switch (wp.getLocation()) {
+        case WpLocation::AT_ENTRY:
+        case WpLocation::TRANSIT_TO_HEIGHT:
+        case WpLocation::TRANSIT_TO_EJECTOR:
+        case WpLocation::TRANSIT_TO_CHUTE:
+        case WpLocation::TRANSIT_TO_END:
+            return true;
+        default:
+            break;
+        }
+    }
+    return false;
+}
+
+bool WorkpieceManager::isEntryQueuedBehindLeadingWorkpiece() const {
+    const Workpiece* entryWp = nullptr;
+    for (const auto& wp : m_activeWorkpieces) {
+        if (wp.getLocation() == WpLocation::AT_ENTRY) {
+            entryWp = &wp;
+            break;
+        }
+    }
+    if (entryWp == nullptr) {
+        return false;
+    }
+
+    for (const auto& wp : m_activeWorkpieces) {
+        if (wp.getId() == entryWp->getId()) {
+            continue;
+        }
+        switch (wp.getLocation()) {
+        case WpLocation::TRANSIT_TO_HEIGHT:
+        case WpLocation::AT_HEIGHT_SENSOR:
+        case WpLocation::TRANSIT_TO_EJECTOR:
+        case WpLocation::AT_EJECTOR:
+        case WpLocation::TRANSIT_TO_END:
+        case WpLocation::TRANSIT_TO_CHUTE:
+        case WpLocation::AT_END:
+            return true;
+        default:
+            break;
+        }
+    }
+    return false;
 }
 
 void WorkpieceManager::addWorkpiece() {
@@ -100,6 +159,15 @@ void WorkpieceManager::addNetworkWorkpiece(int id, WpType type) {
 }
 
 void WorkpieceManager::storePendingNetworkWorkpiece(int id, WpType type) {
+    if (m_myPosition == AnlagenPosition::HINTEN_ANLAGE_2
+        && !canAcceptMoreWorkpiecesOnAnlage2()) {
+        std::cout << "[WP-Manager] Anlage 2: WP-Info abgelehnt "
+                  << "(max " << kMaxActiveWorkpiecesAnlage2 << " WPs aktiv)." << std::endl;
+        if (m_context != nullptr && m_context->getDispatcher() != nullptr) {
+            m_context->getDispatcher()->sendHandoverWpLost();
+        }
+        return;
+    }
     m_pendingNetworkWpId = id;
     m_pendingNetworkWpType = type;
     m_hasPendingNetworkWp = true;
@@ -135,10 +203,25 @@ void WorkpieceManager::resetHandoverState() {
     m_hasPendingNetworkWp = false;
     m_pendingNetworkWpId = -1;
     m_pendingNetworkWpType = WpType::UNKNOWN;
+    m_handoverRetryTicks = 0;
+}
+
+bool WorkpieceManager::canAcceptMoreWorkpiecesOnAnlage2() const {
+    if (m_myPosition != AnlagenPosition::HINTEN_ANLAGE_2) {
+        return true;
+    }
+    std::size_t occupied = m_activeWorkpieces.size();
+    if (m_hasPendingNetworkWp) {
+        occupied++;
+    }
+    return occupied < kMaxActiveWorkpiecesAnlage2;
 }
 
 bool WorkpieceManager::canAcceptNetworkHandover() {
     if (m_myPosition != AnlagenPosition::HINTEN_ANLAGE_2) {
+        return false;
+    }
+    if (!canAcceptMoreWorkpiecesOnAnlage2()) {
         return false;
     }
     if (!m_isAnlage2Ready) {
@@ -168,6 +251,11 @@ void WorkpieceManager::onPartnerHandoverRequest() {
     if (m_myPosition != AnlagenPosition::HINTEN_ANLAGE_2) {
         return;
     }
+    if (!canAcceptMoreWorkpiecesOnAnlage2()) {
+        std::cout << "[WP-Manager] Anlage 2: Uebergabe-Anfrage abgelehnt (max "
+                  << kMaxActiveWorkpiecesAnlage2 << " WPs aktiv)." << std::endl;
+        return;
+    }
     if (!canAcceptNetworkHandover()) {
         std::cout << "[WP-Manager] Anlage 2: Uebergabe-Anfrage abgelehnt (nicht bereit)."
                   << std::endl;
@@ -185,12 +273,17 @@ void WorkpieceManager::onPartnerReadyToReceive() {
     if (m_myPosition != AnlagenPosition::VORN_ANLAGE_1) {
         return;
     }
-    if (!m_awaitingHandoverReady) {
-        std::cout << "[WP-Manager] Anlage 1: READY_TO_RECEIVE ohne offene Anfrage ignoriert."
-                  << std::endl;
-        return;
-    }
     Workpiece* wp = getFirstWorkpieceAt(WpLocation::AT_END);
+    if (!m_awaitingHandoverReady) {
+        if (wp == nullptr || m_handoverInfoSent || m_handoverMotorActive) {
+            std::cout << "[WP-Manager] Anlage 1: READY_TO_RECEIVE ohne offene Anfrage ignoriert."
+                      << std::endl;
+            return;
+        }
+        m_awaitingHandoverReady = true;
+        std::cout << "[WP-Manager] Anlage 1: Partner meldet freies Bandende -> "
+                  << "Uebergabe starten." << std::endl;
+    }
     if (wp == nullptr) {
         std::cout << "[WP-Manager] Anlage 1: READY_TO_RECEIVE aber kein WP am Bandende."
                   << std::endl;
@@ -211,6 +304,68 @@ void WorkpieceManager::onPartnerReadyToReceive() {
     m_awaitingHandoverReady = false;
     m_handoverInfoSent = true;
     m_handoverMotorActive = true;
+    m_handoverRetryTicks = 0;
+}
+
+void WorkpieceManager::retryPendingHandoverRequest() {
+    if (m_myPosition != AnlagenPosition::VORN_ANLAGE_1) {
+        return;
+    }
+    if (!m_awaitingHandoverReady || m_handoverInfoSent || m_handoverMotorActive) {
+        m_handoverRetryTicks = 0;
+        return;
+    }
+    if (getFirstWorkpieceAt(WpLocation::AT_END) == nullptr) {
+        m_handoverRetryTicks = 0;
+        return;
+    }
+    EventManager* eventManager = m_context ? m_context->getEventManager() : nullptr;
+    if (eventManager == nullptr
+        || eventManager->isConnectionLost()
+        || !eventManager->isPartnerCalibrationReady()
+        || eventManager->isErrorActive()) {
+        return;
+    }
+    if (++m_handoverRetryTicks < kHandoverRetryIntervalTicks) {
+        return;
+    }
+    m_handoverRetryTicks = 0;
+    if (m_context == nullptr || m_context->getDispatcher() == nullptr) {
+        return;
+    }
+    std::cout << "[WP-Manager] Anlage 1: WP wartet am Bandende -> erneute REQ_TO_GIVE."
+              << std::endl;
+    m_context->getDispatcher()->RequestToReceiveWp();
+}
+
+void WorkpieceManager::notifyPartnerHandoverSlotFree() {
+    if (m_myPosition != AnlagenPosition::HINTEN_ANLAGE_2 || !m_isAnlage2Ready) {
+        return;
+    }
+    if (!canAcceptMoreWorkpiecesOnAnlage2()) {
+        std::cout << "[WP-Manager] Anlage 2: Kein READY_TO_RECEIVE "
+                  << "(max " << kMaxActiveWorkpiecesAnlage2 << " WPs aktiv)." << std::endl;
+        return;
+    }
+    if (m_hasPendingNetworkWp
+        || getFirstWorkpieceAt(WpLocation::AT_ENTRY) != nullptr
+        || getFirstWorkpieceAt(WpLocation::TRANSIT_TO_END) != nullptr
+        || getFirstWorkpieceAt(WpLocation::AT_END) != nullptr) {
+        return;
+    }
+    if (m_context == nullptr || m_context->getEventManager() == nullptr) {
+        return;
+    }
+    const EventManager* em = m_context->getEventManager();
+    if (em->isErrorActive() || em->isServiceMode() || em->isConnectionLost()) {
+        return;
+    }
+    if (m_context->getDispatcher() == nullptr) {
+        return;
+    }
+    std::cout << "[WP-Manager] Anlage 2: Bandende frei -> signalisiere Anlage 1 (READY)."
+              << std::endl;
+    m_context->getDispatcher()->readyToReceiveWp();
 }
 
 void WorkpieceManager::onPartnerHandoverComplete() {
@@ -222,12 +377,22 @@ void WorkpieceManager::onPartnerHandoverComplete() {
                   << std::endl;
         return;
     }
-    std::cout << "[WP-Manager] Anlage 1: Partner meldet ENTRY_BLOCKED -> Motor aus."
+    std::cout << "[WP-Manager] Anlage 1: Partner meldet ENTRY_BLOCKED -> Uebergabe abgeschlossen."
               << std::endl;
     m_handoverMotorActive = false;
     m_handoverInfoSent = false;
     if (m_context != nullptr) {
-        m_context->processEvent(logik::Event::MOTOR_STOP);
+        if (hasWorkpiecesNeedingMotor()) {
+            std::cout << "[WP-Manager] Anlage 1: Weitere WPs auf Band -> Motor laeuft weiter."
+                      << std::endl;
+            m_context->processEvent(logik::Event::MOTOR_RUN);
+            if (shouldUseSlowMotor()) {
+                m_context->processEvent(logik::Event::SET_SLOW);
+            }
+        } else {
+            std::cout << "[WP-Manager] Anlage 1: Keine weiteren WPs -> Motor aus." << std::endl;
+            m_context->processEvent(logik::Event::MOTOR_STOP);
+        }
     }
 }
 
@@ -238,13 +403,22 @@ void WorkpieceManager::onPartnerHandoverWpLost() {
     if (!m_handoverMotorActive) {
         return;
     }
-    std::cout << "[WP-Manager] Anlage 1: Partner meldet WP verloren bei Uebergabe -> Motor aus."
+    std::cout << "[WP-Manager] Anlage 1: Partner meldet WP verloren bei Uebergabe."
               << std::endl;
     m_handoverMotorActive = false;
     m_handoverInfoSent = false;
     m_awaitingHandoverReady = false;
     if (m_context != nullptr) {
-        m_context->processEvent(logik::Event::MOTOR_STOP);
+        if (hasWorkpiecesNeedingMotor()) {
+            std::cout << "[WP-Manager] Anlage 1: Weitere WPs auf Band -> Motor laeuft weiter."
+                      << std::endl;
+            m_context->processEvent(logik::Event::MOTOR_RUN);
+            if (shouldUseSlowMotor()) {
+                m_context->processEvent(logik::Event::SET_SLOW);
+            }
+        } else {
+            m_context->processEvent(logik::Event::MOTOR_STOP);
+        }
     }
 }
 
@@ -260,9 +434,57 @@ void WorkpieceManager::notifyPartnerHandoverFailed() {
     m_context->getDispatcher()->sendHandoverWpLost();
 }
 
+void WorkpieceManager::notifyPartnerSequenceSync(WpType type) {
+    if (m_myPosition != AnlagenPosition::HINTEN_ANLAGE_2) {
+        return;
+    }
+    if (m_context == nullptr || m_context->getDispatcher() == nullptr) {
+        return;
+    }
+    const WpType syncType = (type != WpType::UNKNOWN) ? type : m_sequence.getExpectedType();
+    m_context->getDispatcher()->updateWpListe(syncType);
+    std::cout << "[WP-Manager] Anlage 2: Rezept-Sync an Anlage 1 gesendet (Typ "
+              << static_cast<int>(syncType) << ")." << std::endl;
+}
+
 // ============================================================================
 // CENTRAL TIMER TICK (ZENTRALER HERZSCHLAG MIT TRANSIT-WATCHDOGS)
 // ============================================================================
+void WorkpieceManager::taktActuators() {
+    if (m_isSwitchOpen) {
+        m_switchOpenTicks--;
+
+        if (m_switchOpenTicks <= 0) {
+            if (m_context && m_context->getDispatcher()) {
+                m_context->getDispatcher()->closeSwitch();
+            }
+            m_isSwitchOpen = false;
+        }
+    }
+
+    if (m_isEjectorPushed) {
+        m_ejectorPushTicks--;
+
+        if (m_ejectorPushTicks <= 0) {
+            if (m_context && m_context->getDispatcher()) {
+                m_context->getDispatcher()->pullEjector();
+            }
+            m_isEjectorPushed = false;
+        }
+    }
+
+    if (m_metalWaitWpId >= 0) {
+        m_metalWaitTicks--;
+        if (m_metalWaitTicks <= 0) {
+            std::cout << "[WP-Manager] Auswerfer: Kein Metall-Signal nach "
+                      << kMetalSensorWaitTicks << " Takten (Transit zur Weiche)."
+                      << std::endl;
+            m_metalWaitWpId = -1;
+            m_metalWaitTicks = 0;
+        }
+    }
+}
+
 void WorkpieceManager::takt(bool isMotorSlow) {
     for (auto& wp : m_activeWorkpieces) {
 
@@ -270,6 +492,19 @@ void WorkpieceManager::takt(bool isMotorSlow) {
             wp.getLocation() == WpLocation::AT_EJECTOR ||
             wp.getLocation() == WpLocation::AT_CHUTE ||
             wp.getLocation() == WpLocation::AT_END) {
+            continue;
+        }
+
+        const bool motorOn = m_context != nullptr
+            && m_context->getEventManager() != nullptr
+            && m_context->getEventManager()->isMotorOn();
+        if (!motorOn) {
+            continue;
+        }
+
+        if (wp.getLocation() == WpLocation::AT_ENTRY
+            && isEntryQueuedBehindLeadingWorkpiece()) {
+            wp.resetTicks();
             continue;
         }
 
@@ -388,16 +623,7 @@ void WorkpieceManager::takt(bool isMotorSlow) {
             case WpLocation::TRANSIT_TO_CHUTE:
                 if (wp.getTargetLimit() > 0
                     && wp.getTicks() > wp.getTargetLimit() + kTimeoutToleranceTicks) {
-                    std::cout << "[WP-Manager] TRANSIT_TO_CHUTE_TIMEOUT: wp="
-                              << wp.getId()
-                              << " ticks=" << wp.getTicks()
-                              << " limit=" << wp.getTargetLimit()
-                              << " tolerance=" << kTimeoutToleranceTicks << " -> STUCK" << std::endl;
-                    if (m_context && m_context->getErrorHandler()) {
-                        m_context->getErrorHandler()->handleEscalation(
-                            ErrorType::STUCK, logik::Event::UNKNOWN, wp.getLocation(), wp.getId()
-                        );
-                    }
+                    handleChuteTransitFailure(wp);
                 }
                 break;
 
@@ -426,28 +652,7 @@ void WorkpieceManager::takt(bool isMotorSlow) {
         }
     }
 
-    // --- AUTOMATISCHE AKTOR-RUECKSETZUNG IM ZEITTAKT (1 s) ---
-    if (m_isSwitchOpen) {
-        m_switchOpenTicks--;
-
-        if (m_switchOpenTicks <= 0) {
-            if (m_context && m_context->getDispatcher()) {
-                m_context->getDispatcher()->closeSwitch();
-            }
-            m_isSwitchOpen = false;
-        }
-    }
-
-    if (m_isEjectorPushed) {
-        m_ejectorPushTicks--;
-
-        if (m_ejectorPushTicks <= 0) {
-            if (m_context && m_context->getDispatcher()) {
-                m_context->getDispatcher()->pullEjector();
-            }
-            m_isEjectorPushed = false;
-        }
-    }
+    retryPendingHandoverRequest();
 }
 
 // ============================================================================
@@ -522,9 +727,8 @@ void WorkpieceManager::handleSensorSignal(logik::Event e, WpType typeFromHal) {
                 wp->updateLocation(WpLocation::TRANSIT_TO_HEIGHT);
                 wp->setTargetLimit(worstCaseTarget);
             } else {
-                if (m_context && m_context->getErrorHandler()) {
-                    m_context->getErrorHandler()->handleEscalation(ErrorType::UNEXPECTED_EVENT, e);
-                }
+                std::cout << "[WP-Manager] ENTRY_CLEARED ohne WP am Einlauf -> ignoriert "
+                          << "(spaete Flanke oder bereits unterwegs)." << std::endl;
             }
             break;
         }
@@ -559,19 +763,35 @@ void WorkpieceManager::handleSensorSignal(logik::Event e, WpType typeFromHal) {
             Workpiece* wp = getFirstWorkpieceAt(WpLocation::AT_HEIGHT_SENSOR);
             if (wp != nullptr) {
                 wp->setType(typeFromHal);
-                std::cout << "[HAL-Signal] Messung beendet für WP " << wp->getId()
+                std::cout << "[HAL-Signal] Messung beendet fuer WP " << wp->getId()
                           << ". Finaler Typ gesetzt: " << static_cast<int>(wp->getType())
                           << " -> Transit zur Weiche." << std::endl;
 
                 wp->updateLocation(WpLocation::TRANSIT_TO_EJECTOR);
                 {
-                    const std::uint32_t normal = m_calibData.ticks_HeightC_to_EjectorB_Normal;
-                    const std::uint32_t slow = m_calibData.ticks_HeightC_to_EjectorB_Slow;
-                    const std::uint32_t slowFull = slow > 0
-                        ? slow
-                        : scaleNormalToSlowTicks(normal);
-                    wp->setTargetLimit(std::max(normal, slowFull));
+                    const std::uint32_t limit = calculateEjectorTransitLimit();
+                    wp->setTargetLimit(limit);
+                    std::cout << "[WP-Manager] TRANSIT_TO_EJECTOR limit: wp=" << wp->getId()
+                              << " normal=" << m_calibData.ticks_HeightC_to_EjectorB_Normal
+                              << " slowCalib=" << m_calibData.ticks_HeightC_to_EjectorB_Slow
+                              << " slowScaled="
+                              << scaleNormalToSlowTicks(
+                                     m_calibData.ticks_HeightC_to_EjectorB_Normal)
+                              << " targetLimit=" << limit << std::endl;
                 }
+                if (shouldDeferJunctionForMetal(wp)) {
+                    m_metalWaitWpId = wp->getId();
+                    m_metalWaitTicks = kMetalSensorWaitTicks;
+                    std::cout << "[WP-Manager] Auswerfer: Metall-Sensor-Wartezeit "
+                              << kMetalSensorWaitTicks << " Takte (Transit zur Weiche)."
+                              << std::endl;
+                }
+            } else if (getFirstWorkpieceAt(WpLocation::TRANSIT_TO_EJECTOR) != nullptr
+                       || getFirstWorkpieceAt(WpLocation::AT_EJECTOR) != nullptr
+                       || getFirstWorkpieceAt(WpLocation::TRANSIT_TO_END) != nullptr
+                       || getFirstWorkpieceAt(WpLocation::TRANSIT_TO_CHUTE) != nullptr) {
+                std::cout << "[WP-Manager] Ignoriere doppelte/spaete HEIGHT_CLEARED-Flanke "
+                          << "(Typ=" << static_cast<int>(typeFromHal) << ")." << std::endl;
             } else {
                 if (m_context && m_context->getErrorHandler()) {
                     m_context->getErrorHandler()->handleEscalation(ErrorType::UNEXPECTED_EVENT, e);
@@ -592,13 +812,25 @@ void WorkpieceManager::handleSensorSignal(logik::Event e, WpType typeFromHal) {
 
         case logik::Event::METAL_DETECTED: {
             Workpiece* wp = getFirstWorkpieceAt(WpLocation::TRANSIT_TO_EJECTOR);
+            if (wp == nullptr) {
+                wp = getFirstWorkpieceAt(WpLocation::AT_EJECTOR);
+            }
             if (wp != nullptr) {
-                if (wp->getType() == WpType::TALL_DRILLED) {
-                    wp->setType(WpType::TALL_DRILLED_METAL);
+                applyMetalTypeUpgrade(wp);
+                if (m_metalWaitWpId == wp->getId()) {
+                    m_metalWaitWpId = -1;
+                    m_metalWaitTicks = 0;
+                    std::cout << "[WP-Manager] Auswerfer: Metall erkannt waehrend Transit "
+                              << "(WP id=" << wp->getId() << ")." << std::endl;
+                } else if (wp->getLocation() == WpLocation::AT_EJECTOR
+                           || wp->getLocation() == WpLocation::TRANSIT_TO_EJECTOR) {
+                    std::cout << "[WP-Manager] Ignoriere spaetes/doppeltes METAL_DETECTED "
+                              << "(WP id=" << wp->getId() << ")." << std::endl;
                 }
-                else if (wp->getType() == WpType::TALL) {
-                    wp->setType(WpType::TALL_METAL);
-                }
+            } else if (getFirstWorkpieceAt(WpLocation::TRANSIT_TO_END) != nullptr
+                       || getFirstWorkpieceAt(WpLocation::TRANSIT_TO_CHUTE) != nullptr
+                       || getFirstWorkpieceAt(WpLocation::AT_CHUTE) != nullptr) {
+                std::cout << "[WP-Manager] Ignoriere spaetes METAL_DETECTED." << std::endl;
             } else {
                 if (m_context && m_context->getErrorHandler()) {
                     m_context->getErrorHandler()->handleEscalation(ErrorType::UNEXPECTED_EVENT, e);
@@ -613,6 +845,7 @@ void WorkpieceManager::handleSensorSignal(logik::Event e, WpType typeFromHal) {
 
         // --- 3. ZONE: SORTIERWEICHE (EJECTOR) ---
         case logik::Event::EJECTOR_BLOCKED: {
+            m_ejectorLsBlocked = true;
             Workpiece* wp = getFirstWorkpieceAt(WpLocation::TRANSIT_TO_EJECTOR);
             if (wp != nullptr) {
                 std::cout << "[HAL-Signal] WP " << wp->getId() << " erreicht physisch die Sortierweiche." << std::endl;
@@ -631,9 +864,12 @@ void WorkpieceManager::handleSensorSignal(logik::Event e, WpType typeFromHal) {
         }
 
         case logik::Event::EJECTOR_CLEARED: {
+            const bool wasEjectorBlocked = m_ejectorLsBlocked;
+            m_ejectorLsBlocked = false;
+
             Workpiece* wp = getFirstWorkpieceAt(WpLocation::AT_EJECTOR);
             if (wp != nullptr) {
-                if (wp->isCorrectInSequence()) {
+                if (wp->isCorrectInSequence() || wp->isDeferRejectToPartner()) {
                     wp->updateLocation(WpLocation::TRANSIT_TO_END);
                     {
                         const std::uint32_t normal = m_calibData.ticks_EjectorC_to_EndB_Normal;
@@ -642,17 +878,39 @@ void WorkpieceManager::handleSensorSignal(logik::Event e, WpType typeFromHal) {
                             : 0U;
                         wp->setTargetLimit(std::max(normal, slowFull));
                     }
-                    m_sequence.advanceSequence();
+                    std::cout << "[WP-Manager] EJECTOR_CLEARED: WP " << wp->getId()
+                              << " -> Transit zum Bandende." << std::endl;
+                    if (wp->isCorrectInSequence()) {
+                        m_sequence.advanceSequence();
+                    }
+                    if (wp->isDeferRejectToPartner()) {
+                        wp->setDeferRejectToPartner(false);
+                    }
                 } else {
                     wp->updateLocation(WpLocation::TRANSIT_TO_CHUTE);
-                    const std::uint32_t chuteLimit = m_calibData.ticks_EjectorC_to_ChuteB_Slow > 0
-                        ? m_calibData.ticks_EjectorC_to_ChuteB_Slow
+                    const std::uint32_t chuteSlow = m_calibData.ticks_EjectorC_to_ChuteB_Slow;
+                    const std::uint32_t chuteLimit = chuteSlow > 0
+                        ? std::max(chuteSlow, 150U)
                         : 150U;
                     wp->setTargetLimit(chuteLimit);
+                    std::cout << "[WP-Manager] EJECTOR_CLEARED: WP " << wp->getId()
+                              << " -> Transit zur Rutsche." << std::endl;
                 }
             } else if (getFirstWorkpieceAt(WpLocation::TRANSIT_TO_END) != nullptr
-                       || getFirstWorkpieceAt(WpLocation::TRANSIT_TO_CHUTE) != nullptr) {
+                       || getFirstWorkpieceAt(WpLocation::TRANSIT_TO_CHUTE) != nullptr
+                       || getFirstWorkpieceAt(WpLocation::AT_CHUTE) != nullptr
+                       || getFirstWorkpieceAt(WpLocation::TRANSIT_TO_EJECTOR) != nullptr
+                       || getFirstWorkpieceAt(WpLocation::AT_END) != nullptr
+                       || getFirstWorkpieceAt(WpLocation::AT_HEIGHT_SENSOR) != nullptr
+                       || getFirstWorkpieceAt(WpLocation::TRANSIT_TO_HEIGHT) != nullptr
+                       || getFirstWorkpieceAt(WpLocation::AT_ENTRY) != nullptr) {
                 std::cout << "[WP-Manager] Ignoriere doppelte/spaete EJECTOR_CLEARED-Flanke." << std::endl;
+            } else if (!wasEjectorBlocked && !m_activeWorkpieces.empty()) {
+                std::cout << "[WP-Manager] Ignoriere EJECTOR_CLEARED waehrend Mehrfach-Betrieb "
+                          << "(LS bereits frei, WP bereits verlassen)." << std::endl;
+            } else if (wasEjectorBlocked && !m_activeWorkpieces.empty()) {
+                std::cout << "[WP-Manager] Ignoriere spaetes EJECTOR_CLEARED "
+                          << "(WP physisch bereits aus Weichenzone)." << std::endl;
             } else {
                 if (m_context && m_context->getErrorHandler()) {
                     m_context->getErrorHandler()->handleEscalation(ErrorType::UNEXPECTED_EVENT, e);
@@ -674,18 +932,20 @@ void WorkpieceManager::handleSensorSignal(logik::Event e, WpType typeFromHal) {
                         && !eventManager->isConnectionLost()
                         && eventManager->isPartnerCalibrationReady();
 
+                    m_awaitingHandoverReady = true;
+                    m_handoverRetryTicks = 0;
+
                     if (!partnerOk) {
                         if (wp->isCorrectInSequence()) {
                             m_sequence.forceType(wp->getType());
                         }
                         std::cout << "[WP-Manager] Anlage 1: Bandende belegt, Partner nicht "
-                                  << "bereit -> keine Uebergabe-Anfrage." << std::endl;
+                                  << "bereit -> warte ohne Uebergabe-Anfrage." << std::endl;
                     } else if (m_context && m_context->getDispatcher()) {
                         std::cout << "[WP-Manager] Anlage 1: WP id=" << wp->getId()
                                   << " am Bandende -> frage Anlage 2 (REQ_TO_GIVE)."
                                   << std::endl;
                         m_context->getDispatcher()->RequestToReceiveWp();
-                        m_awaitingHandoverReady = true;
                     }
                 } else if (m_myPosition == AnlagenPosition::HINTEN_ANLAGE_2) {
                     setAnlage2Ready(false);
@@ -695,6 +955,11 @@ void WorkpieceManager::handleSensorSignal(logik::Event e, WpType typeFromHal) {
                 }
             } else if (getFirstWorkpieceAt(WpLocation::AT_END) != nullptr) {
                 std::cout << "[WP-Manager] Ignoriere doppelte END_BLOCKED-Flanke." << std::endl;
+            } else if (m_myPosition == AnlagenPosition::HINTEN_ANLAGE_2
+                       && (m_handoverReceiveActive || m_hasPendingNetworkWp
+                           || hasActiveWorkpieces())) {
+                std::cout << "[WP-Manager] Ignoriere spaetes END_BLOCKED auf Anlage 2 "
+                          << "(Einlauf-Uebergabe oder Mehrfach-Betrieb)." << std::endl;
             } else {
                 if (m_context && m_context->getErrorHandler()) {
                     m_context->getErrorHandler()->handleEscalation(ErrorType::UNEXPECTED_EVENT, e);
@@ -734,6 +999,14 @@ void WorkpieceManager::handleSensorSignal(logik::Event e, WpType typeFromHal) {
                               << std::endl;
                 }
                 removeWorkpiece(wp->getId());
+                if (m_myPosition == AnlagenPosition::HINTEN_ANLAGE_2) {
+                    notifyPartnerHandoverSlotFree();
+                }
+            } else if (m_myPosition == AnlagenPosition::HINTEN_ANLAGE_2
+                       && (m_handoverReceiveActive || m_hasPendingNetworkWp
+                           || hasActiveWorkpieces())) {
+                std::cout << "[WP-Manager] Ignoriere spaetes END_CLEARED auf Anlage 2 "
+                          << "(kein WP am Bandende registriert)." << std::endl;
             } else {
                 if (m_context && m_context->getErrorHandler()) {
                     m_context->getErrorHandler()->handleEscalation(ErrorType::UNEXPECTED_EVENT, e);
@@ -746,13 +1019,10 @@ void WorkpieceManager::handleSensorSignal(logik::Event e, WpType typeFromHal) {
         case logik::Event::CHUTE_BLOCKED: {
             Workpiece* wp = getFirstWorkpieceAt(WpLocation::TRANSIT_TO_CHUTE);
             if (wp != nullptr) {
-                wp->updateLocation(WpLocation::AT_CHUTE);
-                const bool onlyWpNowInChute = m_activeWorkpieces.size() == 1;
-                if (onlyWpNowInChute && m_context != nullptr) {
-                    std::cout << "[WP-Manager] Letztes WP in Rutsche -> BAND_EMPTY bei CHUTE_BLOCKED."
-                              << std::endl;
-                    m_context->processEvent(logik::Event::BAND_EMPTY);
-                }
+                std::cout << "[WP-Manager] CHUTE_BLOCKED: WP " << wp->getId()
+                          << " in Rutsche angekommen -> aus aktiver Liste entfernen."
+                          << std::endl;
+                removeWorkpiece(wp->getId());
             } else {
                 std::cout << "[WP-Manager] CHUTE_BLOCKED ohne WP ignoriert (nur Fuellstand/Warnung)." << std::endl;
             }
@@ -808,6 +1078,18 @@ std::uint32_t WorkpieceManager::scaleNormalToSlowTicks(std::uint32_t normalTicks
     return static_cast<std::uint32_t>(static_cast<double>(normalTicks) * m_speedFactor + 0.5);
 }
 
+std::uint32_t WorkpieceManager::calculateEjectorTransitLimit() const {
+    const std::uint32_t normal = m_calibData.ticks_HeightC_to_EjectorB_Normal;
+    const std::uint32_t slowCalib = m_calibData.ticks_HeightC_to_EjectorB_Slow;
+    const std::uint32_t slowScaled = normal > 0 ? scaleNormalToSlowTicks(normal) : 0U;
+    const std::uint32_t slowFull = std::max(slowCalib, slowScaled);
+    const std::uint32_t base = std::max(normal, slowFull);
+    if (base == 0) {
+        return 0;
+    }
+    return base + kTransitToEjectorSafetyTicks;
+}
+
 void WorkpieceManager::updateTargetLimitForMotor(Workpiece& wp, bool isMotorSlow) const {
     const std::uint32_t ticks = wp.getTicks();
     std::uint32_t newLimit = wp.getTargetLimit();
@@ -853,19 +1135,22 @@ void WorkpieceManager::updateTargetLimitForMotor(Workpiece& wp, bool isMotorSlow
         if (normal == 0 && m_calibData.ticks_HeightC_to_EjectorB_Slow == 0) {
             break;
         }
-        const std::uint32_t slowFull = m_calibData.ticks_HeightC_to_EjectorB_Slow > 0
-            ? m_calibData.ticks_HeightC_to_EjectorB_Slow
-            : scaleNormalToSlowTicks(normal);
-        const std::uint32_t conservativeLimit = std::max(normal, slowFull);
+        const std::uint32_t conservativeLimit = calculateEjectorTransitLimit();
+        const std::uint32_t slowSegment = std::max(
+            m_calibData.ticks_HeightC_to_EjectorB_Slow,
+            scaleNormalToSlowTicks(normal));
 
         if (isMotorSlow) {
-            newLimit = std::max(newLimit, conservativeLimit);
-            if (ticks > 0 && normal > 0 && ticks < normal) {
-                const std::uint32_t restSlow = scaleNormalToSlowTicks(normal - ticks);
-                newLimit = std::max(newLimit, ticks + restSlow);
-            }
+            const std::uint32_t restNormal = normal > ticks ? normal - ticks : 0U;
+            const std::uint32_t restSlow = restNormal > 0
+                ? scaleNormalToSlowTicks(restNormal)
+                : slowSegment;
+            newLimit = std::max({
+                newLimit,
+                conservativeLimit,
+                ticks + restSlow + kTransitToEjectorSafetyTicks
+            });
         } else {
-            // Fast: mindestens max(Normal, Slow) wie zuvor (Normal allein kann zu klein sein)
             newLimit = std::max({newLimit, normal, conservativeLimit});
         }
         break;
@@ -953,8 +1238,14 @@ bool WorkpieceManager::shouldUseSlowMotor() const {
 void WorkpieceManager::clearAll() {
     m_activeWorkpieces.clear();
     m_sequence.resetSequence();
+    resetMetalWaitState();
     resetHandoverState();
     std::cout << "[WP-Manager] Schieberegister und Rezeptur komplett zurueckgesetzt." << std::endl;
+}
+
+void WorkpieceManager::resetMetalWaitState() {
+    m_metalWaitWpId = -1;
+    m_metalWaitTicks = 0;
 }
 
 // ============================================================================
@@ -968,8 +1259,8 @@ void WorkpieceManager::canNotPass() {
         m_context->getDispatcher()->closeSwitch();
         m_isSwitchOpen = false;
     } else {
-        // Auswerfer: ausfahren -> Werkstück aussortieren
-        m_context->getDispatcher()->pushEjector();
+        // Auswerfer: 1 s ausfahren, danach wieder einfahren
+        m_context->getDispatcher()->pushEjectorFor(1000);
         m_ejectorPushTicks = TICKS_ONE_SECOND;
         m_isEjectorPushed = true;
     }
@@ -1010,7 +1301,122 @@ void WorkpieceManager::checkAndSetJunction(Workpiece* wp) {
     if (correct) {
         canPass();
     } else {
+        handleSortOutDecision(wp);
+    }
+}
+
+void WorkpieceManager::handleSortOutDecision(Workpiece* wp) {
+    if (wp == nullptr || !m_context) {
         canNotPass();
+        return;
+    }
+
+    EventManager* em = m_context->getEventManager();
+    ErrorHandler* errorHandler = m_context->getErrorHandler();
+
+    if (em == nullptr || !em->isChuteFull()) {
+        canNotPass();
+        return;
+    }
+
+    if (m_myPosition == AnlagenPosition::HINTEN_ANLAGE_2) {
+        std::cout << "[WP-Manager] Aussortierung unmoeglich – lokale Rutsche voll (WP id="
+                  << wp->getId() << ")." << std::endl;
+        if (errorHandler != nullptr) {
+            errorHandler->handleEscalation(
+                ErrorType::BOTH_CHUTES_FULL,
+                logik::Event::CHUTE_BLOCKED,
+                WpLocation::AT_EJECTOR,
+                wp->getId());
+        }
+        return;
+    }
+
+    if (em->isPartnerChuteFull()) {
+        std::cout << "[WP-Manager] Anlage 1: Beide Rutschen voll – Aussortierung WP id="
+                  << wp->getId() << " nicht moeglich." << std::endl;
+        if (errorHandler != nullptr) {
+            errorHandler->handleEscalation(
+                ErrorType::BOTH_CHUTES_FULL,
+                logik::Event::CHUTE_BLOCKED,
+                WpLocation::AT_EJECTOR,
+                wp->getId());
+        }
+        return;
+    }
+
+    std::cout << "[WP-Manager] Anlage 1: Eigene Rutsche voll – WP id=" << wp->getId()
+              << " wird zur Partner-Anlage weitergeleitet." << std::endl;
+    wp->setDeferRejectToPartner(true);
+    canPass();
+}
+
+void WorkpieceManager::handleChuteTransitFailure(Workpiece& wp) {
+    ErrorHandler* errorHandler = m_context ? m_context->getErrorHandler() : nullptr;
+    EventManager* em = m_context ? m_context->getEventManager() : nullptr;
+
+    std::cout << "[WP-Manager] TRANSIT_TO_CHUTE_TIMEOUT: wp=" << wp.getId()
+              << " ticks=" << wp.getTicks()
+              << " limit=" << wp.getTargetLimit()
+              << " tolerance=" << kTimeoutToleranceTicks
+              << " -> Rutsche blockiert/voll" << std::endl;
+
+    const bool chuteAlreadyFull = em != nullptr && em->isChuteFull();
+    removeWorkpiece(wp.getId());
+
+    if (!chuteAlreadyFull) {
+        if (errorHandler != nullptr) {
+            errorHandler->ensureChuteWarningRaised();
+        }
+        return;
+    }
+
+    if (m_myPosition == AnlagenPosition::HINTEN_ANLAGE_2 && errorHandler != nullptr) {
+        errorHandler->handleEscalation(
+            ErrorType::BOTH_CHUTES_FULL,
+            logik::Event::CHUTE_BLOCKED,
+            WpLocation::TRANSIT_TO_CHUTE,
+            wp.getId());
+    } else if (em != nullptr && em->isPartnerChuteFull() && errorHandler != nullptr) {
+        errorHandler->handleEscalation(
+            ErrorType::BOTH_CHUTES_FULL,
+            logik::Event::CHUTE_BLOCKED,
+            WpLocation::TRANSIT_TO_CHUTE,
+            wp.getId());
+    }
+}
+
+Workpiece* WorkpieceManager::findWorkpieceById(int id) {
+    for (auto& wp : m_activeWorkpieces) {
+        if (wp.getId() == id) {
+            return &wp;
+        }
+    }
+    return nullptr;
+}
+
+bool WorkpieceManager::hasEjectorSorter() const {
+    return m_context != nullptr
+        && m_context->getDispatcher() != nullptr
+        && !m_context->getDispatcher()->isSwitch();
+}
+
+bool WorkpieceManager::shouldDeferJunctionForMetal(const Workpiece* wp) const {
+    if (wp == nullptr || !hasEjectorSorter()) {
+        return false;
+    }
+    const WpType type = wp->getType();
+    return type == WpType::TALL || type == WpType::TALL_DRILLED;
+}
+
+void WorkpieceManager::applyMetalTypeUpgrade(Workpiece* wp) {
+    if (wp == nullptr) {
+        return;
+    }
+    if (wp->getType() == WpType::TALL_DRILLED) {
+        wp->setType(WpType::TALL_DRILLED_METAL);
+    } else if (wp->getType() == WpType::TALL) {
+        wp->setType(WpType::TALL_METAL);
     }
 }
 

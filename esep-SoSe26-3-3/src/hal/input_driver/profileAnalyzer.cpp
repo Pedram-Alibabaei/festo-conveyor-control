@@ -79,6 +79,7 @@ void ProfileAnalyzer::setAdcIdelState()
     std::cout << "[Analyzer] State -> IDLE" << std::endl;
     m_currentState = AnalyzerState::IDLE;
     m_serviceTimingOnly = false;
+    m_waitForTunnelClear = false;
     m_nextWaitingForWpIsServiceTiming = false;
     m_transportPaused = false;
     m_heightErrorActive = false;
@@ -97,6 +98,7 @@ void ProfileAnalyzer::setAdcWaitigForWpState()
     resetMeasurementData();
     resetSmoothingBuffer();
     m_serviceTimingOnly = m_nextWaitingForWpIsServiceTiming;
+    m_waitForTunnelClear = false;
     m_nextWaitingForWpIsServiceTiming = false;
     m_transportPaused = false;
     m_heightErrorActive = false;
@@ -115,6 +117,7 @@ void ProfileAnalyzer::setAdcCalibrationsState()
     m_currentState = AnalyzerState::CALIBRATION;
     m_currentCalibStep = CalibStep::MEASURE_BELT;
     m_serviceTimingOnly = false;
+    m_waitForTunnelClear = false;
     m_nextWaitingForWpIsServiceTiming = false;
     m_transportPaused = false;
     m_heightErrorActive = false;
@@ -241,6 +244,21 @@ void ProfileAnalyzer::processSample(uint32_t adcValue)
         }
 
     	if (!isCalibrated()) {
+            break;
+        }
+
+        if (m_waitForTunnelClear) {
+            if (currentRaw > m_releaseTriggerValue) {
+                ++m_releaseConfirmCounter;
+                if (m_releaseConfirmCounter >= runningReleaseConfirmCount()) {
+                    m_waitForTunnelClear = false;
+                    m_releaseConfirmCounter = 0;
+                    m_triggerConfirmCounter = 0;
+                    m_triggerCandidateBuffer.clear();
+                }
+            } else {
+                m_releaseConfirmCounter = 0;
+            }
             break;
         }
 
@@ -567,7 +585,8 @@ void ProfileAnalyzer::finishMeasurement()
     }
 
     const size_t minSamples = minRequiredMeasurementSamples();
-    if (m_sampleCounter < minSamples) {
+    const bool shortMeasurement = m_sampleCounter < minSamples;
+    if (shortMeasurement) {
         std::cout << "[Analyzer] Messung zu kurz (" << m_sampleCounter
                   << " Samples, Minimum " << minSamples
                   << ") -> UNKNOWN." << std::endl;
@@ -581,6 +600,9 @@ void ProfileAnalyzer::finishMeasurement()
     std::cout << "[Analyzer] State -> WAITING_FOR_WP" << std::endl;
     resetMeasurementData();
     resetSmoothingBuffer();
+    if (shortMeasurement) {
+        m_waitForTunnelClear = true;
+    }
 }
 
 // KALIBRIERUNG UND SCHWELLEN

@@ -64,6 +64,8 @@ private:
     std::chrono::steady_clock::time_point m_partnerStartPressedTime;
     bool m_startButtonHeld = false;
     bool m_entryDeferredWhileEndBlocked = false;
+    /** Anlage 1: ENTRY_BLOCKED kam, waehrend Einlauf noch gesperrt (voriges WP unterwegs). */
+    bool m_entryDeferredWhileOccupied = false;
 
     bool canRouteToBandSubsystems() const;
     bool isFsmPassthroughEvent(Event e) const;
@@ -74,6 +76,7 @@ private:
     void routeToFsm(Event e);
     std::vector<Event> preprocessForFsm(Event e);
     void resumeEntryAfterEndCleared(std::vector<Event>& fsmEvents);
+    void resumeDeferredEntryWhileOccupied(std::vector<Event>& fsmEvents);
 
 public:
     explicit EventManager(Logik* context);

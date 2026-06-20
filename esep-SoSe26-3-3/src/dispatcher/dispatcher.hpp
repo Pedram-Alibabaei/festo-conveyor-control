@@ -125,6 +125,7 @@ public:
     bool isEstopPressed() override;
     bool isPartnerEstopPressed() const override;
     void sendeChuteStats(bool isVoll) override;
+    bool isChuteLightBarrierClear() const override;
     void sendPartnerResetPressed() override;
     void sendPartnerStartRunning() override;
     void sendPartnerStartService() override;

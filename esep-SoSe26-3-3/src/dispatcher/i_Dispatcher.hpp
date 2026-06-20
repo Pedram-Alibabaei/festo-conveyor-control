@@ -69,6 +69,10 @@ public:
     virtual void sendHandoverWpLost() = 0;
     virtual void updateWpListe(WpType type) = 0;
     virtual void sendeChuteStats(bool isVoll)=0;
+
+    /** true = Rutsche-Lichtschranke frei (Pin HIGH). */
+    virtual bool isChuteLightBarrierClear() const = 0;
+
     virtual void sendPartnerResetPressed() = 0;
     virtual void sendPartnerStartRunning() = 0;
     virtual void sendPartnerStartService() = 0;

@@ -124,11 +124,15 @@ void EventManager::handleEvent(Event e) {
         canRouteToBandSubsystems() && !m_ctx.serviceMode;
     const bool endBandEvent =
         (e == Event::END_BLOCKED || e == Event::END_CLEARED) && !m_ctx.serviceMode;
+    const bool chuteFillEvent =
+        (e == Event::CHUTE_BLOCKED || e == Event::CHUTE_CLEARED) && !m_ctx.serviceMode;
 
-    // Phase 1: Subsysteme — END-Events auch bei endBlocked (WP entfernen/uebergeben)
-    if (bandSubsystemsAllowed || endBandEvent) {
+    // Phase 1: Subsysteme — END/CHUTE auch bei errorActive (Entleeren im ErrorState)
+    if (bandSubsystemsAllowed || endBandEvent || chuteFillEvent) {
         routeToErrorHandler(e);
-        routeToWorkpieceManager(e);
+        if (bandSubsystemsAllowed || endBandEvent || chuteFillEvent) {
+            routeToWorkpieceManager(e);
+        }
     } else if (canRouteToBandSubsystems() && m_ctx.serviceMode) {
         routeToErrorHandler(e);
     }
@@ -209,6 +213,7 @@ void EventManager::updateContextFlags(Event e) {
 
     case Event::ERROR:
         m_ctx.errorActive = true;
+        m_entryDeferredWhileOccupied = false;
         break;
 
     default:
@@ -262,6 +267,11 @@ std::vector<Event> EventManager::preprocessForFsm(Event e) {
             m_entryDeferredWhileEndBlocked = true;
             std::cout << "[EventManager] Entry blockiert waehrend Bandende belegt -> WP wartet."
                       << std::endl;
+        } else if (!m_ctx.entryFrei && !m_ctx.endBlocked
+                   && m_ctx.position == AnlagenPosition::VORN_ANLAGE_1) {
+            m_entryDeferredWhileOccupied = true;
+            std::cout << "[EventManager] Entry-Signal waehrend Einlauf gesperrt -> "
+                      << "WP wird nach Freigabe angelegt." << std::endl;
         }
         fsmEvents.push_back(Event::ENTRY_NOT_FREI);
         if (m_ctx.entryFrei && !m_ctx.endBlocked
@@ -286,6 +296,7 @@ std::vector<Event> EventManager::preprocessForFsm(Event e) {
         } else if (m_ctx.position == AnlagenPosition::VORN_ANLAGE_1) {
             fsmEvents.push_back(Event::ENTRY_FREI);
             m_ctx.entryFrei = true;
+            resumeDeferredEntryWhileOccupied(fsmEvents);
         }
         break;
 
@@ -302,7 +313,21 @@ std::vector<Event> EventManager::preprocessForFsm(Event e) {
         if (m_ctx.serviceMode) {
             fsmEvents.push_back(e);
         } else {
-            if (!(m_wpManager != nullptr && m_wpManager->isHandoverMotorActive())) {
+            const bool wpWaitingAtEndOnA1 =
+                m_ctx.position == AnlagenPosition::VORN_ANLAGE_1
+                && m_wpManager != nullptr
+                && m_wpManager->getFirstWorkpieceAt(WpLocation::AT_END) != nullptr
+                && !m_wpManager->isHandoverMotorActive();
+            const bool forceStopAtEnd =
+                m_ctx.position == AnlagenPosition::HINTEN_ANLAGE_2
+                || wpWaitingAtEndOnA1
+                || (m_ctx.position == AnlagenPosition::VORN_ANLAGE_1
+                    && m_wpManager != nullptr
+                    && m_wpManager->isAwaitingHandoverReady()
+                    && !m_wpManager->isHandoverMotorActive());
+            if (forceStopAtEnd
+                || (!(m_wpManager != nullptr && m_wpManager->isHandoverMotorActive())
+                    && (m_wpManager == nullptr || m_wpManager->shouldAllowMotorStop()))) {
                 fsmEvents.push_back(Event::MOTOR_STOP);
             }
             fsmEvents.push_back(Event::END_BLOCKED);
@@ -339,12 +364,30 @@ std::vector<Event> EventManager::preprocessForFsm(Event e) {
     }
 
     default:
-        if (e == Event::MOTOR_STOP
-            && m_wpManager != nullptr
-            && m_wpManager->isHandoverMotorActive()) {
-            std::cout << "[EventManager] MOTOR_STOP unterdrueckt (WP-Uebergabe laeuft)."
-                      << std::endl;
-            break;
+        if (e == Event::MOTOR_RUN && m_wpManager != nullptr
+            && m_ctx.position == AnlagenPosition::HINTEN_ANLAGE_2) {
+            if (m_ctx.endBlocked
+                || m_wpManager->getFirstWorkpieceAt(WpLocation::AT_END) != nullptr
+                || !m_wpManager->isAnlage2Ready()) {
+                std::cout << "[EventManager] MOTOR_RUN auf Anlage 2 unterdrueckt "
+                          << "(Bandende belegt oder nicht bereit)." << std::endl;
+                break;
+            }
+        }
+        if (e == Event::MOTOR_STOP && m_wpManager != nullptr) {
+            if (m_wpManager->isHandoverMotorActive()) {
+                std::cout << "[EventManager] MOTOR_STOP unterdrueckt (WP-Uebergabe laeuft)."
+                          << std::endl;
+                break;
+            }
+            const bool stopForEndHandover =
+                m_ctx.position == AnlagenPosition::VORN_ANLAGE_1
+                && m_wpManager->getFirstWorkpieceAt(WpLocation::AT_END) != nullptr;
+            if (!stopForEndHandover && m_wpManager->hasWorkpiecesNeedingMotor()) {
+                std::cout << "[EventManager] MOTOR_STOP unterdrueckt (weitere WPs auf Band)."
+                          << std::endl;
+                break;
+            }
         }
         if (isFsmPassthroughEvent(e)) {
             fsmEvents.push_back(e);
@@ -355,9 +398,41 @@ std::vector<Event> EventManager::preprocessForFsm(Event e) {
     return fsmEvents;
 }
 
+void EventManager::resumeDeferredEntryWhileOccupied(std::vector<Event>& fsmEvents) {
+    if (m_wpManager == nullptr
+        || m_ctx.position != AnlagenPosition::VORN_ANLAGE_1
+        || !m_entryDeferredWhileOccupied) {
+        return;
+    }
+    if (m_ctx.endBlocked) {
+        return;
+    }
+    if (m_wpManager->getFirstWorkpieceAt(WpLocation::AT_ENTRY) != nullptr) {
+        m_entryDeferredWhileOccupied = false;
+        return;
+    }
+
+    m_entryDeferredWhileOccupied = false;
+    m_wpManager->addWorkpiece();
+    fsmEvents.push_back(Event::ENTRY_NOT_FREI);
+    fsmEvents.push_back(Event::MOTOR_RUN);
+    m_ctx.entryFrei = false;
+    std::cout << "[EventManager] Einlauf frei -> aufgeschobenes Entry-WP angelegt + MOTOR_RUN."
+              << std::endl;
+}
+
 void EventManager::resumeEntryAfterEndCleared(std::vector<Event>& fsmEvents) {
     if (m_wpManager == nullptr) {
         m_entryDeferredWhileEndBlocked = false;
+        return;
+    }
+
+    if (m_ctx.errorActive) {
+        return;
+    }
+
+    if (m_ctx.position == AnlagenPosition::VORN_ANLAGE_1
+        && m_wpManager->getFirstWorkpieceAt(WpLocation::AT_END) != nullptr) {
         return;
     }
 
@@ -374,6 +449,15 @@ void EventManager::resumeEntryAfterEndCleared(std::vector<Event>& fsmEvents) {
 
     const bool hasActiveWorkpieces = m_wpManager->hasActiveWorkpieces();
     if (!hasActiveWorkpieces) {
+        return;
+    }
+
+    if (m_ctx.position == AnlagenPosition::HINTEN_ANLAGE_2
+        && (m_ctx.endBlocked
+            || m_wpManager->getFirstWorkpieceAt(WpLocation::AT_END) != nullptr
+            || !m_wpManager->isAnlage2Ready())) {
+        std::cout << "[EventManager] Anlage 2: END_CLEARED – Motor bleibt aus "
+                  << "(Bandende noch nicht frei fuer weiteren Betrieb)." << std::endl;
         return;
     }
 
@@ -402,6 +486,9 @@ void EventManager::handleTakt() {
     if (m_wpManager == nullptr) {
         return;
     }
+
+    // Weiche/Auswerfer-Ruecksetzung auch bei stehendem Band
+    m_wpManager->taktActuators();
 
     if (!canRouteToBandSubsystems() || !m_ctx.motorOn) {
         return;
@@ -486,11 +573,6 @@ void EventManager::resetStartPressTimer() {
 
 void EventManager::setPartnerChuteStatus(bool isFull) {
     m_ctx.partnerChuteFull = isFull;
-
-    if (m_ctx.partnerChuteFull && m_ctx.chuteFull) {
-        setErrorActive(true);
-        handleEvent(Event::ERROR);
-    }
 }
 
 } // namespace logik

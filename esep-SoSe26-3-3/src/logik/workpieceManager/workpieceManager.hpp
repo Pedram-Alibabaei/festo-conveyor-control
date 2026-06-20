@@ -40,6 +40,7 @@ namespace logik {
         bool m_hasPendingNetworkWp;                  ///< Anlage 2: WP-Info erhalten, wartet auf ENTRY_BLOCKED
         int m_pendingNetworkWpId;
         WpType m_pendingNetworkWpType;
+        int m_handoverRetryTicks;                   ///< Anlage 1: Takte bis zum naechsten REQ_TO_GIVE-Retry
 
         // ====================================================================
         // TAKT-BASIERTE AKTOR-ZEITSTEUERUNG
@@ -48,6 +49,9 @@ namespace logik {
         int m_switchOpenTicks;                      ///< Zaehlt die verbleibenden 10ms-Takte fuer das Offenhalten
         bool m_isEjectorPushed;                     ///< Zustandstracking, ob der Auswerfer gerade ausgefahren ist
         int m_ejectorPushTicks;                     ///< Zaehlt die verbleibenden 10ms-Takte fuer das Auswerfen
+        int m_metalWaitWpId;                        ///< Auswerfer: WP wartet auf Metall-Sensor vor Sortierentscheid
+        int m_metalWaitTicks;                       ///< Rest-Takte bis Entscheid ohne Metall-Signal
+        bool m_ejectorLsBlocked;                    ///< Sortierweichen-LS zuletzt blockiert (fuer spaete CLEARED-Flanken)
         const int TICKS_ONE_SECOND;                 ///< Konstante: 100 Takte * 10ms = 1000ms (1 Sekunde)
 
     public:
@@ -72,6 +76,9 @@ namespace logik {
          * @brief Der zentrale Herzschlag des Schieberegisters (Aufruf stur alle 10ms via Hardware-Timer).
          */
         void takt(bool isMotorSlow);
+
+        /** Weiche/Auswerfer-Ruecksetzung – laeuft auch bei Motor aus. */
+        void taktActuators();
 
         /**
          * @brief Verarbeitet die hardwarenahen Werkstück-Ereignisse der HAL.
@@ -118,6 +125,9 @@ namespace logik {
          */
         void removeWorkpiece(int id);
 
+        /** Metall-Warte-Timer zuruecksetzen (z. B. bei BOTH_CHUTES_FULL). */
+        void resetMetalWaitState();
+
         // ====================================================================
         // GETTER- UND SETTER-METHODEN FÜR DIE LOGIK-SCHICHT
         // ====================================================================
@@ -134,6 +144,18 @@ namespace logik {
        }
 
        bool hasActiveWorkpieces() const { return !m_activeWorkpieces.empty(); }
+
+       /** Anlage 2: Kapazitaet fuer weiteres WP (max. 2 inkl. ausstehende Uebergabe). */
+       bool canAcceptMoreWorkpiecesOnAnlage2() const;
+
+       /** Noch WPs auf dem Band, die Förderband-Bewegung brauchen? */
+       bool hasWorkpiecesNeedingMotor() const;
+
+       /** Einlauf-WP wartet regulaer hinter fuehrendem WP auf dem Band? */
+       bool isEntryQueuedBehindLeadingWorkpiece() const;
+
+       /** Motor darf stoppen: keine aktiven Transit-/Entry-WPs mehr. */
+       bool shouldAllowMotorStop() const { return !hasWorkpiecesNeedingMotor(); }
 
        bool hasPendingNetworkWorkpiece() const { return m_hasPendingNetworkWp; }
 
@@ -161,11 +183,17 @@ namespace logik {
        /** Anlage 1: Motor laeuft fuer laufende Netzwerk-Uebergabe. */
        bool isHandoverMotorActive() const { return m_handoverMotorActive; }
 
+       /** Anlage 1: WP wartet am Bandende auf READY_TO_RECEIVE vom Partner. */
+       bool isAwaitingHandoverReady() const { return m_awaitingHandoverReady; }
+
        /** Anlage 2: Wartet auf physisches ENTRY_BLOCKED nach WP-Info. */
        bool isHandoverReceiveActive() const { return m_handoverReceiveActive; }
 
        /** Anlage 2: Partner ueber fehlgeschlagene Uebergabe informieren. */
        void notifyPartnerHandoverFailed();
+
+       /** Anlage 2: Rezeptur an Anlage 1 synchronisieren (UPDATE_LIST). */
+       void notifyPartnerSequenceSync(WpType type = WpType::UNKNOWN);
 
        /** Slow-Motor noetig fuer mindestens ein aktives WP (Error-Rueckkehr). */
        bool shouldUseSlowMotor() const;
@@ -178,8 +206,29 @@ namespace logik {
          */
         void checkAndSetJunction(Workpiece* wp);
 
+        /**
+         * @brief Aussortierung mit Rutsche-voll-Prüfung (lokal, ggf. Partner).
+         */
+        void handleSortOutDecision(Workpiece* wp);
+
+        /** Rutsche blockiert waehrend Aussortierung – WARNING oder BOTH_CHUTES_FULL. */
+        void handleChuteTransitFailure(Workpiece& wp);
+
+        /** Anlage 1: REQ_TO_GIVE wiederholen, solange WP am Bandende wartet. */
+        void retryPendingHandoverRequest();
+
+        /** Anlage 2: Bandende frei -> Anlage 1 informieren (READY_TO_RECEIVE). */
+        void notifyPartnerHandoverSlotFree();
+
         std::uint32_t scaleNormalToSlowTicks(std::uint32_t normalTicks) const;
+        /** Konservatives Limit HS -> Sortierweiche (Normal, Slow-Kalibrierung, skaliert). */
+        std::uint32_t calculateEjectorTransitLimit() const;
         void updateTargetLimitForMotor(Workpiece& wp, bool isMotorSlow) const;
+
+        Workpiece* findWorkpieceById(int id);
+        bool hasEjectorSorter() const;
+        bool shouldDeferJunctionForMetal(const Workpiece* wp) const;
+        void applyMetalTypeUpgrade(Workpiece* wp);
     };
 
 } // namespace logik

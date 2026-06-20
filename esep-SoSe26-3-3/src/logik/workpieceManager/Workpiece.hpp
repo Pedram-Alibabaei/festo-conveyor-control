@@ -31,6 +31,7 @@ private:
     bool m_isCorrectInSequence;           ///< Flag, ob das Teil an der aktuellen Weiche korrekt im Rezept ist
     bool m_isExpectedFromNetwork;         ///< Flag für Anlage 2: Passte der übertragene Netzwerk-Typ zum lokalen Rezept?
     bool m_entryBlockedSeen;              ///< Physische ENTRY_BLOCKED-Flanke fuer dieses WP gesehen?
+    bool m_deferRejectToPartner;          ///< Anlage 1: falsches WP bei voller Rutsche zur Partner-Anlage leiten
 
 public:
     /**
@@ -45,7 +46,8 @@ public:
         m_targetLimitForState(0),
         m_isCorrectInSequence(true),
         m_isExpectedFromNetwork(true),
-        m_entryBlockedSeen(false)
+        m_entryBlockedSeen(false),
+        m_deferRejectToPartner(false)
     {}
 
     // --- Getter & Setter für die ID ---
@@ -100,6 +102,10 @@ public:
      */
     void incrementTicks() {
         m_ticksInCurrentState++;
+    }
+
+    void resetTicks() {
+        m_ticksInCurrentState = 0;
     }
 
     /**
@@ -160,6 +166,14 @@ public:
      */
     bool isExpectedFromNetwork() const {
         return m_isExpectedFromNetwork;
+    }
+
+    void setDeferRejectToPartner(bool value) {
+        m_deferRejectToPartner = value;
+    }
+
+    bool isDeferRejectToPartner() const {
+        return m_deferRejectToPartner;
     }
 };
 

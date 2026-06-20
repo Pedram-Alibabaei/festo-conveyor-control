@@ -78,10 +78,8 @@ void ErrorState::leaveErrorState() {
         return;
     }
 
-    bool chuteWarningActive = false;
     if (auto* eventManager = m_context->getEventManager()) {
         eventManager->setErrorActive(false);
-        chuteWarningActive = eventManager->isChuteFull();
     }
 
     std::cout << "[ErrorState] Fehler abgeschlossen -> ActiveRegion (H*)" << std::endl;
@@ -89,14 +87,6 @@ void ErrorState::leaveErrorState() {
         new ActiveRegionState(ActiveRegionState::EntryMode::RestoreHistory));
 
     if (auto* eventManager = m_context->getEventManager()) {
-        if (chuteWarningActive) {
-            std::cout << "[ErrorState] Rutsche nach Fehler weiterhin voll -> WARNING" << std::endl;
-            eventManager->handleEvent(Event::WARNING);
-        } else {
-            std::cout << "[ErrorState] Rutsche nach Fehler frei -> WARNING_CLEARED" << std::endl;
-            eventManager->handleEvent(Event::WARNING_CLEARED);
-        }
-
         if (auto* wpManager = m_context->getWorkpieceManager()) {
             if (wpManager->hasActiveWorkpieces()) {
                 const bool useSlow = wpManager->shouldUseSlowMotor();

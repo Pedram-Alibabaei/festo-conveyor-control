@@ -9,6 +9,7 @@
 #include "logik/logik.hpp"
 #include "logik/eventManager/eventManager.hpp"
 #include "logik/workpieceManager/WorkpieceManager.hpp"
+#include "dispatcher/i_Dispatcher.hpp"
 #include <iostream>
 
 namespace {
@@ -82,6 +83,16 @@ const char* eventSensorName(logik::Event triggerEvent) {
 
 } // namespace
 
+namespace {
+
+void notifyPartnerChuteFull(logik::Logik* context) {
+    if (context != nullptr && context->getDispatcher() != nullptr) {
+        context->getDispatcher()->sendeChuteStats(true);
+    }
+}
+
+} // namespace
+
 namespace logik {
 
 ErrorHandler::ErrorHandler(Logik* context)
@@ -108,8 +119,10 @@ void ErrorHandler::handleEscalation(ErrorType type, logik::Event triggerEvent, W
 
     if (wpManager != nullptr) {
         if (wpManager->isHandoverReceiveActive()
-            && (type == ErrorType::WP_LOST || type == ErrorType::STUCK
-                || type == ErrorType::UNEXPECTED_EVENT)) {
+            && (type == ErrorType::STUCK
+                || (type == ErrorType::WP_LOST
+                    && (location == WpLocation::AT_ENTRY
+                        || location == WpLocation::TRANSIT_TO_HEIGHT)))) {
             wpManager->notifyPartnerHandoverFailed();
         }
         wpManager->resetHandoverState();
@@ -120,6 +133,28 @@ void ErrorHandler::handleEscalation(ErrorType type, logik::Event triggerEvent, W
         case ErrorType::BOTH_CHUTES_FULL:
             std::cout << "\n====================================================" << std::endl;
             std::cout << "[ERROR] CRITICAL: BEIDE RUTSCHEN SIND VOLL!" << std::endl;
+            if (wpManager != nullptr) {
+                int removeId = wpId;
+                if (removeId == -1) {
+                    Workpiece* wp = wpManager->getFirstWorkpieceAt(WpLocation::AT_EJECTOR);
+                    if (wp != nullptr) {
+                        removeId = wp->getId();
+                    }
+                }
+                if (removeId != -1) {
+                    std::cout << "-> Massnahme: Loesche WP-ID " << removeId
+                              << " an der Weiche aus dem Schieberegister." << std::endl;
+                    wpManager->removeWorkpiece(removeId);
+                }
+                Workpiece* transitWp =
+                    wpManager->getFirstWorkpieceAt(WpLocation::TRANSIT_TO_CHUTE);
+                if (transitWp != nullptr) {
+                    std::cout << "-> Massnahme: Loesche WP-ID " << transitWp->getId()
+                              << " auf dem Weg zur Rutsche aus dem Schieberegister." << std::endl;
+                    wpManager->removeWorkpiece(transitWp->getId());
+                }
+                wpManager->resetMetalWaitState();
+            }
             std::cout << "-> BEDIENER-ANWEISUNG: Bitte entleeren Sie BEIDE Rutschen manuell." << std::endl;
             std::cout << "====================================================\n" << std::endl;
             break;
@@ -170,6 +205,14 @@ void ErrorHandler::handleEscalation(ErrorType type, logik::Event triggerEvent, W
             std::cout << "-> BEDIENER-ANWEISUNG: Der blockierte Bereich MUSS manuell frei gemacht werden!" << std::endl;
             std::cout << "====================================================\n" << std::endl;
             break;
+    }
+
+    if (wpManager != nullptr
+        && m_context->getEventManager() != nullptr
+        && m_context->getEventManager()->context().position == AnlagenPosition::HINTEN_ANLAGE_2
+        && (type == ErrorType::WP_LOST || type == ErrorType::STUCK
+            || type == ErrorType::HEIGHT_ERROR)) {
+        wpManager->notifyPartnerSequenceSync();
     }
 
     // 3. Band stoppen
@@ -235,21 +278,21 @@ void ErrorHandler::processEvent(logik::Event e) {
         }
 
         // --- RUTSCHE (CHUTE) ---
-        case logik::Event::CHUTE_BLOCKED:
+        case logik::Event::CHUTE_BLOCKED: {
             m_isChuteTimerRunning = true;
             m_chuteStartTime = std::chrono::steady_clock::now();
+            if (m_context->getEventManager() != nullptr) {
+                const int pos = static_cast<int>(m_context->getEventManager()->context().position);
+                std::cout << "[ErrorHandler] CHUTE_BLOCKED (Anlage " << pos
+                          << ") -> Watchdog gestartet." << std::endl;
+            }
             break;
+        }
 
         case logik::Event::CHUTE_CLEARED:
             m_isChuteTimerRunning = false;
-
-            // Wenn vor dem Freiräumen eine Warnung aktiv war, loeschen wir sie jetzt sauber
-            if (m_isChuteWarningActive) {
-                if (m_context->getEventManager() != nullptr) {
-                    m_context->getEventManager()->setChuteFull(false);
-                    m_context->getEventManager()->handleEvent(logik::Event::WARNING_CLEARED);
-                }
-                m_isChuteWarningActive = false;
+            if (!isChutePhysicallyBlocked()) {
+                clearChuteWarningState();
             }
             break;
 
@@ -269,13 +312,18 @@ void ErrorHandler::takt() {
     // --- WATCHDOG: EINLAUF-STAU (STUCK) ---
     if (m_isEntryTimerRunning) {
         EventManager* eventManager = m_context->getEventManager();
+        WorkpieceManager* wpManager = m_context->getWorkpieceManager();
+        const bool queuedBehindLeadingWp =
+            wpManager != nullptr
+            && wpManager->isEntryQueuedBehindLeadingWorkpiece();
         const bool entryWatchdogAllowed = eventManager != nullptr
             && eventManager->isMotorOn()
             && !eventManager->isEndBlocked()
-            && !eventManager->isErrorActive();
+            && !eventManager->isErrorActive()
+            && !queuedBehindLeadingWp;
 
         if (!entryWatchdogAllowed) {
-            // Band steht (Bandende belegt o.ae.) – Stau-Timer pausieren, kein STUCK
+            // Band steht oder Einlauf wartet regulaer hinter fuehrendem WP – Timer pausieren.
             m_entryStartTime = std::chrono::steady_clock::now();
         } else {
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -297,27 +345,136 @@ void ErrorHandler::takt() {
         }
     }
 
-    // --- WATCHDOG: RUTSCHE VOLL ODER BEIDE RUTSCHEN VOLL ---
-    if (m_isChuteTimerRunning && !m_isChuteWarningActive) {
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - m_chuteStartTime);
+    // --- WATCHDOG: RUTSCHE VOLL (Level + Timer, unabhaengig von GPIO-Flanken) ---
+    updateChuteLevelWatchdog();
+}
 
-        if (duration >= TIMEOUT_THRESHOLD) {
-            m_isChuteWarningActive = true;
+bool ErrorHandler::isChutePhysicallyBlocked() const {
+    if (m_context == nullptr || m_context->getDispatcher() == nullptr) {
+        return false;
+    }
+    return !m_context->getDispatcher()->isChuteLightBarrierClear();
+}
 
-            if (m_context->getEventManager() != nullptr) {
-                m_context->getEventManager()->setChuteFull(true);
+void ErrorHandler::raiseChuteFullWarning() {
+    if (m_isChuteWarningActive) {
+        return;
+    }
 
-                // Wenn unsere Rutsche voll ist UND das Netzwerk meldet, dass die Partner-Rutsche auch voll ist:
-                if (m_context->getEventManager()->isPartnerChuteFull()) {
-                    handleEscalation(ErrorType::BOTH_CHUTES_FULL, logik::Event::CHUTE_BLOCKED);
-                } else {
-                    // Ansonsten nur unkritische Warnung (Anlage weicht aus, Ampel wird gelb)
-                    m_context->getEventManager()->handleEvent(logik::Event::WARNING);
-                }
+    m_isChuteWarningActive = true;
+    m_isChuteTimerRunning = false;
+
+    EventManager* em = m_context != nullptr ? m_context->getEventManager() : nullptr;
+    if (em == nullptr) {
+        return;
+    }
+
+    em->setChuteFull(true);
+    notifyPartnerChuteFull(m_context);
+    em->handleEvent(logik::Event::WARNING);
+
+    const int pos = static_cast<int>(em->context().position);
+    std::cout << "[ErrorHandler] Rutsche voll (Watchdog) -> WARNING (Anlage "
+              << pos << ")." << std::endl;
+}
+
+void ErrorHandler::updateChuteLevelWatchdog() {
+    EventManager* em = m_context != nullptr ? m_context->getEventManager() : nullptr;
+    if (em == nullptr || em->isServiceMode() || em->isErrorActive()) {
+        return;
+    }
+
+    if (isChutePhysicallyBlocked()) {
+        if (!m_isChuteWarningActive && !m_isChuteTimerRunning) {
+            m_isChuteTimerRunning = true;
+            m_chuteStartTime = std::chrono::steady_clock::now();
+        }
+
+        if (m_isChuteTimerRunning && !m_isChuteWarningActive) {
+            const auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - m_chuteStartTime);
+            if (duration >= TIMEOUT_THRESHOLD) {
+                raiseChuteFullWarning();
             }
         }
+    } else {
+        m_isChuteTimerRunning = false;
+        if (m_isChuteWarningActive || em->isChuteFull()) {
+            clearChuteWarningState();
+        }
     }
+}
+
+void ErrorHandler::ensureChuteWarningRaised() {
+    if (m_isChuteWarningActive) {
+        return;
+    }
+
+    m_isChuteWarningActive = true;
+    m_isChuteTimerRunning = false;
+
+    if (m_context != nullptr && m_context->getEventManager() != nullptr) {
+        m_context->getEventManager()->setChuteFull(true);
+        notifyPartnerChuteFull(m_context);
+        m_context->getEventManager()->handleEvent(logik::Event::WARNING);
+        const int pos = static_cast<int>(m_context->getEventManager()->context().position);
+        std::cout << "[ErrorHandler] Rutsche voll -> WARNING ausgeloest (Anlage "
+                  << pos << ")." << std::endl;
+    }
+}
+
+void ErrorHandler::clearChuteWarningState() {
+    EventManager* em = m_context != nullptr ? m_context->getEventManager() : nullptr;
+    if (em == nullptr) {
+        m_isChuteWarningActive = false;
+        m_isChuteTimerRunning = false;
+        return;
+    }
+
+    if (!m_isChuteWarningActive && !em->isChuteFull()) {
+        return;
+    }
+
+    m_isChuteWarningActive = false;
+    m_isChuteTimerRunning = false;
+    em->setChuteFull(false);
+    em->handleEvent(logik::Event::WARNING_CLEARED);
+
+    if (m_context->getDispatcher() != nullptr) {
+        m_context->getDispatcher()->sendeChuteStats(false);
+    }
+
+    std::cout << "[ErrorHandler] Rutsche frei -> WARNING_CLEARED." << std::endl;
+}
+
+void ErrorHandler::reconcileChuteWarningAfterErrorRecovery() {
+    reconcileChuteWarningOnOperationalEntry();
+}
+
+void ErrorHandler::reconcileChuteWarningOnOperationalEntry() {
+    EventManager* em = m_context != nullptr ? m_context->getEventManager() : nullptr;
+    if (em == nullptr) {
+        return;
+    }
+
+    const int pos = static_cast<int>(em->context().position);
+
+    if (isChutePhysicallyBlocked()) {
+        em->setChuteFull(true);
+        m_isChuteWarningActive = true;
+        m_isChuteTimerRunning = false;
+        notifyPartnerChuteFull(m_context);
+        std::cout << "[ErrorHandler] Betriebsstart (Anlage " << pos
+                  << "): Rutsche-LS blockiert -> WARNING (Level-Check)." << std::endl;
+        return;
+    }
+
+    m_isChuteTimerRunning = false;
+    if (m_isChuteWarningActive || em->isChuteFull()) {
+        clearChuteWarningState();
+    }
+    std::cout << "[ErrorHandler] Betriebsstart (Anlage " << pos
+              << "): Rutsche-LS frei." << std::endl;
 }
 
 } // namespace logik

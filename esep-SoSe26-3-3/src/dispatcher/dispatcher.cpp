@@ -9,6 +9,7 @@
 #include "logik/i_Logik.hpp"
 #include "logik/logik.hpp"
 #include "calibrationManager/i_CalibrationManager.hpp"
+#include "hal/pal.hpp"
 #include <iostream>
 #include <cerrno>
 #include <cstring>
@@ -403,10 +404,8 @@ void Dispatcher::handleHalPulse(uint32_t payload) {
         m_logik->processEvent(sensor_state == ipc::State::BLOCKED ? logik::Event::END_BLOCKED : logik::Event::END_CLEARED);
     }
     else if (sensor_id == ipc::LS_CHUTE) {
-        if (kVerboseHalPulseLog) {
-            std::cout << "[Dispatcher] LS_CHUTE: "
-                      << (sensor_state == ipc::State::BLOCKED ? "BLOCKED" : "CLEARED") << std::endl;
-        }
+        std::cout << "[Dispatcher] LS_CHUTE: "
+                  << (sensor_state == ipc::State::BLOCKED ? "BLOCKED" : "CLEARED") << std::endl;
         m_logik->processEvent(sensor_state == ipc::State::BLOCKED ? logik::Event::CHUTE_BLOCKED : logik::Event::CHUTE_CLEARED);
     }
     else {
@@ -665,6 +664,10 @@ void Dispatcher::sendeChuteStats(bool isVoll) {
     ipc::State state = isVoll ? ipc::VOLL : ipc::EMPTY;
     uint32_t payload = ipc::encodeHalPayload(ipc::NetworkMessage::CHUTE, state);
     MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_MSG, payload);
+}
+
+bool Dispatcher::isChuteLightBarrierClear() const {
+    return hal::pal::ip::Chute::is_data_set();
 }
 
 void Dispatcher::sendPartnerResetPressed() {
