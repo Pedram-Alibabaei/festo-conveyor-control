@@ -112,6 +112,7 @@ namespace ipc {
         START_RUNNING         = _PULSE_CODE_MINAVAIL + 8, // Gemeinsamer Running-Start
         START_SERVICE         = _PULSE_CODE_MINAVAIL + 9, // Gemeinsamer Service-Start
         HANDOVER_WP_LOST      = _PULSE_CODE_MINAVAIL + 10, // Uebergabe fehlgeschlagen (WP verloren)
+        HANDOVER_PAUSE        = _PULSE_CODE_MINAVAIL + 11, // Anlage 2 blockiert waehrend Uebergabe
  };
 
     enum State:uint16_t{

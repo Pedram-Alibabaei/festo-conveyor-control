@@ -80,12 +80,14 @@ namespace logik {
         READY_TO_RECEIVE_WP,    ///< Anlage 2 antwortet: "Bereit! Ich nehme das Teil auf."
         PARTNER_HANDOVER_COMPLETE, ///< Anlage 2: WP physisch am Einlauf (Uebergabe erfolgreich)
         PARTNER_HANDOVER_WP_LOST,  ///< Anlage 2: WP bei Uebergabe verloren
+        PARTNER_HANDOVER_PAUSE,    ///< Anlage 2 blockiert waehrend Uebergabe -> A1 Motor pausieren
 
         // ====================================================================
         // KALIBRIERUNG (DATEISYSTEM / BOOT)
         // ====================================================================
         DATA_EXIST,             ///< Kalibrierungsdatei erfolgreich geladen
         DATA_NOT_EXIST,         ///< Keine Kalibrierungsdatei vorhanden (Einlernen noetig)
+        SERVICE_EMPTY_BELT_READY, ///< Service: Leerband-ADC-Referenz ist gemessen
 
         // ====================================================================
         // INTERNE LOGIK- UND FSM-SIGNALE

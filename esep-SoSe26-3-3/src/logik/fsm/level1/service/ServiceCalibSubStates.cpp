@@ -173,6 +173,8 @@ void ServiceInitEmptySubState::entry(Logik* context, ServiceState& parent) {
     }
 
     context->resetServiceTickCounter();
+    m_emptyBeltReady = false;
+    m_entryBlockedWhileWaiting = false;
 
     if (auto* dispatcher = context->getDispatcher()) {
         dispatcher->setAdcCalibrationsState();
@@ -185,9 +187,35 @@ void ServiceInitEmptySubState::entry(Logik* context, ServiceState& parent) {
 }
 
 void ServiceInitEmptySubState::handle(Event e, Logik* context, ServiceState& parent) {
-    if (e == Event::ENTRY_BLOCKED) {
+    if (e == Event::SERVICE_EMPTY_BELT_READY) {
+        m_emptyBeltReady = true;
+        std::cout << "[Service] EMPTY_BELT bereit. "
+                  << (m_entryBlockedWhileWaiting
+                          ? "Werkstueck wartet bereits am Einlauf -> starte Slow-Lauf."
+                          : "Warte auf Referenz-Werkstueck am Einlauf.")
+                  << std::endl;
+        if (!m_entryBlockedWhileWaiting) {
+            return;
+        }
         logTransition("Init_Empty", "Motor_Right_Slow", e);
         parent.replaceSubState(std::make_unique<ServiceMotorRightSlowSubState>());
+        return;
+    }
+
+    if (e == Event::ENTRY_BLOCKED) {
+        if (!m_emptyBeltReady) {
+            m_entryBlockedWhileWaiting = true;
+            std::cout << "[Service] ENTRY_BLOCKED vor EMPTY_BELT fertig -> "
+                      << "warte mit Motorstart bis Leerband-Referenz bereit ist." << std::endl;
+            return;
+        }
+        logTransition("Init_Empty", "Motor_Right_Slow", e);
+        parent.replaceSubState(std::make_unique<ServiceMotorRightSlowSubState>());
+        return;
+    }
+
+    if (e == Event::ENTRY_CLEARED && !m_emptyBeltReady) {
+        m_entryBlockedWhileWaiting = false;
     }
 }
 

@@ -67,6 +67,7 @@ public:
     virtual void readyToReceiveWp() = 0;
     virtual void sendHandoverSuccessful() = 0;
     virtual void sendHandoverWpLost() = 0;
+    virtual void sendHandoverPause() = 0;
     virtual void updateWpListe(WpType type) = 0;
     virtual void sendeChuteStats(bool isVoll)=0;
 

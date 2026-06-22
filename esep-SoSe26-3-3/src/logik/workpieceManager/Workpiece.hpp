@@ -22,14 +22,15 @@ private:
 
     // --- Private Member-Variablen ---
     int m_id;
-    WpType m_type;
+    WpType m_type;                    ///< Finaler Typ fuer Rezeptur/Sortierentscheidung.
+    WpType m_partnerType;             ///< Anlage 2: von Anlage 1 uebertragener Typ.
+    WpType m_measuredType;            ///< Lokal durch Hoehen-/Metallsensor ermittelter Typ.
     WpLocation m_location;
 
     // --- Variablen für das logische 10ms-Takt-Schieberegister ---
     std::uint32_t m_ticksInCurrentState;  ///< Verbrachte 10ms-Timer-Takte in der aktuellen Zone
     std::uint32_t m_targetLimitForState;  ///< Das aktuell gültige Takt-Limit für diese Zone
     bool m_isCorrectInSequence;           ///< Flag, ob das Teil an der aktuellen Weiche korrekt im Rezept ist
-    bool m_isExpectedFromNetwork;         ///< Flag für Anlage 2: Passte der übertragene Netzwerk-Typ zum lokalen Rezept?
     bool m_entryBlockedSeen;              ///< Physische ENTRY_BLOCKED-Flanke fuer dieses WP gesehen?
     bool m_deferRejectToPartner;          ///< Anlage 1: falsches WP bei voller Rutsche zur Partner-Anlage leiten
 
@@ -41,11 +42,12 @@ public:
     Workpiece() :
         m_id(s_next_id++),
         m_type(WpType::UNKNOWN),
+        m_partnerType(WpType::UNKNOWN),
+        m_measuredType(WpType::UNKNOWN),
         m_location(WpLocation::AT_ENTRY),
         m_ticksInCurrentState(0),
         m_targetLimitForState(0),
         m_isCorrectInSequence(true),
-        m_isExpectedFromNetwork(true),
         m_entryBlockedSeen(false),
         m_deferRejectToPartner(false)
     {}
@@ -74,6 +76,23 @@ public:
 
     WpType getType() const {
         return m_type;
+    }
+
+    void setPartnerType(WpType type) {
+        m_partnerType = type;
+    }
+
+    WpType getPartnerType() const {
+        return m_partnerType;
+    }
+
+    void setMeasuredType(WpType type) {
+        m_measuredType = type;
+        m_type = type;
+    }
+
+    WpType getMeasuredType() const {
+        return m_measuredType;
     }
 
     // --- Getter & Setter für den Aufenthaltsort (Zonen-Tracking) ---
@@ -152,20 +171,6 @@ public:
      */
     bool isCorrectInSequence() const {
         return m_isCorrectInSequence;
-    }
-
-    /**
-     * @brief Setzt fest, ob der via Netzwerk uebertragene Typ beim Eintreffen auf Anlage 2 der Sequenz entsprach.
-     */
-    void setIsExpectedFromNetwork(bool value) {
-        m_isExpectedFromNetwork = value;
-    }
-
-    /**
-     * @brief Gibt an, ob der Netzwerk-Typ des Teils beim Eintritt auf Anlage 2 zum Rezept passte.
-     */
-    bool isExpectedFromNetwork() const {
-        return m_isExpectedFromNetwork;
     }
 
     void setDeferRejectToPartner(bool value) {

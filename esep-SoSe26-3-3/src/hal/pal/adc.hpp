@@ -315,6 +315,12 @@ public:
     static void
     clear_interrupt_event() noexcept;
 
+    /**************************************************************************
+     * @brief Startet nach einem One-Shot-Sample die naechste ADC-Konvertierung.
+     */
+    static void
+    trigger_next_sample() noexcept;
+
 private:
     /**************************************************************************
      * @brief Daten aus einem Register lesen

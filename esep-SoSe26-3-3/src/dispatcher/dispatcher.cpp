@@ -440,6 +440,10 @@ void Dispatcher::handleNetworkPulse(uint32_t payload) {
         std::cout << "[Dispatcher] Netzwerk: HANDOVER_WP_LOST" << std::endl;
         m_logik->processEvent(logik::Event::PARTNER_HANDOVER_WP_LOST);
     }
+    else if (sensor_id == ipc::NetworkMessage::HANDOVER_PAUSE && message_type == 0) {
+        std::cout << "[Dispatcher] Netzwerk: HANDOVER_PAUSE" << std::endl;
+        m_logik->processEvent(logik::Event::PARTNER_HANDOVER_PAUSE);
+    }
     else if (message_type == ipc::NetworkMessage::ESTOP_STATUS_QUERY) {
         std::cout << "[Dispatcher] Partner fragt ESTOP-Status an -> antworte." << std::endl;
         sendLocalEstopStatusToPartner();
@@ -548,6 +552,17 @@ void Dispatcher::sendHandoverWpLost() {
     std::cout << "[Dispatcher] HANDOVER_WP_LOST an Partner gesendet." << std::endl;
 }
 
+void Dispatcher::sendHandoverPause() {
+    if (m_partnerCoid == -1) {
+        std::cout << "[Dispatcher] HANDOVER_PAUSE nicht gesendet (kein Partner)." << std::endl;
+        return;
+    }
+    const uint32_t payload = ipc::encodeHalPayload(
+        static_cast<uint16_t>(ipc::NetworkMessage::HANDOVER_PAUSE), 0);
+    MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::PARTNER_MSG, payload);
+    std::cout << "[Dispatcher] HANDOVER_PAUSE an Partner gesendet." << std::endl;
+}
+
 void Dispatcher::updateWpListe(WpType type) {
     if (m_partnerCoid != -1) {
         MsgSendPulse(m_partnerCoid, SIGEV_PULSE_PRIO_INHERIT, ipc::UPDATE_LIST, static_cast<uint32_t>(type));
@@ -622,6 +637,9 @@ void Dispatcher::handleCalibrationPulse(uint32_t payload) {
 
         case CM::EMPTY_BELT:
             s_liveEmptyBelt = rawValue;
+            if (m_logik != nullptr) {
+                m_logik->processEvent(logik::Event::SERVICE_EMPTY_BELT_READY);
+            }
         break;
 
         case CM::FLAT_WP:

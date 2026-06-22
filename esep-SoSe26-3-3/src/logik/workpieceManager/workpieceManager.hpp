@@ -41,6 +41,8 @@ namespace logik {
         int m_pendingNetworkWpId;
         WpType m_pendingNetworkWpType;
         int m_handoverRetryTicks;                   ///< Anlage 1: Takte bis zum naechsten REQ_TO_GIVE-Retry
+        int m_handoverReceiveTicks;                 ///< Anlage 2: Takte seit WP-Info bis ENTRY_BLOCKED
+        bool m_handoverPausedByPartner;             ///< Anlage 1: Uebergabe pausiert, weil A2 Bandende blockiert
 
         // ====================================================================
         // TAKT-BASIERTE AKTOR-ZEITSTEUERUNG
@@ -51,7 +53,9 @@ namespace logik {
         int m_ejectorPushTicks;                     ///< Zaehlt die verbleibenden 10ms-Takte fuer das Auswerfen
         int m_metalWaitWpId;                        ///< Auswerfer: WP wartet auf Metall-Sensor vor Sortierentscheid
         int m_metalWaitTicks;                       ///< Rest-Takte bis Entscheid ohne Metall-Signal
+        int m_pendingMetalDecisionWpId;             ///< WP an Sortiereinheit wartet noch auf Metall-Entscheidung
         bool m_ejectorLsBlocked;                    ///< Sortierweichen-LS zuletzt blockiert (fuer spaete CLEARED-Flanken)
+        bool m_pendingEjectorBlockedAfterHeight;    ///< LS an Weiche kam kurz vor HEIGHT_CLEARED und wird nachgezogen
         const int TICKS_ONE_SECOND;                 ///< Konstante: 100 Takte * 10ms = 1000ms (1 Sekunde)
 
     public:
@@ -171,6 +175,9 @@ namespace logik {
        /** Anlage 1: Partner meldet WP verloren bei Uebergabe -> Motor aus. */
        void onPartnerHandoverWpLost();
 
+       /** Anlage 1: Partner blockiert waehrend Uebergabe -> Motor pausieren. */
+       void onPartnerHandoverPause();
+
        /** Anlage 2: WP-Info zwischenspeichern bis ENTRY_BLOCKED. */
        void storePendingNetworkWorkpiece(int id, WpType type);
 
@@ -195,6 +202,9 @@ namespace logik {
        /** Anlage 2: Rezeptur an Anlage 1 synchronisieren (UPDATE_LIST). */
        void notifyPartnerSequenceSync(WpType type = WpType::UNKNOWN);
 
+       /** Anlage 2: Nach Fehlerende ggf. READY_TO_RECEIVE erneut an Anlage 1 senden. */
+       void recoverPartnerHandoverAfterError();
+
        /** Slow-Motor noetig fuer mindestens ein aktives WP (Error-Rueckkehr). */
        bool shouldUseSlowMotor() const;
 
@@ -213,6 +223,9 @@ namespace logik {
 
         /** Rutsche blockiert waehrend Aussortierung – WARNING oder BOTH_CHUTES_FULL. */
         void handleChuteTransitFailure(Workpiece& wp);
+
+        /** Mehr-WP: Nachfolgendes WP an Sortier-LS nachziehen, wenn dessen Flanke mit dem fuehrenden WP zusammenfiel. */
+        bool promoteTrailingWorkpieceAtSorterIfDue(const char* reason);
 
         /** Anlage 1: REQ_TO_GIVE wiederholen, solange WP am Bandende wartet. */
         void retryPendingHandoverRequest();

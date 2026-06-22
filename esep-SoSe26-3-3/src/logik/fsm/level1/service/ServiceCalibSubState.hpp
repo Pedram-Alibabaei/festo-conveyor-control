@@ -28,6 +28,10 @@ class ServiceInitEmptySubState : public ServiceCalibSubStateBase {
 public:
     void entry(Logik* context, ServiceState& parent) override;
     void handle(Event e, Logik* context, ServiceState& parent) override;
+
+private:
+    bool m_emptyBeltReady{false};
+    bool m_entryBlockedWhileWaiting{false};
 };
 
 class ServiceMotorRightSlowSubState : public ServiceCalibSubStateBase {

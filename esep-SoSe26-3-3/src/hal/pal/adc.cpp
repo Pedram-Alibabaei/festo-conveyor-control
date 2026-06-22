@@ -71,6 +71,14 @@ Adc::enable_interrupt() noexcept
     write_register(Register::Offset::irqenable_set, irq.data); // enable
 }
 
+void
+Adc::trigger_next_sample() noexcept
+{
+    Register::Stepenable stepenable;
+    stepenable.field.step1 = 1;
+    write_register(Register::Offset::stepenable, stepenable.data);
+}
+
 UInt32
 Adc::analog_value() noexcept
 {

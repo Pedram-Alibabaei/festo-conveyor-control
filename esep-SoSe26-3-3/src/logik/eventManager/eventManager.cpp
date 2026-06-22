@@ -79,6 +79,7 @@ bool EventManager::isFsmPassthroughEvent(Event e) const {
     case Event::CONNECTION_RESTORED:
     case Event::DATA_EXIST:
     case Event::DATA_NOT_EXIST:
+    case Event::SERVICE_EMPTY_BELT_READY:
     case Event::ERROR:
     case Event::ERROR_CLEARED:
     case Event::WARNING:
@@ -117,6 +118,9 @@ void EventManager::handleEvent(Event e) {
         } else if (e == Event::PARTNER_HANDOVER_WP_LOST
                    && m_ctx.position == AnlagenPosition::VORN_ANLAGE_1) {
             m_wpManager->onPartnerHandoverWpLost();
+        } else if (e == Event::PARTNER_HANDOVER_PAUSE
+                   && m_ctx.position == AnlagenPosition::VORN_ANLAGE_1) {
+            m_wpManager->onPartnerHandoverPause();
         }
     }
 

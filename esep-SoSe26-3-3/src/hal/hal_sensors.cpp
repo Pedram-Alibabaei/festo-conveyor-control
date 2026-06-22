@@ -24,6 +24,7 @@ namespace hal {
         m_gpio_interrupt.initInterrupts(coid);
         m_analyzer.setConnectionId(coid);
         m_adc_interrupt.initAdcInterrupt(&m_analyzer);
+        pal::ip::Height::trigger_next_sample();
 
     }
 
@@ -44,15 +45,18 @@ namespace hal {
     void HalSensors::setAdcWaitigForWpState() {
         // Versetzt den Profilanalysator direkt in den Zustand "Warte auf Werkstück"
         m_analyzer.setAdcWaitigForWpState();
+        pal::ip::Height::trigger_next_sample();
     }
 
     void HalSensors::setAdcCalibrationsState() {
         // Versetzt den Profilanalysator direkt in den Kalibrierungsmodus
         m_analyzer.setAdcCalibrationsState();
+        pal::ip::Height::trigger_next_sample();
     }
 
     void HalSensors::setServiceTimingMeasureState() {
         m_analyzer.setServiceTimingMeasureState();
+        pal::ip::Height::trigger_next_sample();
     }
 
     void HalSensors::setAdcTransportPaused(bool paused) {

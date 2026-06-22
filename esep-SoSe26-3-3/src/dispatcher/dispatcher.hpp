@@ -119,6 +119,7 @@ public:
     void readyToReceiveWp() override;
     void sendHandoverSuccessful() override;
     void sendHandoverWpLost() override;
+    void sendHandoverPause() override;
     void updateWpListe(WpType type) override;
 
     bool requestFileExists() override;

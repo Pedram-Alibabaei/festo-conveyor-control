@@ -82,6 +82,14 @@ void ErrorState::leaveErrorState() {
         eventManager->setErrorActive(false);
     }
 
+    if (auto* eventManager = m_context->getEventManager()) {
+        if (eventManager->context().position == AnlagenPosition::HINTEN_ANLAGE_2) {
+            if (auto* wpManager = m_context->getWorkpieceManager()) {
+                wpManager->recoverPartnerHandoverAfterError();
+            }
+        }
+    }
+
     std::cout << "[ErrorState] Fehler abgeschlossen -> ActiveRegion (H*)" << std::endl;
     m_context->transitionTo(
         new ActiveRegionState(ActiveRegionState::EntryMode::RestoreHistory));

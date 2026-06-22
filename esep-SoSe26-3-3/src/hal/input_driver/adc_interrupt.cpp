@@ -100,4 +100,6 @@ void AdcInterrupt::handle_interrupt() const noexcept
     if (m_analyzer != nullptr) {
         m_analyzer->processSample(current_adc_value);
     }
+
+    Height::trigger_next_sample();
 }
