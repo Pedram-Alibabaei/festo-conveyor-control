@@ -327,6 +327,15 @@ void ProfileAnalyzer::processSample(uint32_t adcValue)
                 m_beltSampleSum += currentRaw;
                 ++m_sampleCounter;
 
+                if (m_sampleCounter == 1) {
+                    std::cout << "[Calib] Leerband-Messung gestartet..." << std::endl;
+                } else if (m_sampleCounter % 25 == 0) {
+                    std::cout << "[Calib] Leerband-Fortschritt: "
+                              << m_sampleCounter << "/"
+                              << BELT_REFERENCE_SAMPLE_COUNT << " Samples"
+                              << std::endl;
+                }
+
                 if (m_sampleCounter >= BELT_REFERENCE_SAMPLE_COUNT) {
                     m_threshEmptyBelt =
                         averageAsUInt16(m_beltSampleSum, BELT_REFERENCE_SAMPLE_COUNT);

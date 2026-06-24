@@ -22,6 +22,7 @@ namespace logik {
         BOTH_CHUTES_FULL,   ///< Kritischer Systemstopp: Eigene UND Partner-Rutsche sind komplett voll.
         WP_LOST,            ///< Werkstück im Transit verloren: Erwartetes Teil ist physisch nicht angekommen.
         UNEXPECTED_EVENT,   ///< Sensor-Manipulation: Ein Sensor schlägt an, obwohl laut Schieberegister kein Teil dort sein darf.
+        EARLY_ENTRY,        ///< Einlauf-Fehler: Werkstück am Anfang gelegt, bevor Q1 frei ist (vorderes WP hat HS nicht erreicht).
         HEIGHT_ERROR,       ///< Physischer Höhenfehler: Werkstück besitzt falsche Maße oder liegt verkehrt herum im Lichttunnel.
         STUCK               ///< Watchdog-Timeout: Ein Werkstück blockiert eine Lichtschranke für länger als 1 Sekunde (Stau).
     };

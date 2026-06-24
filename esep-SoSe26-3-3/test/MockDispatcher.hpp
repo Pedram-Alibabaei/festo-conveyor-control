@@ -85,6 +85,10 @@ public:
     MOCK_METHOD(bool, isPartnerEstopPressed, (), (const, override));
     MOCK_METHOD(void, sendeChuteStats, (bool), (override));
     MOCK_METHOD(bool, isChuteLightBarrierClear, (), (const, override));
+    MOCK_METHOD(bool, isEntryLightBarrierClear, (), (const, override));
+    MOCK_METHOD(bool, isEndLightBarrierClear, (), (const, override));
+    MOCK_METHOD(bool, isEjectorLightBarrierClear, (), (const, override));
+    MOCK_METHOD(bool, isMetalSensorClear, (), (const, override));
 
     MOCK_METHOD(void, turnAllOff, (), (override));
 };

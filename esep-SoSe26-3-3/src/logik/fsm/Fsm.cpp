@@ -7,6 +7,10 @@
 #include "logik/fsm/level1/ReadyForRunState.hpp"
 #include "logik/fsm/level1/RunningState.hpp"
 #include "logik/fsm/level1/ServiceState.hpp"
+#include "logik/fsm/level1/ReadyForActiveState.hpp"
+#include "logik/fsm/level0/ConnectionLostState.hpp"
+#include "logik/fsm/level0/ConnectionLostAndEStopState.hpp"
+#include "logik/fsm/level0/L0RestoreRegistry.hpp"
 #include <iostream>
 
 namespace logik {
@@ -28,10 +32,20 @@ void Fsm::processEvent(Event e) {
     }
 }
 
+namespace {
+
+bool isConnectionLostTransition(const BaseState* nextState) {
+    return dynamic_cast<const ConnectionLostState*>(nextState) != nullptr
+        || dynamic_cast<const ConnectionLostAndEStopState*>(nextState) != nullptr;
+}
+
+} // namespace
+
 bool Fsm::isLevel1State(const BaseState* state) const {
     return dynamic_cast<const IdleState*>(state) != nullptr
         || dynamic_cast<const ReadyForServiceState*>(state) != nullptr
         || dynamic_cast<const ReadyForRunState*>(state) != nullptr
+        || dynamic_cast<const ReadyForActiveState*>(state) != nullptr
         || dynamic_cast<const RunningState*>(state) != nullptr
         || dynamic_cast<const ServiceState*>(state) != nullptr;
 }
@@ -39,6 +53,10 @@ bool Fsm::isLevel1State(const BaseState* state) const {
 void Fsm::transitionLevel0(std::unique_ptr<BaseState> nextState) {
     if (!nextState) {
         return;
+    }
+
+    if (isConnectionLostTransition(nextState.get()) && m_currentState) {
+        level0::L0RestoreRegistry::captureFrom(m_currentState.get());
     }
 
     if (m_currentState) {

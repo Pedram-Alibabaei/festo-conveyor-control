@@ -33,6 +33,7 @@ private:
     bool m_isCorrectInSequence;           ///< Flag, ob das Teil an der aktuellen Weiche korrekt im Rezept ist
     bool m_entryBlockedSeen;              ///< Physische ENTRY_BLOCKED-Flanke fuer dieses WP gesehen?
     bool m_deferRejectToPartner;          ///< Anlage 1: falsches WP bei voller Rutsche zur Partner-Anlage leiten
+    bool m_metalDetected;                 ///< Metallsensor hat dieses WP bereits erfasst (auch vor HS-Ende)
 
 public:
     /**
@@ -49,7 +50,8 @@ public:
         m_targetLimitForState(0),
         m_isCorrectInSequence(true),
         m_entryBlockedSeen(false),
-        m_deferRejectToPartner(false)
+        m_deferRejectToPartner(false),
+        m_metalDetected(false)
     {}
 
     // --- Getter & Setter für die ID ---
@@ -179,6 +181,14 @@ public:
 
     bool isDeferRejectToPartner() const {
         return m_deferRejectToPartner;
+    }
+
+    void setMetalDetected(bool value) {
+        m_metalDetected = value;
+    }
+
+    bool isMetalDetected() const {
+        return m_metalDetected;
     }
 };
 

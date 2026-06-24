@@ -688,6 +688,22 @@ bool Dispatcher::isChuteLightBarrierClear() const {
     return hal::pal::ip::Chute::is_data_set();
 }
 
+bool Dispatcher::isEntryLightBarrierClear() const {
+    return hal::pal::ip::Entry::is_data_set();
+}
+
+bool Dispatcher::isEndLightBarrierClear() const {
+    return hal::pal::ip::End::is_data_set();
+}
+
+bool Dispatcher::isEjectorLightBarrierClear() const {
+    return hal::pal::ip::Ejector::is_data_set();
+}
+
+bool Dispatcher::isMetalSensorClear() const {
+    return !hal::pal::ip::Metal::is_data_set();
+}
+
 void Dispatcher::sendPartnerResetPressed() {
     if (m_partnerCoid == -1) {
         return;

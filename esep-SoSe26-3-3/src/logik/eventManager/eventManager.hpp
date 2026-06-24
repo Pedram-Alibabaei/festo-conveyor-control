@@ -43,6 +43,8 @@ struct PlantContext {
     bool chuteFull = false;
     bool partnerChuteFull = false;
     bool endBlocked = false;
+    bool heightBlocked = false;
+    bool runningMode = false;
     bool serviceMode = false;
     bool connectionLost = false;
     bool calibrationDataReady = false;
@@ -64,10 +66,9 @@ private:
     std::chrono::steady_clock::time_point m_partnerStartPressedTime;
     bool m_startButtonHeld = false;
     bool m_entryDeferredWhileEndBlocked = false;
-    /** Anlage 1: ENTRY_BLOCKED kam, waehrend Einlauf noch gesperrt (voriges WP unterwegs). */
-    bool m_entryDeferredWhileOccupied = false;
 
     bool canRouteToBandSubsystems() const;
+    bool canRouteWorkpieceTracking() const;
     bool isFsmPassthroughEvent(Event e) const;
 
     void updateContextFlags(Event e);
@@ -76,7 +77,6 @@ private:
     void routeToFsm(Event e);
     std::vector<Event> preprocessForFsm(Event e);
     void resumeEntryAfterEndCleared(std::vector<Event>& fsmEvents);
-    void resumeDeferredEntryWhileOccupied(std::vector<Event>& fsmEvents);
 
 public:
     explicit EventManager(Logik* context);
@@ -106,6 +106,8 @@ public:
 
     void setEndBlocked(bool blocked) { m_ctx.endBlocked = blocked; }
     bool isEndBlocked() const { return m_ctx.endBlocked; }
+    void setHeightBlocked(bool blocked) { m_ctx.heightBlocked = blocked; }
+    bool isHeightBlocked() const { return m_ctx.heightBlocked; }
 
     void setEStopActive(bool active) { m_ctx.eStopActive = active; }
     bool isEStopActive() const { return m_ctx.eStopActive; }
@@ -124,6 +126,9 @@ public:
 
     void setServiceMode(bool active) { m_ctx.serviceMode = active; }
     bool isServiceMode() const { return m_ctx.serviceMode; }
+
+    void setRunningMode(bool active) { m_ctx.runningMode = active; }
+    bool isRunningMode() const { return m_ctx.runningMode; }
 
     void setConnectionLost(bool lost) { m_ctx.connectionLost = lost; }
     bool isConnectionLost() const { return m_ctx.connectionLost; }

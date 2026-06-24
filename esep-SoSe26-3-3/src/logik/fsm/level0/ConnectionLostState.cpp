@@ -31,10 +31,7 @@ void ConnectionLostState::handle(Event e) {
             std::cout << "[ConnectionLost] RESTORED mit ESTOP -> EStopState" << std::endl;
             m_context->transitionTo(new EStopState());
         } else {
-            std::cout << "[ConnectionLost] RESTORED -> ActiveRegion (H*)" << std::endl;
-            level0::clearTrafficLightsForRestore(dispatcher);
-            m_context->transitionTo(
-                new ActiveRegionState(ActiveRegionState::EntryMode::RestoreHistory));
+            level0::transitionAfterConnectionRestore(m_context);
         }
         break;
 

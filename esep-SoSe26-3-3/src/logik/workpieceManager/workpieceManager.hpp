@@ -55,6 +55,7 @@ namespace logik {
         int m_metalWaitTicks;                       ///< Rest-Takte bis Entscheid ohne Metall-Signal
         int m_pendingMetalDecisionWpId;             ///< WP an Sortiereinheit wartet noch auf Metall-Entscheidung
         bool m_ejectorLsBlocked;                    ///< Sortierweichen-LS zuletzt blockiert (fuer spaete CLEARED-Flanken)
+        int m_ejectorBlockedWpId;                   ///< WP, das zuletzt EJECTOR_BLOCKED ausgeloest hat (-1 = keins)
         bool m_pendingEjectorBlockedAfterHeight;    ///< LS an Weiche kam kurz vor HEIGHT_CLEARED und wird nachgezogen
         const int TICKS_ONE_SECOND;                 ///< Konstante: 100 Takte * 10ms = 1000ms (1 Sekunde)
 
@@ -98,6 +99,7 @@ namespace logik {
          * @brief Liefert das älteste (vorderste) Werkstück an einer bestimmten Position.
          */
         Workpiece* getFirstWorkpieceAt(WpLocation loc);
+        const Workpiece* getFirstWorkpieceAt(WpLocation loc) const;
 
         /**
          * @brief Löscht alle Werkstücke und setzt die Rezeptur zurück (bei STOP, E-STOP oder RESET).
@@ -135,6 +137,9 @@ namespace logik {
         // ====================================================================
         // GETTER- UND SETTER-METHODEN FÜR DIE LOGIK-SCHICHT
         // ====================================================================
+        /** Nach Motor Slow/Fast: Limits aller WPs in Transit-Zonen anpassen. */
+        void onMotorSpeedChanged(bool isMotorSlow);
+
         TargetSequence& getSequence() { return m_sequence; }
         void setAnlagenPosition(AnlagenPosition pos) { m_myPosition = pos; }
 
@@ -157,6 +162,15 @@ namespace logik {
 
        /** Einlauf-WP wartet regulaer hinter fuehrendem WP auf dem Band? */
        bool isEntryQueuedBehindLeadingWorkpiece() const;
+
+       /** Fuehrendes WP hat den Hoehensensor noch nicht erreicht (AT_ENTRY oder TRANSIT_TO_HEIGHT)? */
+       bool hasLeadingWorkpieceBeforeHeightSensor() const;
+
+       /** Anlage 2: ENTRY_BLOCKED erwartet wegen Netzwerk-Uebergabe (pending, Einlauf leer)? */
+       bool isExpectedNetworkEntryAtAnlage2() const;
+
+       /** Echter Einlauf-Fehler: zweites Teil / belegter Einlauf, nicht nur LS-Stoerung im Transit. */
+       bool isEarlyEntryViolationOnBlocked() const;
 
        /** Motor darf stoppen: keine aktiven Transit-/Entry-WPs mehr. */
        bool shouldAllowMotorStop() const { return !hasWorkpiecesNeedingMotor(); }
@@ -234,14 +248,23 @@ namespace logik {
         void notifyPartnerHandoverSlotFree();
 
         std::uint32_t scaleNormalToSlowTicks(std::uint32_t normalTicks) const;
+        /** Konservatives Limit Hoehenmessung (HeightB -> HeightC, Slow-Kalibrierung). */
+        std::uint32_t calculateHeightMeasurementLimit() const;
         /** Konservatives Limit HS -> Sortierweiche (Normal, Slow-Kalibrierung, skaliert). */
         std::uint32_t calculateEjectorTransitLimit() const;
+        /** Limit Sortierweiche -> Bandende (Normal bei Fast, skaliert bei Slow). */
+        std::uint32_t calculateEndTransitLimit(bool isMotorSlow) const;
         void updateTargetLimitForMotor(Workpiece& wp, bool isMotorSlow) const;
 
         Workpiece* findWorkpieceById(int id);
         bool hasEjectorSorter() const;
         bool shouldDeferJunctionForMetal(const Workpiece* wp) const;
         void applyMetalTypeUpgrade(Workpiece* wp);
+        void applyMetalIfDetected(Workpiece* wp);
+        Workpiece* getLeadingWorkpieceForMetalDetection();
+        void startSorterDecisionForWp(Workpiece* wp);
+        /** Rezept nach WP_LOST auf dem Weg zum Bandende wieder auf den verlorenen Typ setzen. */
+        void syncSequenceAfterLostTransitToEnd(const Workpiece& wp);
     };
 
 } // namespace logik

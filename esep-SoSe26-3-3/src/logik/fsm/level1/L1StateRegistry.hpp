@@ -10,6 +10,7 @@ enum class L1StateId {
     IDLE,
     READY_FOR_SERVICE,
     READY_FOR_RUN,
+    READY_FOR_ACTIVE,
     RUNNING,
     SERVICE
 };

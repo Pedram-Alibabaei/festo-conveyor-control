@@ -1,5 +1,6 @@
 #include "RunningState.hpp"
 #include "IdleState.hpp"
+#include "ReadyForActiveState.hpp"
 #include "logik/logik.hpp"
 #include "logik/fsm/level1/Level1Actions.hpp"
 #include "logik/eventManager/eventManager.hpp"
@@ -37,7 +38,19 @@ void RunningState::entry() {
     } else {
         enterRunningNormal();
     }
-    enterMotorIdle();
+
+    if (hasActiveWorkpieces) {
+        const bool useSlow = m_context->getWorkpieceManager()->shouldUseSlowMotor();
+        std::cout << "[Level1] Aktive WPs vorhanden -> Betrieb fortsetzen, Motor "
+                  << (useSlow ? "Slow" : "Fast") << std::endl;
+        if (useSlow) {
+            enterMotorSlow();
+        } else {
+            enterMotorFast();
+        }
+    } else {
+        enterMotorIdle();
+    }
 }
 
 void RunningState::exit() {
@@ -62,10 +75,10 @@ void RunningState::enterRunningWarning() {
     m_warningState = WarningSubState::Warning;
 
     if (m_context != nullptr && m_context->getDispatcher() != nullptr) {
-        m_context->getDispatcher()->lightYellowOn();
+        m_context->getDispatcher()->lightYellowBlinkSlow();
     }
 
-    std::cout << "[RunningState] Running_Warning" << std::endl;
+    std::cout << "[RunningState] Running_Warning (Gelb blinkt langsam)" << std::endl;
 }
 
 void RunningState::enterEntryFree() {
@@ -121,6 +134,10 @@ void RunningState::enterMotorFast() {
         eventManager->setMotorSlow(false);
     }
 
+    if (m_context != nullptr && m_context->getWorkpieceManager() != nullptr) {
+        m_context->getWorkpieceManager()->onMotorSpeedChanged(false);
+    }
+
     std::cout << "[RunningState] Motor_Fast" << std::endl;
 }
 
@@ -132,6 +149,10 @@ void RunningState::enterMotorSlow() {
     level1::applyMotorSlow(dispatcher, eventManager);
     if (eventManager != nullptr) {
         eventManager->setMotorOn(true);
+    }
+
+    if (m_context != nullptr && m_context->getWorkpieceManager() != nullptr) {
+        m_context->getWorkpieceManager()->onMotorSpeedChanged(true);
     }
 
     std::cout << "[RunningState] Motor_Slow" << std::endl;
@@ -147,8 +168,17 @@ void RunningState::handle(Event e) {
         if (m_warningState == WarningSubState::Normal
             && (m_context->getEventManager() == nullptr
                 || !m_context->getEventManager()->isChuteFull())) {
-            std::cout << "[RunningState] STOP -> IdleState" << std::endl;
-            m_context->transitionTo(new IdleState());
+            const bool hasActiveWorkpieces =
+                m_context->getWorkpieceManager() != nullptr
+                && m_context->getWorkpieceManager()->hasActiveWorkpieces();
+            if (hasActiveWorkpieces) {
+                std::cout << "[RunningState] STOP mit aktiven WPs -> ReadyForActive "
+                          << "(Betrieb pausiert, START zum Fortsetzen)" << std::endl;
+                m_context->transitionTo(new ReadyForActiveState());
+            } else {
+                std::cout << "[RunningState] STOP -> IdleState" << std::endl;
+                m_context->transitionTo(new IdleState());
+            }
         } else {
             std::cout << "[RunningState] STOP ignoriert – Warnung noch aktiv." << std::endl;
         }

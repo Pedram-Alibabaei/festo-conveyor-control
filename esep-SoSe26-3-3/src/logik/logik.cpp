@@ -138,6 +138,12 @@ void Logik::loadCalibrationData() {
         return;
     }
 
+    if (m_eventManager != nullptr && m_eventManager->isServiceMode()) {
+        std::cout << "[Logik] loadCalibrationData waehrend Service-Kalibrierung ignoriert."
+                  << std::endl;
+        return;
+    }
+
     m_calibData = m_calibManager->loadCalibrationData();
 
     recalculateSlowLimits();
@@ -222,7 +228,6 @@ void Logik::checkCalibrationFile() {
     if (m_calibManager->fileExists()) {
         std::cout << "[Logik] Gueltige Kalibrierungsdatei gefunden! Feuere Event: DATA_EXIST." << std::endl;
         this->processEvent(logik::Event::DATA_EXIST);
-        loadCalibrationData();
     }
     else {
         std::cout << "[Logik] Keine gueltige Kalibrierungsdatei! Feuere Event: DATA_NOT_EXIST." << std::endl;

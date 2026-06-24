@@ -5,7 +5,7 @@
  * SoSe2026 Team 3.3
  */
 
-#include "errorHandler.hpp"
+#include "logik/errorHandler/errorHandler.hpp"
 #include "logik/logik.hpp"
 #include "logik/eventManager/eventManager.hpp"
 #include "logik/workpieceManager/WorkpieceManager.hpp"
@@ -107,7 +107,13 @@ ErrorHandler::ErrorHandler(Logik* context)
 // ============================================================================
 // ZENTRALE FEHLER-ESKALATION & DIAGNOSE-MASSNAHMEN
 // ============================================================================
-void ErrorHandler::handleEscalation(ErrorType type, logik::Event triggerEvent, WpLocation location, int wpId) {
+void ErrorHandler::handleEscalation(ErrorType type,
+                                    logik::Event triggerEvent,
+                                    WpLocation location,
+                                    int wpId,
+                                    std::uint32_t elapsedTicks,
+                                    std::uint32_t expectedLimitTicks,
+                                    std::uint32_t toleranceTicks) {
     if (m_context == nullptr) return;
 
     // 1. Schieberegister einfrieren
@@ -162,8 +168,23 @@ void ErrorHandler::handleEscalation(ErrorType type, logik::Event triggerEvent, W
         case ErrorType::WP_LOST:
             std::cout << "\n====================================================" << std::endl;
             std::cout << "[ERROR] TRANSIT-FEHLER: WERKSTUECK VERLOREN (WP_LOST)!" << std::endl;
-            // NEU: Zone statt Event ausgeben!
             std::cout << "-> Verloren in Zone: " << wpLocationName(location) << std::endl;
+            if (elapsedTicks > 0 && expectedLimitTicks > 0) {
+                const std::uint32_t deadline = expectedLimitTicks + toleranceTicks;
+                const std::int32_t overdue =
+                    static_cast<std::int32_t>(elapsedTicks)
+                    - static_cast<std::int32_t>(deadline);
+                std::cout << "-> Timing: Ist-Dauer "
+                          << elapsedTicks << " Takte (" << (elapsedTicks * 10) << " ms)"
+                          << ", Soll-Ankunft spaetestens "
+                          << expectedLimitTicks << " Takte (" << (expectedLimitTicks * 10) << " ms)"
+                          << " + " << toleranceTicks << " Toleranz"
+                          << " (= " << deadline << " Takte / " << (deadline * 10) << " ms)"
+                          << std::endl;
+                std::cout << "-> Timing: Ueberfaellig um "
+                          << overdue << " Takte (" << (overdue * 10) << " ms)"
+                          << std::endl;
+            }
             if (wpId != -1) {
                 std::cout << "-> Massnahme: Loesche WP-ID " << wpId << " automatisch aus dem Schieberegister." << std::endl;
                 if (wpManager != nullptr) wpManager->removeWorkpiece(wpId);
@@ -177,7 +198,41 @@ void ErrorHandler::handleEscalation(ErrorType type, logik::Event triggerEvent, W
             std::cout << "[ERROR] MANIPULATION: UNERWARTETES HARDWARE-SIGNAL (UNEXPECTED_EVENT)!" << std::endl;
             std::cout << "-> Sensor: " << eventSensorName(triggerEvent)
                       << " schlug unzulaessig an." << std::endl;
+            if (wpManager != nullptr
+                && m_context->getEventManager() != nullptr
+                && !wpManager->hasActiveWorkpieces()) {
+                const auto pos = m_context->getEventManager()->context().position;
+                if (pos == AnlagenPosition::HINTEN_ANLAGE_2
+                    && (triggerEvent == logik::Event::ENTRY_BLOCKED
+                        || triggerEvent == logik::Event::ENTRY_CLEARED)) {
+                    std::cout << "-> Regel (Anlage 2): Einlauf muss frei sein, solange kein "
+                              << "WP von Anlage 1 erwartet wird." << std::endl;
+                } else {
+                    std::cout << "-> Regel: Ohne aktive WPs sind nur Einlauf (Anlage 1, Q1 frei) "
+                              << "und Rutsche erlaubt." << std::endl;
+                }
+            }
             std::cout << "-> BEDIENER-ANWEISUNG: Bitte entfernen Sie das fremde Objekt vom Sensorbereich." << std::endl;
+            std::cout << "====================================================\n" << std::endl;
+            break;
+
+        case ErrorType::EARLY_ENTRY:
+            std::cout << "\n====================================================" << std::endl;
+            std::cout << "[ERROR] EINLAUF-FEHLER: WERKSTUECK ZU FRUEH AM ANFANG GELEGT!" << std::endl;
+            if (m_context->getEventManager() != nullptr
+                && m_context->getEventManager()->context().position
+                    == AnlagenPosition::HINTEN_ANLAGE_2) {
+                std::cout << "-> Regel (Anlage 2): Kein weiteres Werkstueck am Einlauf, "
+                          << "bevor das vordere den Hoehensensor (HS) erreicht hat." << std::endl;
+            } else {
+                std::cout << "-> Regel: Kein Werkstueck am Einlauf ablegen, bevor Q1 leuchtet "
+                          << "(Signalleuchte Q1 = Einlauf frei)." << std::endl;
+            }
+            std::cout << "-> Ursache: Das vordere Werkstueck hat den Hoehensensor (HS) "
+                      << "noch nicht erreicht." << std::endl;
+            std::cout << "-> BEDIENER-ANWEISUNG: Entfernen Sie das zusaetzliche Werkstueck vom Einlauf. "
+                      << "Warten Sie, bis der Einlauf freigegeben ist (Q1 bzw. HS-Freigabe)."
+                      << std::endl;
             std::cout << "====================================================\n" << std::endl;
             break;
 
@@ -196,8 +251,23 @@ void ErrorHandler::handleEscalation(ErrorType type, logik::Event triggerEvent, W
         case ErrorType::STUCK:
             std::cout << "\n====================================================" << std::endl;
             std::cout << "[ERROR] WATCHDOG: WERKSTUECK STECKEN GEBLIEBEN (STUCK)!" << std::endl;
-            // NEU: Zone statt Event ausgeben!
             std::cout << "-> Blockiert in Zone: " << wpLocationName(location) << std::endl;
+            if (location == WpLocation::AT_HEIGHT_SENSOR) {
+                std::cout << "-> Ursache: Werkstueck blockiert die Hoehenmessung zu lange "
+                          << "(kalibriertes HeightB->HeightC-Limit ueberschritten)." << std::endl;
+            }
+            if (elapsedTicks > 0 && expectedLimitTicks > 0) {
+                const std::uint32_t deadline = expectedLimitTicks + toleranceTicks;
+                std::cout << "-> Timing: Blockiert seit "
+                          << elapsedTicks << " Takte (" << (elapsedTicks * 10) << " ms)"
+                          << ", erlaubt max "
+                          << expectedLimitTicks << " Takte (" << (expectedLimitTicks * 10) << " ms)"
+                          << " + " << toleranceTicks << " Toleranz" << std::endl;
+                std::cout << "-> Timing: Grenze ueberschritten um "
+                          << (static_cast<std::int32_t>(elapsedTicks)
+                              - static_cast<std::int32_t>(deadline))
+                          << " Takte" << std::endl;
+            }
             if (wpId != -1) {
                 std::cout << "-> Massnahme: Loesche blockiertes WP-ID " << wpId << " aus der Liste." << std::endl;
                 if (wpManager != nullptr) wpManager->removeWorkpiece(wpId);
@@ -216,8 +286,19 @@ void ErrorHandler::handleEscalation(ErrorType type, logik::Event triggerEvent, W
     }
 
     // 3. Band stoppen
+    m_hasActiveError = true;
+    m_activeErrorType = type;
+    m_activeErrorTrigger = triggerEvent;
+    m_activeErrorLocation = location;
+    m_isEntryTimerRunning = false;
+
     if (m_context->getEventManager() != nullptr) {
         m_context->getEventManager()->handleEvent(logik::Event::ERROR);
+    }
+
+    // WP_LOST / behobene Sensor-Fehler: sofort pruefen ob GoneUnacknowledged moeglich
+    if (type == ErrorType::WP_LOST) {
+        tryEmitErrorCleared("WP aus Schieberegister entfernt");
     }
 }
 
@@ -299,6 +380,10 @@ void ErrorHandler::processEvent(logik::Event e) {
         default:
             break;
     }
+
+    if (m_hasActiveError && doesEventClearActiveError(e)) {
+        tryEmitErrorCleared("Sensor-/Zustandsaenderung", e);
+    }
 }
 
 // ============================================================================
@@ -307,6 +392,19 @@ void ErrorHandler::processEvent(logik::Event e) {
 void ErrorHandler::takt() {
     if (m_context->getEventManager() != nullptr && m_context->getEventManager()->isServiceMode()) {
         return;
+    }
+
+    EventManager* em = m_context->getEventManager();
+    if (em != nullptr && em->isErrorActive()) {
+        if (m_hasActiveError && isActiveErrorConditionCleared()) {
+            tryEmitErrorCleared("periodische Pruefung");
+        } else if (!m_hasActiveError && isPhysicalErrorConditionStillPresent()) {
+            m_hasActiveError = true;
+            std::cout << "[ErrorHandler] Fehlerursache noch aktiv "
+                      << "(Sensor blockiert) -> ERROR. Rot blinkt SCHNELL."
+                      << std::endl;
+            em->handleEvent(logik::Event::ERROR);
+        }
     }
 
     // --- WATCHDOG: EINLAUF-STAU (STUCK) ---
@@ -475,6 +573,174 @@ void ErrorHandler::reconcileChuteWarningOnOperationalEntry() {
     }
     std::cout << "[ErrorHandler] Betriebsstart (Anlage " << pos
               << "): Rutsche-LS frei." << std::endl;
+}
+
+bool ErrorHandler::isTriggerSensorClear(logik::Event trigger) const {
+    if (m_context == nullptr || m_context->getDispatcher() == nullptr) {
+        return false;
+    }
+
+    I_Dispatcher* dispatcher = m_context->getDispatcher();
+    EventManager* em = m_context->getEventManager();
+
+    switch (trigger) {
+    case logik::Event::ENTRY_BLOCKED:
+    case logik::Event::ENTRY_CLEARED:
+        return dispatcher->isEntryLightBarrierClear();
+
+    case logik::Event::HEIGHT_BLOCKED:
+    case logik::Event::HEIGHT_CLEARED:
+    case logik::Event::HEIGHT_ERROR:
+        return em != nullptr && !em->isHeightBlocked();
+
+    case logik::Event::END_BLOCKED:
+    case logik::Event::END_CLEARED:
+        return dispatcher->isEndLightBarrierClear();
+
+    case logik::Event::EJECTOR_BLOCKED:
+    case logik::Event::EJECTOR_CLEARED:
+        return dispatcher->isEjectorLightBarrierClear();
+
+    case logik::Event::METAL_DETECTED:
+    case logik::Event::METAL_CLEARED:
+        return dispatcher->isMetalSensorClear();
+
+    default:
+        return false;
+    }
+}
+
+bool ErrorHandler::isPhysicalErrorConditionStillPresent() const {
+    if (m_context == nullptr) {
+        return false;
+    }
+
+    switch (m_activeErrorType) {
+    case ErrorType::WP_LOST:
+        return false;
+
+    case ErrorType::BOTH_CHUTES_FULL:
+        return isChutePhysicallyBlocked();
+
+    case ErrorType::UNEXPECTED_EVENT:
+    case ErrorType::EARLY_ENTRY:
+        return !isTriggerSensorClear(m_activeErrorTrigger);
+
+    case ErrorType::HEIGHT_ERROR:
+        return m_context->getEventManager() != nullptr
+            && m_context->getEventManager()->isHeightBlocked();
+
+    case ErrorType::STUCK:
+        if (m_activeErrorLocation == WpLocation::AT_ENTRY) {
+            return m_context->getDispatcher() != nullptr
+                && !m_context->getDispatcher()->isEntryLightBarrierClear();
+        }
+        if (m_activeErrorLocation == WpLocation::AT_HEIGHT_SENSOR) {
+            return m_context->getEventManager() != nullptr
+                && m_context->getEventManager()->isHeightBlocked();
+        }
+        return true;
+
+    default:
+        return false;
+    }
+}
+
+bool ErrorHandler::isActiveErrorConditionCleared() const {
+    if (!m_hasActiveError || m_context == nullptr) {
+        return false;
+    }
+    return !isPhysicalErrorConditionStillPresent();
+}
+
+bool ErrorHandler::doesEventClearActiveError(logik::Event e) const {
+    if (!m_hasActiveError) {
+        return false;
+    }
+
+    switch (m_activeErrorType) {
+    case ErrorType::UNEXPECTED_EVENT:
+        switch (m_activeErrorTrigger) {
+        case logik::Event::ENTRY_BLOCKED:
+        case logik::Event::ENTRY_CLEARED:
+            return e == logik::Event::ENTRY_CLEARED;
+        case logik::Event::HEIGHT_BLOCKED:
+        case logik::Event::HEIGHT_ERROR:
+            return e == logik::Event::HEIGHT_CLEARED;
+        case logik::Event::HEIGHT_CLEARED:
+            return e == logik::Event::HEIGHT_BLOCKED;
+        case logik::Event::END_BLOCKED:
+            return e == logik::Event::END_CLEARED;
+        case logik::Event::END_CLEARED:
+            return e == logik::Event::END_BLOCKED;
+        case logik::Event::EJECTOR_BLOCKED:
+            return e == logik::Event::EJECTOR_CLEARED;
+        case logik::Event::EJECTOR_CLEARED:
+            return e == logik::Event::EJECTOR_BLOCKED;
+        case logik::Event::METAL_DETECTED:
+            return e == logik::Event::METAL_CLEARED;
+        default:
+            return false;
+        }
+
+    case ErrorType::EARLY_ENTRY:
+        return e == logik::Event::ENTRY_CLEARED;
+
+    case ErrorType::HEIGHT_ERROR:
+        return e == logik::Event::HEIGHT_CLEARED;
+
+    case ErrorType::BOTH_CHUTES_FULL:
+        return e == logik::Event::CHUTE_CLEARED;
+
+    case ErrorType::STUCK:
+        if (m_activeErrorLocation == WpLocation::AT_ENTRY) {
+            return e == logik::Event::ENTRY_CLEARED;
+        }
+        if (m_activeErrorLocation == WpLocation::AT_HEIGHT_SENSOR) {
+            return e == logik::Event::HEIGHT_CLEARED;
+        }
+        return false;
+
+    default:
+        return false;
+    }
+}
+
+void ErrorHandler::tryEmitErrorCleared(const char* reason, logik::Event clearingEvent) {
+    if (m_context == nullptr || !m_hasActiveError) {
+        return;
+    }
+
+    auto* em = m_context->getEventManager();
+    if (em == nullptr || !em->isErrorActive()) {
+        return;
+    }
+
+    const bool eventMatches = (clearingEvent != logik::Event::UNKNOWN)
+        ? doesEventClearActiveError(clearingEvent)
+        : true;
+    if (!eventMatches || isPhysicalErrorConditionStillPresent()) {
+        return;
+    }
+
+    std::cout << "[ErrorHandler] Fehlerursache behoben (" << reason
+              << ") -> ERROR_CLEARED. "
+              << "Rot blinkt LANGSAM = Fehler weg, RESET quittieren."
+              << std::endl;
+
+    m_hasActiveError = false;
+    em->handleEvent(logik::Event::ERROR_CLEARED);
+}
+
+void ErrorHandler::resetActiveErrorTracking() {
+    m_hasActiveError = false;
+    m_activeErrorType = ErrorType::WP_LOST;
+    m_activeErrorTrigger = logik::Event::UNKNOWN;
+    m_activeErrorLocation = WpLocation::UNKNOWN_LOCATION;
+}
+
+bool ErrorHandler::isErrorCauseCleared() const {
+    return !isPhysicalErrorConditionStillPresent();
 }
 
 } // namespace logik

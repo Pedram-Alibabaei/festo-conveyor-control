@@ -92,12 +92,22 @@ void ServiceState::handle(Event e) {
 
     switch (e) {
     case Event::STOP_RELEASED:
+        if (m_sub != nullptr && m_sub->isEmptyBeltMeasurementPending()) {
+            std::cout << "[ServiceState] STOP ignoriert – Leerband-Messung laeuft (~2s). "
+                      << "Einlauf frei lassen, bis 'EMPTY_BELT bereit' erscheint. "
+                      << "Abbruch: START lang erneut druecken." << std::endl;
+            return;
+        }
         std::cout << "[ServiceState] STOP -> IdleState" << std::endl;
         m_context->transitionTo(new IdleState());
         return;
 
     case Event::START_LONG_PRESSED:
-        std::cout << "[ServiceState] START lang (neu kalibrieren)" << std::endl;
+        std::cout << "[ServiceState] START lang -> Kalibrierung von vorne starten" << std::endl;
+        if (auto* dispatcher = m_context->getDispatcher()) {
+            dispatcher->sendPartnerCalibStatus(false);
+        }
+        replaceSubState(createInitialServiceCalibSubState());
         return;
 
     case Event::DATA_EXIST:

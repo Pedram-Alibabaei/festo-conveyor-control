@@ -19,6 +19,9 @@ public:
     virtual void entry(Logik* context, ServiceState& parent) = 0;
     virtual void exit(Logik* context) {}
     virtual void handle(Event e, Logik* context, ServiceState& parent) = 0;
+
+    /** @return true solange die Leerband-ADC-Messung noch nicht abgeschlossen ist. */
+    virtual bool isEmptyBeltMeasurementPending() const { return false; }
 };
 
 std::unique_ptr<ServiceCalibSubStateBase> createInitialServiceCalibSubState();
@@ -28,6 +31,7 @@ class ServiceInitEmptySubState : public ServiceCalibSubStateBase {
 public:
     void entry(Logik* context, ServiceState& parent) override;
     void handle(Event e, Logik* context, ServiceState& parent) override;
+    bool isEmptyBeltMeasurementPending() const override { return !m_emptyBeltReady; }
 
 private:
     bool m_emptyBeltReady{false};

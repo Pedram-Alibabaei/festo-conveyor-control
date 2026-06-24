@@ -37,6 +37,18 @@ namespace logik {
         // Konstante für das allgemeine Watchdog-Timeout (1 Sekunde)
         const std::chrono::milliseconds TIMEOUT_THRESHOLD;
 
+        /** Letzter aktiver Fehler (fuer GoneUnacknowledged-Erkennung). */
+        bool m_hasActiveError = false;
+        ErrorType m_activeErrorType = ErrorType::WP_LOST;
+        logik::Event m_activeErrorTrigger = logik::Event::UNKNOWN;
+        WpLocation m_activeErrorLocation = WpLocation::UNKNOWN_LOCATION;
+
+        bool isActiveErrorConditionCleared() const;
+        bool isPhysicalErrorConditionStillPresent() const;
+        bool isTriggerSensorClear(logik::Event trigger) const;
+        bool doesEventClearActiveError(logik::Event e) const;
+        void tryEmitErrorCleared(const char* reason, logik::Event clearingEvent = logik::Event::UNKNOWN);
+
     public:
         /**
          * @brief Konstruktor.
@@ -74,7 +86,10 @@ namespace logik {
         void handleEscalation(ErrorType type,
                               logik::Event triggerEvent = logik::Event::UNKNOWN,
                               WpLocation location = WpLocation::UNKNOWN_LOCATION,
-                              int wpId = -1);
+                              int wpId = -1,
+                              std::uint32_t elapsedTicks = 0,
+                              std::uint32_t expectedLimitTicks = 0,
+                              std::uint32_t toleranceTicks = 0);
 
         /** Chute-Watchdog laeuft oder Warnung bereits ausgeloest. */
         bool isChuteOccupancyWatchActive() const {
@@ -95,6 +110,12 @@ namespace logik {
          * Keine Flanke noetig – auch wenn CHUTE_BLOCKED schon vor Running aktiv war.
          */
         void reconcileChuteWarningOnOperationalEntry();
+
+        /** Fehler-Tracking nach Verlassen des ErrorState zuruecksetzen. */
+        void resetActiveErrorTracking();
+
+        /** true = physische Fehlerursache ist behoben (Sensor frei / WP_LOST aufgeraeumt). */
+        bool isErrorCauseCleared() const;
 
     private:
         bool isChutePhysicallyBlocked() const;

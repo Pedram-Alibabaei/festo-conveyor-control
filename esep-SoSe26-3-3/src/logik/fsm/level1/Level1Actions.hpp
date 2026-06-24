@@ -16,6 +16,8 @@ void applyReadyForServiceEntry(I_Dispatcher* dispatcher, EventManager* eventMana
 void applyReadyForServiceExit(I_Dispatcher* dispatcher, EventManager* eventManager);
 void applyReadyForRunEntry(I_Dispatcher* dispatcher, EventManager* eventManager, Logik* logik);
 void applyReadyForRunExit(I_Dispatcher* dispatcher, EventManager* eventManager);
+void applyReadyForActiveEntry(I_Dispatcher* dispatcher, EventManager* eventManager, Logik* logik);
+void applyReadyForActiveExit(I_Dispatcher* dispatcher, EventManager* eventManager);
 void applyRunningEntry(I_Dispatcher* dispatcher, EventManager* eventManager);
 void applyRunningExit(I_Dispatcher* dispatcher, EventManager* eventManager);
 void applyServiceEntry(I_Dispatcher* dispatcher, EventManager* eventManager);
@@ -27,6 +29,9 @@ void applyMotorRun(I_Dispatcher* dispatcher, EventManager* eventManager, bool bl
 void applyMotorStop(I_Dispatcher* dispatcher, EventManager* eventManager, bool clearGreenLight);
 void applyMotorSlow(I_Dispatcher* dispatcher, EventManager* eventManager);
 void applyHeightCleared(I_Dispatcher* dispatcher, EventManager* eventManager);
+
+/** Nach Error/ConnectionLost: Motor und Bandzustand anhand aktiver WPs fortsetzen. */
+void resumeBandAfterPause(Logik* logik);
 
 /** Running nur wenn lokal + Partner kalibriert und verbunden. */
 bool canEnterRunning(EventManager* eventManager);

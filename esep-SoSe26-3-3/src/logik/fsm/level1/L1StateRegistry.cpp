@@ -2,6 +2,7 @@
 #include "IdleState.hpp"
 #include "ReadyForServiceState.hpp"
 #include "ReadyForRunState.hpp"
+#include "ReadyForActiveState.hpp"
 #include "RunningState.hpp"
 #include "ServiceState.hpp"
 
@@ -29,6 +30,8 @@ std::unique_ptr<BaseState> L1StateRegistry::create(L1StateId id) {
         return std::unique_ptr<BaseState>(new ReadyForServiceState());
     case L1StateId::READY_FOR_RUN:
         return std::unique_ptr<BaseState>(new ReadyForRunState());
+    case L1StateId::READY_FOR_ACTIVE:
+        return std::unique_ptr<BaseState>(new ReadyForActiveState());
     case L1StateId::RUNNING:
         return std::unique_ptr<BaseState>(new RunningState());
     case L1StateId::SERVICE:
@@ -49,6 +52,9 @@ L1StateId L1StateRegistry::idFrom(const BaseState* state) {
     }
     if (dynamic_cast<const ReadyForRunState*>(state) != nullptr) {
         return L1StateId::READY_FOR_RUN;
+    }
+    if (dynamic_cast<const ReadyForActiveState*>(state) != nullptr) {
+        return L1StateId::READY_FOR_ACTIVE;
     }
     if (dynamic_cast<const ReadyForServiceState*>(state) != nullptr) {
         return L1StateId::READY_FOR_SERVICE;

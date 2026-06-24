@@ -1,6 +1,9 @@
 #include "logik/fsm/common/BaseState.hpp"
 #include "Level0Actions.hpp"
+#include "L0RestoreRegistry.hpp"
+#include "ErrorState.hpp"
 #include "logik/fsm/level1/L1StateRegistry.hpp"
+#include "logik/fsm/level1/ReadyForActiveState.hpp"
 #include "logik/fsm/level0/ActiveRegionState.hpp"
 #include "logik/fsm/level1/IdleState.hpp"
 #include "logik/logik.hpp"
@@ -53,6 +56,49 @@ void clearTrafficLightsForRestore(I_Dispatcher* dispatcher) {
     dispatcher->lightRedOff();
     dispatcher->lightYellowOff();
     dispatcher->lightGreenOff();
+}
+
+void transitionAfterConnectionRestore(Logik* logik) {
+    if (logik == nullptr) {
+        return;
+    }
+
+    clearTrafficLightsForRestore(logik->getDispatcher());
+
+    switch (L0RestoreRegistry::target()) {
+    case L0RestoreTarget::ERROR_PENDING_UNACK:
+        std::cout << "[Level0] RESTORED -> ErrorState (anstehend unquittiert)" << std::endl;
+        logik->transitionTo(new ErrorState(ErrorState::SubState::PendingUnacknowledged));
+        break;
+
+    case L0RestoreTarget::ERROR_PENDING_ACK:
+        std::cout << "[Level0] RESTORED -> ErrorState (anstehend quittiert)" << std::endl;
+        logik->transitionTo(new ErrorState(ErrorState::SubState::PendingAcknowledged));
+        break;
+
+    case L0RestoreTarget::ERROR_GONE_UNACK:
+        std::cout << "[Level0] RESTORED -> ErrorState (gegangen unquittiert)" << std::endl;
+        logik->transitionTo(new ErrorState(ErrorState::SubState::GoneUnacknowledged));
+        break;
+
+    case L0RestoreTarget::ACTIVE_REGION:
+    default: {
+        const L1StateId history = L1StateRegistry::history();
+        if (history == L1StateId::RUNNING || history == L1StateId::READY_FOR_ACTIVE) {
+            std::cout << "[Level0] RESTORED -> ReadyForActive "
+                      << "(Running pausiert, START zum Fortsetzen)" << std::endl;
+            logik->transitionTo(
+                new ActiveRegionState(std::unique_ptr<BaseState>(new ReadyForActiveState())));
+        } else {
+            std::cout << "[Level0] RESTORED -> ActiveRegion (H*, L1="
+                      << static_cast<int>(history) << ")" << std::endl;
+            logik->transitionTo(new ActiveRegionState(ActiveRegionState::EntryMode::RestoreHistory));
+        }
+        break;
+    }
+    }
+
+    L0RestoreRegistry::clear();
 }
 
 void applyEstopPressedTraffic(I_Dispatcher* dispatcher) {
@@ -164,6 +210,7 @@ void finishEstopReset(Logik* logik) {
     if (auto* em = logik->getEventManager()) {
         em->setEStopActive(false);
         em->setErrorActive(false);
+        em->setRunningMode(false);
     }
 
     L1StateRegistry::setHistory(L1StateId::IDLE);
@@ -183,6 +230,7 @@ void applyEstopSafetyClear(Logik* logik) {
     if (auto* em = logik->getEventManager()) {
         em->setChuteFull(false);
         em->setPartnerChuteStatus(false);
+        em->setRunningMode(false);
     }
 }
 

@@ -73,6 +73,14 @@ public:
 
     /** true = Rutsche-Lichtschranke frei (Pin HIGH). */
     virtual bool isChuteLightBarrierClear() const = 0;
+    /** true = Einlauf-Lichtschranke frei (Pin HIGH). */
+    virtual bool isEntryLightBarrierClear() const = 0;
+    /** true = Bandende-Lichtschranke frei (Pin HIGH). */
+    virtual bool isEndLightBarrierClear() const = 0;
+    /** true = Sortierweichen-Lichtschranke frei (Pin HIGH). */
+    virtual bool isEjectorLightBarrierClear() const = 0;
+    /** true = Induktivsensor frei (kein Metall). */
+    virtual bool isMetalSensorClear() const = 0;
 
     virtual void sendPartnerResetPressed() = 0;
     virtual void sendPartnerStartRunning() = 0;

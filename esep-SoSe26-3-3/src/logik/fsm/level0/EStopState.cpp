@@ -101,6 +101,7 @@ void EStopState::entry() {
     }
 
     if (auto* em = m_context->getEventManager()) {
+        em->setRunningMode(false);
         em->setMotorOn(false);
         em->setMotorSlow(false);
         em->setEStopActive(true);

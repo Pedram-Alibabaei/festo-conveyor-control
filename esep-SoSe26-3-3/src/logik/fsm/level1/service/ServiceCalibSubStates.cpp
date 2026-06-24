@@ -183,6 +183,9 @@ void ServiceInitEmptySubState::entry(Logik* context, ServiceState& parent) {
 
         std::cout << "[Service] Sortier-Hardware: "
                   << (dispatcher->isSwitch() ? "Weiche" : "Auswerfer") << std::endl;
+        std::cout << "[Service] Messe Leerband-Referenz am Hoehensensor (~2s). "
+                  << "Einlauf frei lassen – STOP erst nach 'EMPTY_BELT bereit'. "
+                  << "Referenz-WP (flach) danach am Einlauf auflegen." << std::endl;
     }
 }
 
@@ -191,8 +194,8 @@ void ServiceInitEmptySubState::handle(Event e, Logik* context, ServiceState& par
         m_emptyBeltReady = true;
         std::cout << "[Service] EMPTY_BELT bereit. "
                   << (m_entryBlockedWhileWaiting
-                          ? "Werkstueck wartet bereits am Einlauf -> starte Slow-Lauf."
-                          : "Warte auf Referenz-Werkstueck am Einlauf.")
+                          ? "Referenz-WP wartet am Einlauf -> starte Slow-Lauf."
+                          : "Bitte Referenz-WP (flach) am Einlauf auflegen.")
                   << std::endl;
         if (!m_entryBlockedWhileWaiting) {
             return;
@@ -205,8 +208,9 @@ void ServiceInitEmptySubState::handle(Event e, Logik* context, ServiceState& par
     if (e == Event::ENTRY_BLOCKED) {
         if (!m_emptyBeltReady) {
             m_entryBlockedWhileWaiting = true;
-            std::cout << "[Service] ENTRY_BLOCKED vor EMPTY_BELT fertig -> "
-                      << "warte mit Motorstart bis Leerband-Referenz bereit ist." << std::endl;
+            std::cout << "[Service] Referenz-WP am Einlauf erkannt – warte noch auf "
+                      << "Leerband-Messung (EMPTY_BELT). Motor startet danach automatisch."
+                      << std::endl;
             return;
         }
         logTransition("Init_Empty", "Motor_Right_Slow", e);
@@ -214,8 +218,16 @@ void ServiceInitEmptySubState::handle(Event e, Logik* context, ServiceState& par
         return;
     }
 
-    if (e == Event::ENTRY_CLEARED && !m_emptyBeltReady) {
-        m_entryBlockedWhileWaiting = false;
+    if (e == Event::ENTRY_CLEARED) {
+        if (!m_emptyBeltReady) {
+            m_entryBlockedWhileWaiting = false;
+            return;
+        }
+        if (m_entryBlockedWhileWaiting) {
+            m_entryBlockedWhileWaiting = false;
+            std::cout << "[Service] Einlauf wieder frei – bitte Referenz-WP erneut auflegen."
+                      << std::endl;
+        }
     }
 }
 

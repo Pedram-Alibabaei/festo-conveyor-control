@@ -127,6 +127,10 @@ public:
     bool isPartnerEstopPressed() const override;
     void sendeChuteStats(bool isVoll) override;
     bool isChuteLightBarrierClear() const override;
+    bool isEntryLightBarrierClear() const override;
+    bool isEndLightBarrierClear() const override;
+    bool isEjectorLightBarrierClear() const override;
+    bool isMetalSensorClear() const override;
     void sendPartnerResetPressed() override;
     void sendPartnerStartRunning() override;
     void sendPartnerStartService() override;

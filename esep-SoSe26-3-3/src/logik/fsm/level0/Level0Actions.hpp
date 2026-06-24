@@ -13,6 +13,7 @@ namespace level0 {
 void applyConnectionLostEntry(I_Dispatcher* dispatcher, EventManager* eventManager = nullptr);
 void applyConnectionLostEstopWaitingResetEntry(I_Dispatcher* dispatcher);
 void clearTrafficLightsForRestore(I_Dispatcher* dispatcher);
+void transitionAfterConnectionRestore(Logik* logik);
 void applyEstopPressedTraffic(I_Dispatcher* dispatcher);
 void applyEstopLocalActiveEntry(Logik* logik);
 void applyEstopPartnerActiveEntry(Logik* logik);
