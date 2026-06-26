@@ -65,6 +65,36 @@ void storeMeasuredTick(Logik* context, std::uint32_t& targetField, const char* l
     DETAIL_LOG( "[Service] Gemessen " << label << " = " << targetField << " Takte");
 }
 
+bool s_normalEjectorBlockedBeforeHeightCleared = false;
+
+void resetNormalEjectorPendingFlag() {
+    s_normalEjectorBlockedBeforeHeightCleared = false;
+}
+
+/** Normal-Segment aus Slow ableiten, wenn EJECTOR vor HEIGHT_CLEARED kam (Event-Reihenfolge). */
+void storeNormalHeightCToEjectorFromSlow(Logik* context) {
+    if (context == nullptr) {
+        return;
+    }
+
+    CalibrationData& calib = context->getCalibrationData();
+    const std::uint32_t slowSeg = calib.ticks_HeightC_to_EjectorB_Slow;
+    const std::uint32_t slowRef = calib.ticks_EntryC_to_HeightB_Slow;
+    const std::uint32_t normalRef = calib.ticks_EntryC_to_HeightB_Normal;
+
+    std::uint32_t derived = slowSeg;
+    if (slowRef > 0U && normalRef > 0U) {
+        derived = static_cast<std::uint32_t>(
+            (static_cast<std::uint64_t>(slowSeg) * normalRef + slowRef / 2U) / slowRef);
+    }
+
+    calib.ticks_HeightC_to_EjectorB_Normal = derived;
+    context->syncCalibrationToWorkpieceManager();
+    std::cout << "[Service] Normal: EJECTOR vor HEIGHT_CLEARED -> "
+              << "ticks_HeightC_to_EjectorB_Normal aus Slow abgeleitet: "
+              << derived << std::endl;
+}
+
 /** 1. Lauf (Slow): Weiche geschlossen halten, Auswerfer noch nicht ausfahren. */
 void prepareSlowPathSorter(Logik* context) {
     if (context == nullptr) {
@@ -385,6 +415,8 @@ void ServiceNormalStartSubState::entry(Logik* context, ServiceState& parent) {
     DETAIL_LOG( "[Service] Normal_Start: driveRight(), warte ENTRY_CLEARED."
               << (ServiceCalibRegistry::isResuming() ? " (Resume)" : ""));
 
+    resetNormalEjectorPendingFlag();
+
     if (context != nullptr && !ServiceCalibRegistry::isResuming()) {
         armHeightSensorForServiceTiming(context);
         context->resetServiceTickCounter();
@@ -437,7 +469,18 @@ void ServiceNormalWaitHeightClearedSubState::entry(Logik* context, ServiceState&
 }
 
 void ServiceNormalWaitHeightClearedSubState::handle(Event e, Logik* context, ServiceState& parent) {
-    if (e != Event::HEIGHT_CLEARED || context == nullptr) {
+    if (context == nullptr) {
+        return;
+    }
+
+    if (e == Event::EJECTOR_BLOCKED) {
+        s_normalEjectorBlockedBeforeHeightCleared = true;
+        std::cout << "[Service] Normal: EJECTOR_BLOCKED vor HEIGHT_CLEARED ignoriert."
+                  << std::endl;
+        return;
+    }
+
+    if (e != Event::HEIGHT_CLEARED) {
         return;
     }
 
@@ -445,7 +488,14 @@ void ServiceNormalWaitHeightClearedSubState::handle(Event e, Logik* context, Ser
                       context->getCalibrationData().ticks_HeightB_to_HeightC_Normal,
                       "ticks_HeightB_to_HeightC_Normal");
 
-    prepareNormalPathSorter(context);
+    if (s_normalEjectorBlockedBeforeHeightCleared) {
+        s_normalEjectorBlockedBeforeHeightCleared = false;
+        storeNormalHeightCToEjectorFromSlow(context);
+        prepareNormalPathSorter(context);
+        logTransition("Normal_Wait_Height_Cleared", "Normal_Wait_Ejector_Cleared", e);
+        parent.replaceSubState(std::make_unique<ServiceNormalWaitEjectorClearedSubState>());
+        return;
+    }
 
     logTransition("Normal_Wait_Height_Cleared", "Normal_Wait_Ejector_Blocked", e);
     parent.replaceSubState(std::make_unique<ServiceNormalWaitEjectorBlockedSubState>());
@@ -468,6 +518,7 @@ void ServiceNormalWaitEjectorBlockedSubState::handle(Event e, Logik* context, Se
     storeMeasuredTick(context,
                       context->getCalibrationData().ticks_HeightC_to_EjectorB_Normal,
                       "ticks_HeightC_to_EjectorB_Normal");
+    prepareNormalPathSorter(context);
     logTransition("Normal_Wait_Ejector_Blocked", "Normal_Wait_Ejector_Cleared", e);
     parent.replaceSubState(std::make_unique<ServiceNormalWaitEjectorClearedSubState>());
 }

@@ -407,7 +407,13 @@ void ErrorHandler::processEvent(logik::Event e) {
         case logik::Event::END_CLEARED: {
             m_isEntryTimerRunning = false;
             WorkpieceManager* wpManager = m_context->getWorkpieceManager();
+            I_Dispatcher* dispatcher = m_context->getDispatcher();
+            if (wpManager != nullptr) {
+                wpManager->discardGhostEntryWorkpieceIfSensorClear();
+            }
             if (wpManager != nullptr
+                && dispatcher != nullptr
+                && !dispatcher->isEntryLightBarrierClear()
                 && wpManager->getFirstWorkpieceAt(WpLocation::AT_ENTRY) != nullptr) {
                 m_isEntryTimerRunning = true;
                 m_entryStartTime = std::chrono::steady_clock::now();
@@ -496,12 +502,19 @@ void ErrorHandler::takt() {
             if (duration >= TIMEOUT_THRESHOLD) {
                 m_isEntryTimerRunning = false;
 
+                WorkpieceManager* wpManager = m_context->getWorkpieceManager();
+                I_Dispatcher* dispatcher = m_context->getDispatcher();
                 Workpiece* wp = nullptr;
-                if (m_context->getWorkpieceManager() != nullptr) {
-                    wp = m_context->getWorkpieceManager()->getFirstWorkpieceAt(WpLocation::AT_ENTRY);
+                if (wpManager != nullptr) {
+                    wp = wpManager->getFirstWorkpieceAt(WpLocation::AT_ENTRY);
                 }
 
-                if (wp != nullptr) {
+                if (wp != nullptr && dispatcher != nullptr
+                    && dispatcher->isEntryLightBarrierClear()) {
+                    DETAIL_LOG( "[ErrorHandler] Einlauf-Watchdog: LS frei, kein STUCK "
+                              << "(Geister-WP id=" << wp->getId() << ").");
+                    wpManager->discardGhostEntryWorkpieceIfSensorClear();
+                } else if (wp != nullptr) {
                     handleEscalation(
                         ErrorType::STUCK, logik::Event::ENTRY_BLOCKED, WpLocation::AT_ENTRY, wp->getId());
                 }

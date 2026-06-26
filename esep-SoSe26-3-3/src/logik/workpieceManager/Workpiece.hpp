@@ -30,6 +30,10 @@ private:
     // --- Variablen für das logische 10ms-Takt-Schieberegister ---
     std::uint32_t m_ticksInCurrentState;  ///< Verbrachte 10ms-Timer-Takte in der aktuellen Zone
     std::uint32_t m_targetLimitForState;  ///< Das aktuell gültige Takt-Limit für diese Zone
+    /** Zurueckgelegte Strecke in Normal-Takten (inkl. vorheriger Motor-Phasen). */
+    std::uint32_t m_normalEquivalentConsumed;
+    /** m_ticksInCurrentState beim letzten Motor-Sync / Zonenstart. */
+    std::uint32_t m_ticksAtLastMotorSync;
     bool m_isCorrectInSequence;           ///< Flag, ob das Teil an der aktuellen Weiche korrekt im Rezept ist
     bool m_entryBlockedSeen;              ///< Physische ENTRY_BLOCKED-Flanke fuer dieses WP gesehen?
     bool m_deferRejectToPartner;          ///< Anlage 1: falsches WP bei voller Rutsche zur Partner-Anlage leiten
@@ -48,6 +52,8 @@ public:
         m_location(WpLocation::AT_ENTRY),
         m_ticksInCurrentState(0),
         m_targetLimitForState(0),
+        m_normalEquivalentConsumed(0),
+        m_ticksAtLastMotorSync(0),
         m_isCorrectInSequence(true),
         m_entryBlockedSeen(false),
         m_deferRejectToPartner(false),
@@ -108,6 +114,8 @@ public:
         m_location = newLocation;
         m_ticksInCurrentState = 0;
         m_targetLimitForState = 0;
+        m_normalEquivalentConsumed = 0;
+        m_ticksAtLastMotorSync = 0;
     }
 
     WpLocation getLocation() const {
@@ -154,6 +162,28 @@ public:
     void markEntryBlockedSeen() {
         m_entryBlockedSeen = true;
         m_ticksInCurrentState = 0;
+        m_normalEquivalentConsumed = 0;
+        m_ticksAtLastMotorSync = 0;
+    }
+
+    std::uint32_t getNormalEquivalentConsumed() const {
+        return m_normalEquivalentConsumed;
+    }
+
+    void setNormalEquivalentConsumed(std::uint32_t value) {
+        m_normalEquivalentConsumed = value;
+    }
+
+    void addNormalEquivalentConsumed(std::uint32_t delta) {
+        m_normalEquivalentConsumed += delta;
+    }
+
+    std::uint32_t getTicksAtLastMotorSync() const {
+        return m_ticksAtLastMotorSync;
+    }
+
+    void setTicksAtLastMotorSync(std::uint32_t value) {
+        m_ticksAtLastMotorSync = value;
     }
 
     bool hasEntryBlockedSeen() const {

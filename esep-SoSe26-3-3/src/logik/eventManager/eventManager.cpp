@@ -26,6 +26,16 @@ namespace {
 
 constexpr std::chrono::milliseconds START_LONG_THRESHOLD{1500};
 
+bool isEntryLightBarrierClear(const logik::Logik* context) {
+    return context != nullptr
+        && context->getDispatcher() != nullptr
+        && context->getDispatcher()->isEntryLightBarrierClear();
+}
+
+bool isEntryLightBarrierBlocked(const logik::Logik* context) {
+    return !isEntryLightBarrierClear(context);
+}
+
 bool isPhysicalSensorEvent(logik::Event e) {
     switch (e) {
     case logik::Event::ENTRY_BLOCKED:
@@ -278,6 +288,13 @@ void EventManager::handleEvent(Event e) {
         }
     }
 
+    const bool entryWhileEndBlocked =
+        e == Event::ENTRY_BLOCKED
+        && m_ctx.runningMode
+        && !m_ctx.serviceMode
+        && !m_ctx.errorActive
+        && m_ctx.endBlocked
+        && m_ctx.position == AnlagenPosition::VORN_ANLAGE_1;
     const bool bandSubsystemsAllowed =
         canRouteToBandSubsystems() && !m_ctx.serviceMode;
     const bool endAndChuteSensorsAllowed =
@@ -301,9 +318,11 @@ void EventManager::handleEvent(Event e) {
     if (errorRecoverySensorEvent && m_errorHandler != nullptr) {
         routeToErrorHandler(e);
     }
-    if (bandSubsystemsAllowed || endBandEvent || chuteFillEvent || workpieceTrackingEvent) {
+    if (bandSubsystemsAllowed || endBandEvent || chuteFillEvent || workpieceTrackingEvent
+        || entryWhileEndBlocked) {
         routeToErrorHandler(e);
-        if (bandSubsystemsAllowed || endBandEvent || chuteFillEvent || workpieceTrackingEvent) {
+        if (bandSubsystemsAllowed || endBandEvent || chuteFillEvent || workpieceTrackingEvent
+            || entryWhileEndBlocked) {
             routeToWorkpieceManager(e);
         }
     } else if (m_ctx.serviceMode
@@ -453,7 +472,8 @@ std::vector<Event> EventManager::preprocessForFsm(Event e) {
         if (m_ctx.endBlocked && m_ctx.entryFrei
             && m_ctx.position == AnlagenPosition::VORN_ANLAGE_1) {
             m_entryDeferredWhileEndBlocked = true;
-            DETAIL_LOG( "[EventManager] Entry blockiert waehrend Bandende belegt -> WP wartet."
+            DETAIL_LOG( "[EventManager] Entry blockiert waehrend Bandende belegt "
+                     << "-> WP wird angelegt, Motor wartet auf END_CLEARED."
                      );
         } else if (!m_ctx.entryFrei && !m_ctx.endBlocked
                    && m_ctx.position == AnlagenPosition::VORN_ANLAGE_1
@@ -611,15 +631,29 @@ void EventManager::resumeEntryAfterEndCleared(std::vector<Event>& fsmEvents) {
         return;
     }
 
+    m_wpManager->discardGhostEntryWorkpieceIfSensorClear();
+
     Workpiece* waitingWp = m_wpManager->getFirstWorkpieceAt(WpLocation::AT_ENTRY);
 
     if (m_entryDeferredWhileEndBlocked
         && m_ctx.position == AnlagenPosition::VORN_ANLAGE_1) {
-        if (waitingWp == nullptr) {
-            m_wpManager->addWorkpiece();
-            waitingWp = m_wpManager->getFirstWorkpieceAt(WpLocation::AT_ENTRY);
-        }
         m_entryDeferredWhileEndBlocked = false;
+    }
+
+    if (!m_ctx.entryFrei && isEntryLightBarrierClear(m_context)) {
+        DETAIL_LOG( "[EventManager] Einlauf-Flag blockiert, LS aber frei -> ENTRY_FREI synchronisiert.");
+        m_ctx.entryFrei = true;
+    }
+
+    if (waitingWp == nullptr
+        && m_ctx.position == AnlagenPosition::VORN_ANLAGE_1
+        && !m_ctx.entryFrei
+        && isEntryLightBarrierBlocked(m_context)) {
+        m_wpManager->addWorkpiece();
+        waitingWp = m_wpManager->getFirstWorkpieceAt(WpLocation::AT_ENTRY);
+        DETAIL_LOG( "[EventManager] Bandende frei: Einlauf noch blockiert "
+                  << "-> WP nachtraeglich angelegt (id="
+                  << (waitingWp != nullptr ? waitingWp->getId() : -1) << ").");
     }
 
     const bool hasActiveWorkpieces = m_wpManager->hasActiveWorkpieces();
@@ -686,9 +720,15 @@ void EventManager::routeToWorkpieceManager(Event e) {
 
     switch (e) {
     case Event::ENTRY_BLOCKED:
-        if (m_ctx.entryFrei && !m_ctx.endBlocked
+        if (m_ctx.entryFrei
             && (m_ctx.position == AnlagenPosition::VORN_ANLAGE_1 || m_ctx.serviceMode)) {
-            m_wpManager->addWorkpiece();
+            if (m_wpManager->getFirstWorkpieceAt(WpLocation::AT_ENTRY) == nullptr
+                && (m_ctx.serviceMode || isEntryLightBarrierBlocked(m_context))) {
+                m_wpManager->addWorkpiece();
+            } else if (!m_ctx.serviceMode && isEntryLightBarrierClear(m_context)) {
+                DETAIL_LOG( "[EventManager] ENTRY_BLOCKED ignoriert: Einlauf-LS ist frei "
+                          << "(kein physisches Teil).");
+            }
         } else if (m_ctx.position == AnlagenPosition::HINTEN_ANLAGE_2) {
             m_wpManager->handleSensorSignal(e);
         }

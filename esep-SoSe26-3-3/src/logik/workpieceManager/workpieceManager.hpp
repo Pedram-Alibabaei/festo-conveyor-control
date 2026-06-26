@@ -132,6 +132,9 @@ namespace logik {
          */
         void removeWorkpiece(int id);
 
+        /** Entfernt WP am Einlauf, wenn die LS frei ist (Geister-Eintrag ohne physisches Teil). */
+        bool discardGhostEntryWorkpieceIfSensorClear();
+
         /** Metall-Warte-Timer zuruecksetzen (z. B. bei BOTH_CHUTES_FULL). */
         void resetMetalWaitState();
 
@@ -249,22 +252,46 @@ namespace logik {
         void notifyPartnerHandoverSlotFree();
 
         std::uint32_t scaleNormalToSlowTicks(std::uint32_t normalTicks) const;
-        /** 6,9-cm-Worst-Case in Normal-Takten (fest aus ticks_EntryB_to_EntryC_Normal). */
-        std::uint32_t calculateCalibratedWorstCaseExtraNormal() const;
+        std::uint32_t scaleSlowToNormalTicks(std::uint32_t slowTicks,
+                                             std::uint32_t segmentNormal,
+                                             std::uint32_t segmentSlow) const;
+        std::uint32_t resolveSegmentSlowTicks(std::uint32_t segmentNormal,
+                                              std::uint32_t segmentSlowCalib) const;
         /**
-         * Limit EntryC -> HeightB.
-         * @param afterSetSlow false = Fast-Phase, true = Mixed/Slow nach SET_SLOW.
+         * Deadline = ticksElapsed + Reststrecke(in aktueller Motor-Geschwindigkeit) + Safety.
+         * @param normalEquivalentConsumed bereits zurueckgelegte Strecke in Normal-Takten
+         * @param extraNormal zusaetzlicher Normal-Pfad (z. B. 6,9-cm-Worst-Case)
          */
-        std::uint32_t calculateTransitToHeightLimit(bool afterSetSlow) const;
-        /** Konservatives Limit Hoehenmessung (HeightB -> HeightC, Slow-Kalibrierung). */
-        std::uint32_t calculateHeightMeasurementLimit() const;
-        /** Limit WP an Sortierweiche (EjectorB -> EjectorC, Slow-Kalibrierung). */
-        std::uint32_t calculateEjectorOccupancyLimit() const;
-        /** Konservatives Limit HS -> Sortierweiche (Normal, Slow-Kalibrierung, skaliert). */
+        std::uint32_t calculateRemainingSegmentLimit(std::uint32_t ticksElapsed,
+                                                     std::uint32_t normalEquivalentConsumed,
+                                                     std::uint32_t segmentNormal,
+                                                     std::uint32_t segmentSlowCalib,
+                                                     bool isMotorSlow,
+                                                     std::uint32_t safetyTicks,
+                                                     std::uint32_t extraNormal = 0) const;
+        std::uint32_t getTotalNormalEquivalentConsumed(const Workpiece& wp,
+                                                       std::uint32_t segmentNormal,
+                                                       std::uint32_t segmentSlowCalib,
+                                                       bool elapsedAtSlowMotor) const;
+        void flushNormalEquivalentProgress(Workpiece& wp,
+                                           std::uint32_t segmentNormal,
+                                           std::uint32_t segmentSlowCalib,
+                                           bool elapsedAtSlowMotor);
+        void applySegmentTargetLimit(Workpiece& wp,
+                                     bool isMotorSlow,
+                                     std::uint32_t segmentNormal,
+                                     std::uint32_t segmentSlowCalib,
+                                     std::uint32_t safetyTicks,
+                                     std::uint32_t extraNormal = 0) const;
+        void recalculateTargetLimitAfterMotorChange(Workpiece& wp,
+                                                    bool newMotorSlow,
+                                                    std::uint32_t segmentNormal,
+                                                    std::uint32_t segmentSlowCalib,
+                                                    std::uint32_t safetyTicks,
+                                                    std::uint32_t extraNormal = 0);
+
+        std::uint32_t calculateCalibratedWorstCaseExtraNormal() const;
         std::uint32_t calculateEjectorTransitLimit() const;
-        /** Limit Sortierweiche -> Bandende (Normal bei Fast, skaliert bei Slow). */
-        std::uint32_t calculateEndTransitLimit(bool isMotorSlow) const;
-        void updateTargetLimitForMotor(Workpiece& wp, bool isMotorSlow) const;
 
         Workpiece* findWorkpieceById(int id);
         bool hasEjectorSorter() const;
