@@ -329,7 +329,9 @@ void ProfileAnalyzer::processSample(uint32_t adcValue)
             break;
         }
 
-        // Transport steht: Messdaten bleiben erhalten, neue ADC-Werte werden ignoriert.
+        if (tryReleasePausedMeasurementOnEmptyTunnel(currentRaw)) {
+            break;
+        }
         break;
 
     case AnalyzerState::CALIBRATION:
@@ -798,6 +800,36 @@ bool ProfileAnalyzer::tryRecoverHeightErrorAfterEmptyBelt(uint16_t currentRaw)
     m_currentState = AnalyzerState::IDLE;
     DETAIL_LOG( "[Analyzer] State -> IDLE (HS frei, warte auf Betriebsfortsetzung)"
              );
+    return true;
+}
+
+bool ProfileAnalyzer::tryReleasePausedMeasurementOnEmptyTunnel(uint16_t currentRaw)
+{
+    if (m_currentState != AnalyzerState::MEASURING_PAUSED || !isCalibrated()
+        || m_releaseTriggerValue == 0) {
+        return false;
+    }
+
+    if (currentRaw <= m_releaseTriggerValue) {
+        m_releaseConfirmCounter = 0;
+        return false;
+    }
+
+    ++m_releaseConfirmCounter;
+    if (m_releaseConfirmCounter < runningReleaseConfirmCount()) {
+        return false;
+    }
+
+    DETAIL_LOG( "[Analyzer] HS-Tunnel frei bei pausierter Messung (ADC="
+              << currentRaw << " > Release=" << m_releaseTriggerValue
+              << ") -> Sende HEIGHT_CLEARED.");
+    sendHeightState(ipc::State::CLEARED);
+    m_releaseConfirmCounter = 0;
+    m_waitForTunnelClear = false;
+    resetMeasurementData();
+    resetSmoothingBuffer();
+    m_currentState = AnalyzerState::IDLE;
+    DETAIL_LOG( "[Analyzer] State -> IDLE (Fehlerquittierung moeglich)");
     return true;
 }
 

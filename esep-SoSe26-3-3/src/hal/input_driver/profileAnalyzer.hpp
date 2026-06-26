@@ -102,6 +102,7 @@ private:
     void updateTallDrilledPattern(uint16_t currentRaw);
     void finishMeasurement();
     bool tryRecoverHeightErrorAfterEmptyBelt(uint16_t currentRaw);
+    bool tryReleasePausedMeasurementOnEmptyTunnel(uint16_t currentRaw);
     bool handleHeightError(uint16_t currentRaw);
     void sendHeightState(uint16_t state);
     bool isCalibrated() const;

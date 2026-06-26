@@ -27,8 +27,9 @@ constexpr std::uint32_t kMinSetSlowTick = 20;
 constexpr std::uint32_t kTransitToHeightSafetyTicks = 50;
 constexpr std::uint32_t kTransitToEjectorSafetyTicks = 50;
 constexpr std::uint32_t kHeightMeasurementSafetyTicks = 20;
+constexpr std::uint32_t kEjectorOccupancySafetyTicks = 20;
 constexpr std::uint32_t kTransitToEndSafetyTicks = 30;
-constexpr std::uint32_t kTimeoutToleranceTicks = 30;
+constexpr std::uint32_t kTimeoutToleranceTicks = 5;
 /** Weiche laenger offen (10ms-Takte); 150 = 1,5 s. */
 constexpr int kSwitchOpenHoldTicks = 150;
 /** Anlage 1: REQ_TO_GIVE erneut senden, wenn Anlage 2 vorher blockiert war (1 s). */
@@ -40,12 +41,13 @@ constexpr std::size_t kMaxActiveWorkpiecesAnlage2 = 2;
 /** Auswerfer-Anlage: Wartezeit auf Metall-Sensor nach EJECTOR_BLOCKED (10ms-Takte). */
 constexpr int kMetalSensorWaitTicks = 40;
 
-std::uint32_t calculateWorstCaseExtraTicks(std::uint32_t entryBlockedTicks) {
-    if (entryBlockedTicks == 0) {
+std::uint32_t scalePathCmToExtraTicks(std::uint32_t referenceTicksFor4Cm) {
+    if (referenceTicksFor4Cm == 0) {
         return 0;
     }
 
-    const double ticksPerCm = static_cast<double>(entryBlockedTicks) / kWorkpieceDiameterCm;
+    const double ticksPerCm =
+        static_cast<double>(referenceTicksFor4Cm) / kWorkpieceDiameterCm;
     return static_cast<std::uint32_t>((ticksPerCm * kWorstCaseExtraPathCm) + 0.5);
 }
 
@@ -664,8 +666,34 @@ void WorkpieceManager::takt(bool isMotorSlow) {
             continue;
         }
 
-        if (wp.getLocation() == WpLocation::AT_EJECTOR ||
-            wp.getLocation() == WpLocation::AT_CHUTE ||
+        if (wp.getLocation() == WpLocation::AT_EJECTOR) {
+            if (motorOn) {
+                wp.incrementTicks();
+                if (wp.getTargetLimit() > 0
+                    && wp.getTicks() > wp.getTargetLimit() + kTimeoutToleranceTicks) {
+                    logTransitTimeoutDiagnostic(
+                        "EJECTOR_OCCUPANCY",
+                        wp.getId(),
+                        wp.getTicks(),
+                        wp.getTargetLimit(),
+                        kTimeoutToleranceTicks,
+                        "Slow");
+                    if (m_context && m_context->getErrorHandler()) {
+                        m_context->getErrorHandler()->handleEscalation(
+                            ErrorType::STUCK,
+                            logik::Event::EJECTOR_BLOCKED,
+                            WpLocation::AT_EJECTOR,
+                            wp.getId(),
+                            wp.getTicks(),
+                            wp.getTargetLimit(),
+                            kTimeoutToleranceTicks);
+                    }
+                }
+            }
+            continue;
+        }
+
+        if (wp.getLocation() == WpLocation::AT_CHUTE ||
             wp.getLocation() == WpLocation::AT_END) {
             continue;
         }
@@ -707,56 +735,17 @@ void WorkpieceManager::takt(bool isMotorSlow) {
                     calculateSetSlowTick(m_calibData.ticks_EntryC_to_HeightB_Normal);
 
                 if (wp.getTicks() == setSlowTick) {
+                    const std::uint32_t targetLimit = calculateTransitToHeightLimit(true);
                     DETAIL_LOG( "[WP-Manager] SEND SET_SLOW: wp=" << wp.getId()
                               << " location=TRANSIT_TO_HEIGHT ticks=" << wp.getTicks()
                               << " threshold=" << setSlowTick
                               << " factor=" << kSetSlowFactor
                               << " normalCalib=" << m_calibData.ticks_EntryC_to_HeightB_Normal
+                              << " targetLimit=" << targetLimit
+                              << " extraNormal="
+                              << calculateCalibratedWorstCaseExtraNormal()
                              );
                     m_context->processEvent(logik::Event::SET_SLOW);
-
-                    const double restAnteilNormal =
-                        m_calibData.ticks_EntryC_to_HeightB_Normal > 0
-                            ? std::max(0.0, 1.0 - (static_cast<double>(setSlowTick)
-                                / static_cast<double>(m_calibData.ticks_EntryC_to_HeightB_Normal)))
-                            : 0.0;
-                    std::uint32_t restTakteSlow =
-                        static_cast<std::uint32_t>(restAnteilNormal
-                            * static_cast<double>(m_calibData.ticks_EntryC_to_HeightB_Slow));
-
-                    const std::uint32_t worstCaseExtraTicksNormal =
-                        wp.getTargetLimit() > m_calibData.ticks_EntryC_to_HeightB_Normal
-                            ? wp.getTargetLimit() - m_calibData.ticks_EntryC_to_HeightB_Normal
-                            : 0;
-                    const double slowFactor =
-                        m_calibData.ticks_EntryC_to_HeightB_Normal > 0
-                            ? static_cast<double>(m_calibData.ticks_EntryC_to_HeightB_Slow)
-                                / static_cast<double>(m_calibData.ticks_EntryC_to_HeightB_Normal)
-                            : 1.0;
-                    const std::uint32_t worstCaseExtraTicksSlow =
-                        static_cast<std::uint32_t>(
-                            (static_cast<double>(worstCaseExtraTicksNormal) * slowFactor) + 0.5);
-                    const std::uint32_t mixedSpeedTarget =
-                        setSlowTick + restTakteSlow + worstCaseExtraTicksSlow
-                        + kTransitToHeightSafetyTicks;
-                    const std::uint32_t conservativeSlowTarget =
-                        m_calibData.ticks_EntryC_to_HeightB_Slow
-                        + worstCaseExtraTicksSlow
-                        + kTransitToHeightSafetyTicks;
-                    const std::uint32_t targetLimit =
-                        std::max(mixedSpeedTarget, conservativeSlowTarget);
-
-                    DETAIL_LOG( "[WP-Manager] SET_SLOW target neu: wp=" << wp.getId()
-                              << " setSlowTick=" << setSlowTick
-                              << " restSlow=" << restTakteSlow
-                              << " extraNormal=" << worstCaseExtraTicksNormal
-                              << " extraSlow=" << worstCaseExtraTicksSlow
-                              << " safety=" << kTransitToHeightSafetyTicks
-                              << " mixedTarget=" << mixedSpeedTarget
-                              << " conservativeSlowTarget=" << conservativeSlowTarget
-                              << " targetLimit=" << targetLimit
-                             );
-
                     wp.setTargetLimit(targetLimit);
                 }
                 }
@@ -929,23 +918,23 @@ void WorkpieceManager::handleSensorSignal(logik::Event e, WpType typeFromHal) {
             if (wp != nullptr) {
                 const std::uint32_t entryBlockedTicks = wp->getTicks();
                 const std::uint32_t worstCaseExtraTicks =
-                    calculateWorstCaseExtraTicks(entryBlockedTicks);
-                const std::uint32_t worstCaseTarget =
-                    m_calibData.ticks_EntryC_to_HeightB_Normal + worstCaseExtraTicks;
+                    calculateCalibratedWorstCaseExtraNormal();
+                const std::uint32_t transitLimit = calculateTransitToHeightLimit(false);
 
                 DETAIL_LOG( "[HAL-Signal] ENTRY_CLEARED fuer WP " << wp->getId()
                           << " -> Transit zum HS. Erwartet EntryC->HeightB Normal="
                           << m_calibData.ticks_EntryC_to_HeightB_Normal
                           << " Takte, Slow=" << m_calibData.ticks_EntryC_to_HeightB_Slow
                           << " Takte.");
-                DETAIL_LOG( "[WP-Manager] ENTRY_LS_DAUER: wp=" << wp->getId()
-                          << " blockedTicks=" << entryBlockedTicks
-                          << " (4cm) extraWorstCaseTicks=" << worstCaseExtraTicks
-                          << " targetLimitWorstCase=" << worstCaseTarget
+                DETAIL_LOG( "[WP-Manager] ENTRY_CLEARED limit: wp=" << wp->getId()
+                          << " entryBlockedTicks=" << entryBlockedTicks
+                          << " extraWorstCaseNormal=" << worstCaseExtraTicks
+                          << " (kalibriert aus EntryB->EntryC, nicht gemessen)"
+                          << " targetLimit=" << transitLimit
                          );
 
                 wp->updateLocation(WpLocation::TRANSIT_TO_HEIGHT);
-                wp->setTargetLimit(worstCaseTarget);
+                wp->setTargetLimit(transitLimit);
             } else if (m_myPosition == AnlagenPosition::HINTEN_ANLAGE_2
                        && hasActiveWorkpieces()) {
                 DETAIL_LOG( "[WP-Manager] Anlage 2: ENTRY_CLEARED ohne WP am Einlauf "
@@ -1043,6 +1032,7 @@ void WorkpieceManager::handleSensorSignal(logik::Event e, WpType typeFromHal) {
                     m_ejectorLsBlocked = true;
                     wp->updateLocation(WpLocation::AT_EJECTOR);
                     m_ejectorBlockedWpId = wp->getId();
+                    wp->setTargetLimit(calculateEjectorOccupancyLimit());
                     startSorterDecisionForWp(wp);
                 }
             } else if (getFirstWorkpieceAt(WpLocation::TRANSIT_TO_EJECTOR) != nullptr
@@ -1138,6 +1128,7 @@ void WorkpieceManager::handleSensorSignal(logik::Event e, WpType typeFromHal) {
                 m_ejectorBlockedWpId = wp->getId();
                 DETAIL_LOG( "[HAL-Signal] WP " << wp->getId() << " erreicht physisch die Sortierweiche.");
                 wp->updateLocation(WpLocation::AT_EJECTOR);
+                wp->setTargetLimit(calculateEjectorOccupancyLimit());
                 startSorterDecisionForWp(wp);
             } else if (getFirstWorkpieceAt(WpLocation::AT_HEIGHT_SENSOR) != nullptr) {
                 m_pendingEjectorBlockedAfterHeight = true;
@@ -1187,8 +1178,8 @@ void WorkpieceManager::handleSensorSignal(logik::Event e, WpType typeFromHal) {
                         m_context != nullptr
                         && m_context->getEventManager() != nullptr
                         && m_context->getEventManager()->isMotorSlow();
-                    updateTargetLimitForMotor(*wp, isMotorSlow);
-                    const std::uint32_t endLimit = wp->getTargetLimit();
+                    const std::uint32_t endLimit = calculateEndTransitLimit(isMotorSlow);
+                    wp->setTargetLimit(endLimit);
                     DETAIL_LOG( "[WP-Manager] EJECTOR_CLEARED: WP " << wp->getId()
                               << " -> Transit zum Bandende. Soll-Ankunft END max "
                               << endLimit << " Takte (" << (endLimit * 10) << " ms)"
@@ -1247,6 +1238,7 @@ void WorkpieceManager::handleSensorSignal(logik::Event e, WpType typeFromHal) {
                               << "fuer diese Flanke nachgezogen.");
                     m_ejectorLsBlocked = true;
                     transitWp->updateLocation(WpLocation::AT_EJECTOR);
+                    transitWp->setTargetLimit(calculateEjectorOccupancyLimit());
                     m_ejectorBlockedWpId = transitWp->getId();
                     applyMetalIfDetected(transitWp);
                     const bool needsMetalWait = shouldDeferJunctionForMetal(transitWp);
@@ -1582,6 +1574,39 @@ std::uint32_t WorkpieceManager::scaleNormalToSlowTicks(std::uint32_t normalTicks
     return static_cast<std::uint32_t>(static_cast<double>(normalTicks) * m_speedFactor + 0.5);
 }
 
+std::uint32_t WorkpieceManager::calculateCalibratedWorstCaseExtraNormal() const {
+    return scalePathCmToExtraTicks(m_calibData.ticks_EntryB_to_EntryC_Normal);
+}
+
+std::uint32_t WorkpieceManager::calculateTransitToHeightLimit(bool afterSetSlow) const {
+    const std::uint32_t normal = m_calibData.ticks_EntryC_to_HeightB_Normal;
+    const std::uint32_t slowFull = m_calibData.ticks_EntryC_to_HeightB_Slow > 0
+        ? m_calibData.ticks_EntryC_to_HeightB_Slow
+        : scaleNormalToSlowTicks(normal);
+    const std::uint32_t worstExtraNormal = calculateCalibratedWorstCaseExtraNormal();
+    const std::uint32_t worstExtraSlow = scaleNormalToSlowTicks(worstExtraNormal);
+
+    if (normal == 0) {
+        return slowFull + worstExtraSlow + kTransitToHeightSafetyTicks;
+    }
+
+    if (!afterSetSlow) {
+        return normal + worstExtraNormal + kTransitToHeightSafetyTicks;
+    }
+
+    const std::uint32_t setSlowTick = calculateSetSlowTick(normal);
+    const double restAnteilNormal =
+        std::max(0.0, 1.0 - (static_cast<double>(setSlowTick)
+            / static_cast<double>(normal)));
+    const std::uint32_t restTakteSlow =
+        static_cast<std::uint32_t>(restAnteilNormal * static_cast<double>(slowFull));
+    const std::uint32_t mixedSpeedTarget =
+        setSlowTick + restTakteSlow + worstExtraSlow + kTransitToHeightSafetyTicks;
+    const std::uint32_t conservativeSlowTarget =
+        slowFull + worstExtraSlow + kTransitToHeightSafetyTicks;
+    return std::max(mixedSpeedTarget, conservativeSlowTarget);
+}
+
 std::uint32_t WorkpieceManager::calculateHeightMeasurementLimit() const {
     const std::uint32_t normal = m_calibData.ticks_HeightB_to_HeightC_Normal;
     const std::uint32_t slowCalib = m_calibData.ticks_HeightB_to_HeightC_Slow;
@@ -1592,6 +1617,18 @@ std::uint32_t WorkpieceManager::calculateHeightMeasurementLimit() const {
         return TICKS_ONE_SECOND;
     }
     return base + kHeightMeasurementSafetyTicks;
+}
+
+std::uint32_t WorkpieceManager::calculateEjectorOccupancyLimit() const {
+    const std::uint32_t normal = m_calibData.ticks_EjectorB_to_EjectorC_Normal;
+    const std::uint32_t slowCalib = m_calibData.ticks_EjectorB_to_EjectorC_Slow;
+    const std::uint32_t slowScaled = normal > 0 ? scaleNormalToSlowTicks(normal) : 0U;
+    const std::uint32_t slowFull = std::max(slowCalib, slowScaled);
+    const std::uint32_t base = std::max({normal, slowFull});
+    if (base == 0) {
+        return TICKS_ONE_SECOND;
+    }
+    return base + kMetalSensorWaitTicks + kEjectorOccupancySafetyTicks;
 }
 
 std::uint32_t WorkpieceManager::calculateEjectorTransitLimit() const {
@@ -1609,7 +1646,7 @@ std::uint32_t WorkpieceManager::calculateEjectorTransitLimit() const {
 std::uint32_t WorkpieceManager::calculateEndTransitLimit(bool isMotorSlow) const {
     const std::uint32_t normal = m_calibData.ticks_EjectorC_to_EndB_Normal;
     if (normal == 0) {
-        return 0;
+        return TICKS_ONE_SECOND;
     }
     const std::uint32_t base = isMotorSlow
         ? std::max(normal, scaleNormalToSlowTicks(normal))
@@ -1656,29 +1693,17 @@ void WorkpieceManager::updateTargetLimitForMotor(Workpiece& wp, bool isMotorSlow
         break;
 
     case WpLocation::TRANSIT_TO_HEIGHT: {
-        const std::uint32_t normal = m_calibData.ticks_EntryC_to_HeightB_Normal;
-        if (normal == 0) {
+        if (m_calibData.ticks_EntryC_to_HeightB_Normal == 0
+            && m_calibData.ticks_EntryC_to_HeightB_Slow == 0) {
             break;
         }
-        const std::uint32_t slowFull = m_calibData.ticks_EntryC_to_HeightB_Slow > 0
-            ? m_calibData.ticks_EntryC_to_HeightB_Slow
-            : scaleNormalToSlowTicks(normal);
 
         if (!isMotorSlow) {
-            if (newLimit == 0) {
-                newLimit = normal;
-            }
+            newLimit = std::max(newLimit, calculateTransitToHeightLimit(false));
             break;
         }
 
-        const std::uint32_t setSlowTick = calculateSetSlowTick(normal);
-        if (ticks >= setSlowTick || newLimit > normal) {
-            newLimit = std::max(newLimit, slowFull + kTransitToHeightSafetyTicks);
-        } else {
-            const std::uint32_t restNormal = normal > ticks ? normal - ticks : 0U;
-            const std::uint32_t restSlow = scaleNormalToSlowTicks(restNormal);
-            newLimit = std::max(newLimit, ticks + restSlow + kTransitToHeightSafetyTicks);
-        }
+        newLimit = std::max(newLimit, calculateTransitToHeightLimit(true));
         break;
     }
 
@@ -1709,34 +1734,10 @@ void WorkpieceManager::updateTargetLimitForMotor(Workpiece& wp, bool isMotorSlow
     }
 
     case WpLocation::TRANSIT_TO_END: {
-        const std::uint32_t normal = m_calibData.ticks_EjectorC_to_EndB_Normal;
-        if (normal == 0) {
+        if (m_calibData.ticks_EjectorC_to_EndB_Normal == 0) {
             break;
         }
-        const std::uint32_t conservativeLimit = calculateEndTransitLimit(true);
-        const std::uint32_t slowFull = std::max(normal, scaleNormalToSlowTicks(normal));
-        const std::uint32_t fastLimit = normal + kTransitToEndSafetyTicks;
-
-        if (isMotorSlow) {
-            const std::uint32_t restNormal = normal > ticks ? normal - ticks : 0U;
-            const std::uint32_t restSlow = restNormal > 0
-                ? scaleNormalToSlowTicks(restNormal)
-                : slowFull;
-            newLimit = std::max({
-                newLimit,
-                conservativeLimit,
-                ticks + restSlow + kTransitToEndSafetyTicks
-            });
-        } else {
-            newLimit = std::max({newLimit, fastLimit, conservativeLimit});
-            if (ticks >= normal) {
-                const std::uint32_t extraSlow = slowFull > normal ? slowFull - normal : 0U;
-                newLimit = std::max(newLimit, ticks + extraSlow + kTransitToEndSafetyTicks);
-            } else {
-                const std::uint32_t restNormal = normal - ticks;
-                newLimit = std::max(newLimit, ticks + restNormal + kTransitToEndSafetyTicks);
-            }
-        }
+        newLimit = std::max(newLimit, calculateEndTransitLimit(isMotorSlow));
         break;
     }
 
@@ -1998,6 +1999,7 @@ bool WorkpieceManager::promoteTrailingWorkpieceAtSorterIfDue(const char* reason)
 
     m_ejectorLsBlocked = true;
     next->updateLocation(WpLocation::AT_EJECTOR);
+    next->setTargetLimit(calculateEjectorOccupancyLimit());
     m_ejectorBlockedWpId = next->getId();
 
     startSorterDecisionForWp(next);

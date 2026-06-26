@@ -8,6 +8,7 @@
 #include "Logik.hpp"
 #include "calibrationManager/I_CalibrationManager.hpp"
 #include "logik/fsm/common/BaseState.hpp"
+#include "logik/errorHandler/errorHandler.hpp"
 #include <memory>
 #include "shared/detailLog.hpp"
 
@@ -59,6 +60,14 @@ bool Logik::isEstopSafetyActive() const {
                   << static_cast<int>(type));
 
         if (m_eventManager != nullptr && m_eventManager->isErrorActive()) {
+            if (m_errorHandler != nullptr
+                && m_errorHandler->isHeightClearRecoveryPending()) {
+                DETAIL_LOG( "[Logik] HEIGHT_TYPE im ErrorState -> HEIGHT_CLEARED "
+                          << "fuer Fehlerquittierung.");
+                m_eventManager->setHeightBlocked(false);
+                m_eventManager->handleEvent(logik::Event::HEIGHT_CLEARED);
+                return;
+            }
             DETAIL_LOG( "[Logik] HEIGHT_TYPE ignoriert – Anlage im ErrorState."
                      );
             return;

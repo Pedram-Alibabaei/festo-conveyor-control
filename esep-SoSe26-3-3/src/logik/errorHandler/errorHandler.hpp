@@ -120,6 +120,9 @@ namespace logik {
         /** Nach updateContextFlags: prueft ob e die aktive Fehlerursache aufloest. */
         void checkActiveErrorClearedByEvent(logik::Event e);
 
+        /** true wenn HEIGHT_CLEARED die aktive Fehlerursache aufloesen wuerde (STUCK/HEIGHT_ERROR am HS). */
+        bool isHeightClearRecoveryPending() const;
+
     private:
         bool isChutePhysicallyBlocked() const;
         void raiseChuteFullWarning();

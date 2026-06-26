@@ -249,8 +249,17 @@ namespace logik {
         void notifyPartnerHandoverSlotFree();
 
         std::uint32_t scaleNormalToSlowTicks(std::uint32_t normalTicks) const;
+        /** 6,9-cm-Worst-Case in Normal-Takten (fest aus ticks_EntryB_to_EntryC_Normal). */
+        std::uint32_t calculateCalibratedWorstCaseExtraNormal() const;
+        /**
+         * Limit EntryC -> HeightB.
+         * @param afterSetSlow false = Fast-Phase, true = Mixed/Slow nach SET_SLOW.
+         */
+        std::uint32_t calculateTransitToHeightLimit(bool afterSetSlow) const;
         /** Konservatives Limit Hoehenmessung (HeightB -> HeightC, Slow-Kalibrierung). */
         std::uint32_t calculateHeightMeasurementLimit() const;
+        /** Limit WP an Sortierweiche (EjectorB -> EjectorC, Slow-Kalibrierung). */
+        std::uint32_t calculateEjectorOccupancyLimit() const;
         /** Konservatives Limit HS -> Sortierweiche (Normal, Slow-Kalibrierung, skaliert). */
         std::uint32_t calculateEjectorTransitLimit() const;
         /** Limit Sortierweiche -> Bandende (Normal bei Fast, skaliert bei Slow). */

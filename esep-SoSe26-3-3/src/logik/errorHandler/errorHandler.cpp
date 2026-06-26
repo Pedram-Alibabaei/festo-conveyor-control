@@ -227,8 +227,9 @@ void ErrorHandler::handleEscalation(ErrorType type,
                           << overdue << " Takte (" << (overdue * 10) << " ms)"
                           << std::endl;
                 if (location == WpLocation::TRANSIT_TO_HEIGHT) {
-                    std::cout << "-> Limit-Hinweis: Kalibrierung Entry->Height (Normal/Slow-Mix)"
-                              << " + Worst-Case-Einlauf + Sicherheit (+50 Takte)"
+                    std::cout << "-> Limit-Hinweis: Entry->Height (Normal/Slow-Mix)"
+                              << " + 6,9cm Worst-Case aus EntryB->EntryC-Kalibrierung"
+                              << " + Sicherheit (+50 Takte)"
                               << std::endl;
                 }
             }
@@ -302,6 +303,15 @@ void ErrorHandler::handleEscalation(ErrorType type,
             if (location == WpLocation::AT_HEIGHT_SENSOR) {
                 std::cout << "-> Ursache: Werkstueck blockiert die Hoehenmessung zu lange "
                           << "(kalibriertes HeightB->HeightC-Limit ueberschritten)." << std::endl;
+                std::cout << "-> BEDIENER-Hinweis: Teil entfernen bis HS-Tunnel frei ist "
+                          << "(HEIGHT_CLEARED). Dann RESET, danach START."
+                          << std::endl;
+            } else if (location == WpLocation::AT_EJECTOR) {
+                std::cout << "-> Ursache: Werkstueck blockiert die Sortierweiche zu lange "
+                          << "(kalibriertes EjectorB->EjectorC-Limit ueberschritten)." << std::endl;
+                std::cout << "-> BEDIENER-Hinweis: Teil entfernen bis Sortier-LS frei ist "
+                          << "(EJECTOR_CLEARED). Dann RESET, danach START."
+                          << std::endl;
             }
             if (elapsedTicks > 0 && expectedLimitTicks > 0) {
                 const std::uint32_t deadline = expectedLimitTicks + toleranceTicks;
@@ -433,6 +443,10 @@ void ErrorHandler::checkActiveErrorClearedByEvent(logik::Event e) {
     if (m_hasActiveError && doesEventClearActiveError(e)) {
         tryEmitErrorCleared("Sensor-/Zustandsaenderung", e);
     }
+}
+
+bool ErrorHandler::isHeightClearRecoveryPending() const {
+    return m_hasActiveError && doesEventClearActiveError(logik::Event::HEIGHT_CLEARED);
 }
 
 // ============================================================================
@@ -691,6 +705,10 @@ bool ErrorHandler::isPhysicalErrorConditionStillPresent() const {
             return m_context->getEventManager() != nullptr
                 && m_context->getEventManager()->isHeightBlocked();
         }
+        if (m_activeErrorLocation == WpLocation::AT_EJECTOR) {
+            return m_context->getDispatcher() != nullptr
+                && !m_context->getDispatcher()->isEjectorLightBarrierClear();
+        }
         return true;
 
     default:
@@ -750,6 +768,9 @@ bool ErrorHandler::doesEventClearActiveError(logik::Event e) const {
         }
         if (m_activeErrorLocation == WpLocation::AT_HEIGHT_SENSOR) {
             return e == logik::Event::HEIGHT_CLEARED;
+        }
+        if (m_activeErrorLocation == WpLocation::AT_EJECTOR) {
+            return e == logik::Event::EJECTOR_CLEARED;
         }
         return false;
 
