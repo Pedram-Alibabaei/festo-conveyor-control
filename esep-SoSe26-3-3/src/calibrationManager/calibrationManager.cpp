@@ -5,14 +5,32 @@
  */
 
 #include "CalibrationManager.hpp"
+#include "shared/detailLog.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
 #include <unistd.h>
 #include <limits.h>
+#include <sys/stat.h>
+#include <cerrno>
+#include <cstring>
 
 namespace {
+
+/** Persistenter Speicherort (Flash/var), nicht /tmp – ueberlebt Neustart. */
+constexpr const char kCalibrationStorageDir[] = "/var/calibration";
+
+bool ensureDirectoryExists(const char* dirPath) {
+    struct stat st;
+    if (stat(dirPath, &st) == 0) {
+        return S_ISDIR(st.st_mode);
+    }
+    if (mkdir(dirPath, static_cast<mode_t>(0755)) == 0) {
+        return true;
+    }
+    return errno == EEXIST;
+}
 
 std::string resolveCalibrationPath(const std::string& filePath) {
     if (!filePath.empty() && filePath[0] == '/') {
@@ -191,13 +209,14 @@ bool parseCalibrationFile(std::istream& file, CalibrationData& data) {
 
 } // namespace
 
-const char CalibrationManager::CALIBRATION_FILE_NAME[] = "festo_calabrationt_team_3_3.txt";
+const char CalibrationManager::CALIBRATION_FILE_NAME[] =
+    "/var/calibration/festo_calabrationt_team_3_3.txt";
 
 CalibrationManager::CalibrationManager(const std::string& filePath)
     : m_logik(nullptr),
       m_filePath(resolveCalibrationPath(filePath))
 {
-    std::cout << "[Calib-Manager] Instanziert mit Pfad: " << m_filePath << std::endl;
+    DETAIL_LOG( "[Calib-Manager] Instanziert mit Pfad: " << m_filePath);
 }
 
 void CalibrationManager::setLogikContext(i_Logik* logik) {
@@ -243,7 +262,7 @@ bool CalibrationManager::fileExists() {
 CalibrationData CalibrationManager::loadCalibrationData() {
     CalibrationData data;
     if (readValidCalibration(data)) {
-        std::cout << "[Calib-Manager] Kalibrierungsdatei erfolgreich geparst und validiert." << std::endl;
+        DETAIL_LOG( "[Calib-Manager] Kalibrierungsdatei erfolgreich geparst und validiert.");
         return data;
     }
 
@@ -260,6 +279,12 @@ CalibrationData CalibrationManager::loadCalibrationData() {
 bool CalibrationManager::saveCalibrationData(const CalibrationData& data) {
     if (!isCalibrationDataValid(data)) {
         std::cerr << "[Calib-Manager] CRITICAL: Speichern abgebrochen, Kalibrierdaten ungueltig." << std::endl;
+        return false;
+    }
+
+    if (!ensureDirectoryExists(kCalibrationStorageDir)) {
+        std::cerr << "[Calib-Manager] CRITICAL: Verzeichnis konnte nicht angelegt werden: "
+                  << kCalibrationStorageDir << " (" << std::strerror(errno) << ")" << std::endl;
         return false;
     }
 
@@ -307,6 +332,6 @@ bool CalibrationManager::saveCalibrationData(const CalibrationData& data) {
 
     m_cachedData = data;
     m_validDataCached = true;
-    std::cout << "[Calib-Manager] Alle Kalibrierungsdaten dauerhaft gesichert in: " << m_filePath << std::endl;
+    std::cout << "[Calib-Manager] Kalibrierung dauerhaft gespeichert: " << m_filePath << std::endl;
     return true;
 }

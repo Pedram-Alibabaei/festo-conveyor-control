@@ -6,6 +6,7 @@
 #include "ProfileAnalyzer.hpp"
 #include "shared/ipc_definitions.hpp"
 #include "shared/types.hpp"
+#include "shared/detailLog.hpp"
 
 #include <algorithm>
 #include <iostream>
@@ -76,22 +77,29 @@ void ProfileAnalyzer::setConnectionId(int coid)
 
 void ProfileAnalyzer::setAdcIdelState()
 {
-    std::cout << "[Analyzer] State -> IDLE" << std::endl;
+    DETAIL_LOG( "[Analyzer] State -> IDLE");
     m_currentState = AnalyzerState::IDLE;
     m_serviceTimingOnly = false;
     m_waitForTunnelClear = false;
     m_nextWaitingForWpIsServiceTiming = false;
     m_transportPaused = false;
-    m_heightErrorActive = false;
-    resetMeasurementData();
+    if (!m_heightErrorActive) {
+        resetMeasurementData();
+    }
     resetSmoothingBuffer();
 }
 
 void ProfileAnalyzer::setAdcWaitigForWpState()
 {
+    if (m_heightErrorActive) {
+        DETAIL_LOG( "[Analyzer] WAITING_FOR_WP ignoriert: Hoehenfehler-Recovery laeuft."
+                 );
+        return;
+    }
+
     if (m_currentState == AnalyzerState::MEASURING_PAUSED ||
         (m_currentState == AnalyzerState::MEASURING && m_transportPaused)) {
-        std::cout << "[Analyzer] WAITING_FOR_WP ignoriert: pausierte Messung bleibt erhalten." << std::endl;
+        DETAIL_LOG( "[Analyzer] WAITING_FOR_WP ignoriert: pausierte Messung bleibt erhalten.");
         return;
     }
 
@@ -101,11 +109,10 @@ void ProfileAnalyzer::setAdcWaitigForWpState()
     m_waitForTunnelClear = false;
     m_nextWaitingForWpIsServiceTiming = false;
     m_transportPaused = false;
-    m_heightErrorActive = false;
     m_currentState = AnalyzerState::WAITING_FOR_WP;
-    std::cout << "[Analyzer] State -> "
+    DETAIL_LOG( "[Analyzer] State -> "
               << (m_serviceTimingOnly ? "SERVICE_TIMING" : "WAITING_FOR_WP")
-              << std::endl;
+             );
 
     if (!isCalibrated()) {
         std::cerr << "[Analyzer] Warnung: WAITING_FOR_WP ohne vollstaendige ADC-Kalibrierung." << std::endl;
@@ -124,14 +131,14 @@ void ProfileAnalyzer::setAdcCalibrationsState()
     resetSmoothingBuffer();
     resetMeasurementData();
     resetCalibrationData();
-    std::cout << "[Analyzer] State -> CALIBRATION" << std::endl;
+    DETAIL_LOG( "[Analyzer] State -> CALIBRATION");
 }
 
 void ProfileAnalyzer::setServiceTimingMeasureState()
 {
     m_nextWaitingForWpIsServiceTiming = true;
     setAdcWaitigForWpState();
-    std::cout << "[Analyzer] Service-Timing-Messung aktiviert (HEIGHT_BLOCKED/CLEARED)." << std::endl;
+    DETAIL_LOG( "[Analyzer] Service-Timing-Messung aktiviert (HEIGHT_BLOCKED/CLEARED).");
 }
 
 void ProfileAnalyzer::resetSmoothingBuffer()
@@ -194,19 +201,19 @@ void ProfileAnalyzer::setTransportPaused(bool paused)
 
     if (m_transportPaused && (m_currentState == AnalyzerState::MEASURING)) {
         m_currentState = AnalyzerState::MEASURING_PAUSED;
-        std::cout << "[Analyzer] State -> MEASURING_PAUSED" << std::endl;
+        DETAIL_LOG( "[Analyzer] State -> MEASURING_PAUSED");
     } else if (!m_transportPaused &&
                (m_currentState == AnalyzerState::MEASURING_PAUSED)) {
         m_currentState = AnalyzerState::MEASURING;
-        std::cout << "[Analyzer] State -> MEASURING" << std::endl;
+        DETAIL_LOG( "[Analyzer] State -> MEASURING");
         resetSmoothingBuffer();
     } else if (!m_transportPaused) {
         resetSmoothingBuffer();
     }
 
-    std::cout << "[Analyzer] Transport "
+    DETAIL_LOG( "[Analyzer] Transport "
               << (m_transportPaused ? "pausiert" : "aktiv")
-              << " fuer Profilanalyse." << std::endl;
+              << " fuer Profilanalyse.");
 }
 
 // SAMPLER VERARBEITUNG
@@ -230,6 +237,13 @@ void ProfileAnalyzer::processSample(uint32_t adcValue)
 
     const uint16_t currentRaw = static_cast<uint16_t>(calculateBlockAverage() & ADC_MAX_VALUE);
     m_fillCount = 0;
+
+    if (m_heightErrorActive) {
+        if (tryRecoverHeightErrorAfterEmptyBelt(currentRaw)) {
+            return;
+        }
+        return;
+    }
 
     switch (m_currentState) {
     case AnalyzerState::IDLE:
@@ -267,7 +281,7 @@ void ProfileAnalyzer::processSample(uint32_t adcValue)
             m_triggerCandidateBuffer.push_back(currentRaw);
 
             if (m_triggerConfirmCounter >= runningTriggerConfirmCount()) {
-                std::cout << "[Analyzer] Werkstueck an HS bestaetigt -> Sende HEIGHT_BLOCKED" << std::endl;
+                DETAIL_LOG( "[Analyzer] Werkstueck an HS bestaetigt -> Sende HEIGHT_BLOCKED");
                 beginMeasurement();
 
                 for (uint16_t candidate : m_triggerCandidateBuffer) {
@@ -284,14 +298,14 @@ void ProfileAnalyzer::processSample(uint32_t adcValue)
     case AnalyzerState::MEASURING:
         if (handleHeightError(currentRaw)) {
             m_currentState = AnalyzerState::IDLE;
-            std::cout << "[Analyzer] State -> IDLE" << std::endl;
+            DETAIL_LOG( "[Analyzer] State -> IDLE");
             resetMeasurementData();
             break;
         }
 
         if (m_transportPaused) {
             m_currentState = AnalyzerState::MEASURING_PAUSED;
-            std::cout << "[Analyzer] State -> MEASURING_PAUSED" << std::endl;
+            DETAIL_LOG( "[Analyzer] State -> MEASURING_PAUSED");
             break;
         }
 
@@ -310,7 +324,7 @@ void ProfileAnalyzer::processSample(uint32_t adcValue)
     case AnalyzerState::MEASURING_PAUSED:
         if (handleHeightError(currentRaw)) {
             m_currentState = AnalyzerState::IDLE;
-            std::cout << "[Analyzer] State -> IDLE" << std::endl;
+            DETAIL_LOG( "[Analyzer] State -> IDLE");
             resetMeasurementData();
             break;
         }
@@ -328,12 +342,12 @@ void ProfileAnalyzer::processSample(uint32_t adcValue)
                 ++m_sampleCounter;
 
                 if (m_sampleCounter == 1) {
-                    std::cout << "[Calib] Leerband-Messung gestartet..." << std::endl;
+                    DETAIL_LOG( "[Calib] Leerband-Messung gestartet...");
                 } else if (m_sampleCounter % 25 == 0) {
-                    std::cout << "[Calib] Leerband-Fortschritt: "
+                    DETAIL_LOG( "[Calib] Leerband-Fortschritt: "
                               << m_sampleCounter << "/"
                               << BELT_REFERENCE_SAMPLE_COUNT << " Samples"
-                              << std::endl;
+                             );
                 }
 
                 if (m_sampleCounter >= BELT_REFERENCE_SAMPLE_COUNT) {
@@ -347,11 +361,11 @@ void ProfileAnalyzer::processSample(uint32_t adcValue)
                                                 static_cast<uint16_t>(CM::EMPTY_BELT));
                     MsgSendPulse(m_coid, SIGEV_PULSE_PRIO_INHERIT,
                                  ipc::PulseCode::HAL_ADC_CALIBRATION, payload);
-                    std::cout << "[Calib] Stufe 1 fertig: EMPTY_BELT = "
+                    DETAIL_LOG( "[Calib] Stufe 1 fertig: EMPTY_BELT = "
                               << m_threshEmptyBelt
                               << " | Trigger = " << m_triggerValue
                               << " | Release = " << m_releaseTriggerValue
-                              << ". Warte auf WP..." << std::endl;
+                              << ". Warte auf WP...");
 
                     m_currentCalibStep = CalibStep::WAIT_FOR_WP;
                     m_sampleCounter = 0;
@@ -366,8 +380,8 @@ void ProfileAnalyzer::processSample(uint32_t adcValue)
                     ++m_flatSampleCount;
 
                     if (m_triggerConfirmCounter >= CALIBRATION_TRIGGER_CONFIRM_COUNT) {
-                        std::cout << "[Calib] Flaches Referenz-WP erkannt. Erfasse FlatCenter..."
-                                  << std::endl;
+                        DETAIL_LOG( "[Calib] Flaches Referenz-WP erkannt. Erfasse FlatCenter..."
+                                 );
                         sendHeightState(ipc::State::BLOCKED);
                         m_currentCalibStep = CalibStep::WAIT_FOR_LEAVE;
                         m_sampleCounter = CALIBRATION_TRIGGER_CONFIRM_COUNT;
@@ -403,9 +417,9 @@ void ProfileAnalyzer::processSample(uint32_t adcValue)
                                          ipc::PulseCode::HAL_ADC_CALIBRATION, payload);
 
                             m_flatReferenceSent = true;
-                            std::cout << "[Calib] Stufe 2 fertig: FLAT_WP = "
+                            DETAIL_LOG( "[Calib] Stufe 2 fertig: FLAT_WP = "
                                       << m_threshFlatWp
-                                      << ". Erfasse Gesamtlaenge..." << std::endl;
+                                      << ". Erfasse Gesamtlaenge...");
                         }
                     }
                 } else {
@@ -471,7 +485,7 @@ void ProfileAnalyzer::processSample(uint32_t adcValue)
 void ProfileAnalyzer::beginMeasurement()
 {
     m_currentState = AnalyzerState::MEASURING;
-    std::cout << "[Analyzer] State -> MEASURING" << std::endl;
+    DETAIL_LOG( "[Analyzer] State -> MEASURING");
     m_transportPaused = false;
     m_sampleCounter = 0;
     m_flatCounter = 0;
@@ -584,11 +598,11 @@ void ProfileAnalyzer::updateTallDrilledPattern(uint16_t currentRaw)
 void ProfileAnalyzer::finishMeasurement()
 {
     if (m_serviceTimingOnly) {
-        std::cout << "[Analyzer] Service-Timing beendet -> Sende HEIGHT_CLEARED ohne Typklassifikation." << std::endl;
+        DETAIL_LOG( "[Analyzer] Service-Timing beendet -> Sende HEIGHT_CLEARED ohne Typklassifikation.");
         sendHeightState(ipc::State::CLEARED);
         m_serviceTimingOnly = false;
         m_currentState = AnalyzerState::IDLE;
-        std::cout << "[Analyzer] State -> IDLE" << std::endl;
+        DETAIL_LOG( "[Analyzer] State -> IDLE");
         resetMeasurementData();
         return;
     }
@@ -596,9 +610,9 @@ void ProfileAnalyzer::finishMeasurement()
     const size_t minSamples = minRequiredMeasurementSamples();
     const bool shortMeasurement = m_sampleCounter < minSamples;
     if (shortMeasurement) {
-        std::cout << "[Analyzer] Messung zu kurz (" << m_sampleCounter
+        DETAIL_LOG( "[Analyzer] Messung zu kurz (" << m_sampleCounter
                   << " Samples, Minimum " << minSamples
-                  << ") -> UNKNOWN." << std::endl;
+                  << ") -> UNKNOWN.");
         evaluationFinished(static_cast<uint16_t>(WpType::UNKNOWN));
     } else {
         const uint16_t finalWpType = determineFinalWorkpieceType();
@@ -606,7 +620,7 @@ void ProfileAnalyzer::finishMeasurement()
     }
 
     m_currentState = AnalyzerState::WAITING_FOR_WP;
-    std::cout << "[Analyzer] State -> WAITING_FOR_WP" << std::endl;
+    DETAIL_LOG( "[Analyzer] State -> WAITING_FOR_WP");
     resetMeasurementData();
     resetSmoothingBuffer();
     if (shortMeasurement) {
@@ -707,7 +721,7 @@ uint16_t ProfileAnalyzer::determineFinalWorkpieceType()
         (!knownEvidenceExists ||
          m_unknownCounter > (strongestKnownCounter * 2));
 
-    std::cout << "[Scan] Finale Counter: flat=" << m_flatCounter
+    DETAIL_LOG( "[Scan] Finale Counter: flat=" << m_flatCounter
               << " tall=" << m_tallCounter
               << " drilled=" << m_drilledCounter
               << " unknown=" << m_unknownCounter
@@ -717,7 +731,7 @@ uint16_t ProfileAnalyzer::determineFinalWorkpieceType()
               << " tallDrilledPattern=" << (m_isTallDrilled ? "true" : "false")
               << " min=" << m_measurementMinAdc
               << " max=" << m_measurementMaxAdc
-              << std::endl;
+             );
 
     if (unknownDominates) {
         return static_cast<uint16_t>(WT::UNKNOWN);
@@ -748,25 +762,54 @@ uint16_t ProfileAnalyzer::determineFinalWorkpieceType()
 
 void ProfileAnalyzer::evaluationFinished(uint16_t finalTypeOrValue)
 {
-    std::cout << "\n[TEST-MONITOR] >>> ERKANNTES WERKSTUECK: "
-              << typeName(finalTypeOrValue) << " <<<\n" << std::endl;
+    DETAIL_LOG("[Analyzer] Erkanntes Werkstueck: "
+              << typeName(finalTypeOrValue) << " <<<");
     const uint32_t typePayload =
         ipc::encodeHalPayload(ipc::SensorID::HEIGHT, finalTypeOrValue);
     MsgSendPulse(m_coid, SIGEV_PULSE_PRIO_INHERIT,
                  ipc::PulseCode::HAL_INPUT, typePayload);
 }
 
+bool ProfileAnalyzer::tryRecoverHeightErrorAfterEmptyBelt(uint16_t currentRaw)
+{
+    if (!m_heightErrorActive || !isCalibrated() || m_releaseTriggerValue == 0) {
+        return false;
+    }
+
+    if (currentRaw <= m_releaseTriggerValue) {
+        m_releaseConfirmCounter = 0;
+        return false;
+    }
+
+    ++m_releaseConfirmCounter;
+    if (m_releaseConfirmCounter < heightErrorRecoveryConfirmCount()) {
+        return false;
+    }
+
+    DETAIL_LOG( "[Analyzer] Hoehenfehler behoben (Leerband am HS, ADC="
+              << currentRaw << " > Release=" << m_releaseTriggerValue
+              << ") -> Sende HEIGHT_CLEARED.");
+    sendHeightState(ipc::State::CLEARED);
+    m_heightErrorActive = false;
+    m_releaseConfirmCounter = 0;
+    m_waitForTunnelClear = false;
+    resetMeasurementData();
+    resetSmoothingBuffer();
+    m_currentState = AnalyzerState::IDLE;
+    DETAIL_LOG( "[Analyzer] State -> IDLE (HS frei, warte auf Betriebsfortsetzung)"
+             );
+    return true;
+}
+
 bool ProfileAnalyzer::handleHeightError(uint16_t currentRaw)
 {
     if (m_threshMaxHeight == 0) {
-        m_heightErrorActive = false;
         return false;
     }
 
     const bool heightError = currentRaw < m_threshMaxHeight;
     if (!heightError) {
-        m_heightErrorActive = false;
-        return false;
+        return m_heightErrorActive;
     }
 
     if (!m_heightErrorActive) {
@@ -774,6 +817,7 @@ bool ProfileAnalyzer::handleHeightError(uint16_t currentRaw)
                   << currentRaw << std::endl;
         sendHeightState(ipc::State::HIGH_ERROR);
         m_heightErrorActive = true;
+        m_releaseConfirmCounter = 0;
     }
 
     return true;
@@ -850,6 +894,11 @@ size_t ProfileAnalyzer::runningTriggerConfirmCount() const
 size_t ProfileAnalyzer::runningReleaseConfirmCount() const
 {
     return runningTriggerConfirmCount();
+}
+
+size_t ProfileAnalyzer::heightErrorRecoveryConfirmCount() const
+{
+    return CALIBRATION_RELEASE_CONFIRM_COUNT;
 }
 
 const char* ProfileAnalyzer::typeName(uint16_t type) const

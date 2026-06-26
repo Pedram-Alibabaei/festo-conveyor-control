@@ -18,6 +18,7 @@
 #include "logik/fsm/Fsm.hpp"
 #include "logik/fsm/common/BaseState.hpp"
 #include "dispatcher/i_Dispatcher.hpp"
+#include "shared/detailLog.hpp"
 
 #include <iostream>
 
@@ -134,9 +135,9 @@ void EventManager::init(AnlagenPosition pos) {
     m_fsm = std::make_unique<Fsm>(m_context, this);
     resetStartPressTimer();
 
-    std::cout << "[EventManager] Initialisiert (Position "
+    DETAIL_LOG( "[EventManager] Initialisiert (Position "
               << static_cast<int>(pos) << "). Rolle: Orchestrator + PlantContext."
-              << std::endl;
+             );
 }
 
 bool EventManager::canRouteToBandSubsystems() const {
@@ -215,11 +216,11 @@ void EventManager::handleEvent(Event e) {
         && shouldEscalateUnexpectedEmptyBandSensor(
             e, m_ctx.position, m_ctx.entryFrei, m_ctx.endBlocked, m_wpManager)) {
         if (m_ctx.position == AnlagenPosition::HINTEN_ANLAGE_2 && isEntrySensorEvent(e)) {
-            std::cout << "[EventManager] Anlage 2: Einlauf muss frei sein – "
-                      << "unerwartetes Entry-Signal ohne WP-Uebergabe." << std::endl;
+            DETAIL_LOG( "[EventManager] Anlage 2: Einlauf muss frei sein – "
+                      << "unerwartetes Entry-Signal ohne WP-Uebergabe.");
         } else {
-            std::cout << "[EventManager] Unerwartetes Sensor-Signal ohne aktive WPs "
-                      << "(nur Einlauf/Rutsche erlaubt)." << std::endl;
+            DETAIL_LOG( "[EventManager] Unerwartetes Sensor-Signal ohne aktive WPs "
+                      << "(nur Einlauf/Rutsche erlaubt).");
         }
         if (m_errorHandler != nullptr) {
             m_errorHandler->handleEscalation(ErrorType::UNEXPECTED_EVENT, e);
@@ -243,13 +244,13 @@ void EventManager::handleEvent(Event e) {
             && !m_wpManager->isExpectedNetworkEntryAtAnlage2();
         if (earlyEntryA1 || earlyEntryA2) {
             if (m_ctx.position == AnlagenPosition::HINTEN_ANLAGE_2) {
-                std::cout << "[EventManager] Anlage 2: Einlauf-Fehler – WP am Einlauf, "
+                DETAIL_LOG( "[EventManager] Anlage 2: Einlauf-Fehler – WP am Einlauf, "
                           << "obwohl vorderes WP den Hoehensensor noch nicht erreicht hat."
-                          << std::endl;
+                         );
             } else {
-                std::cout << "[EventManager] Einlauf-Fehler: WP am Anfang gelegt, "
+                DETAIL_LOG( "[EventManager] Einlauf-Fehler: WP am Anfang gelegt, "
                           << "obwohl Q1 noch nicht frei ist (vorderes WP hat HS nicht erreicht)."
-                          << std::endl;
+                         );
             }
             if (m_errorHandler != nullptr) {
                 m_errorHandler->handleEscalation(
@@ -314,6 +315,10 @@ void EventManager::handleEvent(Event e) {
 
     // Phase 2: Kontext-Flags
     updateContextFlags(e);
+
+    if (errorRecoverySensorEvent && m_errorHandler != nullptr) {
+        m_errorHandler->checkActiveErrorClearedByEvent(e);
+    }
 
     // Phase 3: FSM — nur vorverarbeitete + explizit erlaubte Events
     std::vector<Event> fsmEvents = preprocessForFsm(e);
@@ -412,7 +417,7 @@ std::vector<Event> EventManager::preprocessForFsm(Event e) {
     case Event::START_PRESSED:
         m_startPressedStartTime = std::chrono::steady_clock::now();
         m_startButtonHeld = true;
-        std::cout << "[EventManager] START gedrueckt (lokal)" << std::endl;
+        DETAIL_LOG( "[EventManager] START gedrueckt (lokal)");
         fsmEvents.push_back(Event::START_PRESSED);
         break;
 
@@ -422,21 +427,21 @@ std::vector<Event> EventManager::preprocessForFsm(Event e) {
             std::chrono::steady_clock::now() - m_startPressedStartTime);
 
         if (duration >= START_LONG_THRESHOLD) {
-            std::cout << "[EventManager] START lang (" << duration.count() << "ms)" << std::endl;
+            DETAIL_LOG( "[EventManager] START lang (" << duration.count() << "ms)");
             fsmEvents.push_back(Event::START_LONG_PRESSED);
         } else {
-            std::cout << "[EventManager] START kurz (" << duration.count() << "ms)" << std::endl;
+            DETAIL_LOG( "[EventManager] START kurz (" << duration.count() << "ms)");
             fsmEvents.push_back(Event::START_SHORT_PRESSED);
         }
         break;
     }
 
     case Event::PARTNER_START_PRESSED:
-        std::cout << "[EventManager] Partner-START gedrueckt (nur lokal wirksam)." << std::endl;
+        DETAIL_LOG( "[EventManager] Partner-START gedrueckt (nur lokal wirksam).");
         break;
 
     case Event::PARTNER_START_RELEASED:
-        std::cout << "[EventManager] Partner-START losgelassen (kein Moduswechsel)." << std::endl;
+        DETAIL_LOG( "[EventManager] Partner-START losgelassen (kein Moduswechsel).");
         break;
 
     // --- Einlauf-Zone: Sensor-Events → Motor-/Freigabe-Signale fuer FSM ---
@@ -448,8 +453,8 @@ std::vector<Event> EventManager::preprocessForFsm(Event e) {
         if (m_ctx.endBlocked && m_ctx.entryFrei
             && m_ctx.position == AnlagenPosition::VORN_ANLAGE_1) {
             m_entryDeferredWhileEndBlocked = true;
-            std::cout << "[EventManager] Entry blockiert waehrend Bandende belegt -> WP wartet."
-                      << std::endl;
+            DETAIL_LOG( "[EventManager] Entry blockiert waehrend Bandende belegt -> WP wartet."
+                     );
         } else if (!m_ctx.entryFrei && !m_ctx.endBlocked
                    && m_ctx.position == AnlagenPosition::VORN_ANLAGE_1
                    && m_ctx.runningMode
@@ -488,8 +493,8 @@ std::vector<Event> EventManager::preprocessForFsm(Event e) {
     case Event::HEIGHT_CLEARED:
         if (m_ctx.serviceMode) {
             fsmEvents.push_back(e);
-        } else {
-            std::cout << "[EventManager] SEND SET_FAST: trigger=HEIGHT_CLEARED" << std::endl;
+        } else if (!m_ctx.errorActive) {
+            DETAIL_LOG( "[EventManager] SEND SET_FAST: trigger=HEIGHT_CLEARED");
             fsmEvents.push_back(Event::SET_FAST);
         }
         break;
@@ -519,8 +524,8 @@ std::vector<Event> EventManager::preprocessForFsm(Event e) {
                     fsmEvents.push_back(Event::MOTOR_STOP);
                 }
             } else {
-                std::cout << "[EventManager] MOTOR_STOP bei END_BLOCKED unterdrueckt "
-                          << "(weitere WPs auf dem Band)." << std::endl;
+                DETAIL_LOG( "[EventManager] MOTOR_STOP bei END_BLOCKED unterdrueckt "
+                          << "(weitere WPs auf dem Band).");
             }
             fsmEvents.push_back(Event::END_BLOCKED);
         }
@@ -549,12 +554,12 @@ std::vector<Event> EventManager::preprocessForFsm(Event e) {
 
     // --- Netzwerk ---
     case Event::CONNECTION_LOST:
-        std::cout << "[EventManager] Verbindung zum Partner verloren." << std::endl;
+        DETAIL_LOG( "[EventManager] Verbindung zum Partner verloren.");
         fsmEvents.push_back(Event::CONNECTION_LOST);
         break;
 
     case Event::CONNECTION_RESTORED: {
-        std::cout << "[EventManager] Verbindung zum Partner wiederhergestellt." << std::endl;
+        DETAIL_LOG( "[EventManager] Verbindung zum Partner wiederhergestellt.");
         fsmEvents.push_back(Event::CONNECTION_RESTORED);
         break;
     }
@@ -565,20 +570,20 @@ std::vector<Event> EventManager::preprocessForFsm(Event e) {
             if (m_ctx.endBlocked
                 || m_wpManager->getFirstWorkpieceAt(WpLocation::AT_END) != nullptr
                 || !m_wpManager->isAnlage2Ready()) {
-                std::cout << "[EventManager] MOTOR_RUN auf Anlage 2 unterdrueckt "
-                          << "(Bandende belegt oder nicht bereit)." << std::endl;
+                DETAIL_LOG( "[EventManager] MOTOR_RUN auf Anlage 2 unterdrueckt "
+                          << "(Bandende belegt oder nicht bereit).");
                 break;
             }
         }
         if (e == Event::MOTOR_STOP && m_wpManager != nullptr) {
             if (m_wpManager->isHandoverMotorActive()) {
-                std::cout << "[EventManager] MOTOR_STOP unterdrueckt (WP-Uebergabe laeuft)."
-                          << std::endl;
+                DETAIL_LOG( "[EventManager] MOTOR_STOP unterdrueckt (WP-Uebergabe laeuft)."
+                         );
                 break;
             }
             if (m_wpManager->hasWorkpiecesNeedingMotor()) {
-                std::cout << "[EventManager] MOTOR_STOP unterdrueckt (weitere WPs auf Band)."
-                          << std::endl;
+                DETAIL_LOG( "[EventManager] MOTOR_STOP unterdrueckt (weitere WPs auf Band)."
+                         );
                 break;
             }
         }
@@ -626,8 +631,8 @@ void EventManager::resumeEntryAfterEndCleared(std::vector<Event>& fsmEvents) {
         && (m_ctx.endBlocked
             || m_wpManager->getFirstWorkpieceAt(WpLocation::AT_END) != nullptr
             || !m_wpManager->isAnlage2Ready())) {
-        std::cout << "[EventManager] Anlage 2: END_CLEARED – Motor bleibt aus "
-                  << "(Bandende noch nicht frei fuer weiteren Betrieb)." << std::endl;
+        DETAIL_LOG( "[EventManager] Anlage 2: END_CLEARED – Motor bleibt aus "
+                  << "(Bandende noch nicht frei fuer weiteren Betrieb).");
         return;
     }
 
@@ -638,13 +643,13 @@ void EventManager::resumeEntryAfterEndCleared(std::vector<Event>& fsmEvents) {
     }
 
     if (waitingWp != nullptr) {
-        std::cout << "[EventManager] Bandende frei -> Entry-WP id="
+        DETAIL_LOG( "[EventManager] Bandende frei -> Entry-WP id="
                   << waitingWp->getId() << " + aktive WPs, MOTOR_RUN"
-                  << (useSlow ? " Slow" : " Fast") << std::endl;
+                  << (useSlow ? " Slow" : " Fast"));
     } else {
-        std::cout << "[EventManager] Bandende frei -> "
+        DETAIL_LOG( "[EventManager] Bandende frei -> "
                   << "weitere aktive WPs auf Band, MOTOR_RUN"
-                  << (useSlow ? " Slow" : " Fast") << std::endl;
+                  << (useSlow ? " Slow" : " Fast"));
     }
 }
 
@@ -738,6 +743,9 @@ void EventManager::routeToErrorHandler(Event e) {
     case Event::END_CLEARED:
     case Event::CHUTE_BLOCKED:
     case Event::CHUTE_CLEARED:
+    case Event::HEIGHT_BLOCKED:
+    case Event::HEIGHT_CLEARED:
+    case Event::HEIGHT_ERROR:
         m_errorHandler->processEvent(e);
         break;
 

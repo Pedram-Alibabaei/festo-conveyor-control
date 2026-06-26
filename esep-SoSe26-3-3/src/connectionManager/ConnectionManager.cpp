@@ -4,6 +4,7 @@
  */
 
 #include "ConnectionManager.hpp"
+#include "shared/detailLog.hpp"
 #include <iostream>
 #include <chrono>
 #include <cerrno>
@@ -41,14 +42,14 @@ void ConnectionManager::init(int localCoid, AnlagenPosition pos) {
     m_localCoid = localCoid;
     m_pos = pos;
 
-    std::cout << "[ConnMgr] Initialisiere als Anlage "
-              << (m_pos == AnlagenPosition::VORN_ANLAGE_1 ? "1" : "2") << std::endl;
+    DETAIL_LOG( "[ConnMgr] Initialisiere als Anlage "
+              << (m_pos == AnlagenPosition::VORN_ANLAGE_1 ? "1" : "2"));
 
     if (m_pos == AnlagenPosition::HINTEN_ANLAGE_2) {
-        std::cout << "[ConnMgr] Ich bin Anlage 2. Starte sofort die aktive Suche..." << std::endl;
+        DETAIL_LOG( "[ConnMgr] Ich bin Anlage 2. Starte sofort die aktive Suche...");
         connectToPartner();
     } else {
-        std::cout << "[ConnMgr] Ich bin Anlage 1. Warte passiv im Hintergrund." << std::endl;
+        DETAIL_LOG( "[ConnMgr] Ich bin Anlage 1. Warte passiv im Hintergrund.");
     }
 }
 
@@ -82,7 +83,7 @@ void ConnectionManager::scheduleReconnect() {
         m_connectThread.join();
     }
 
-    std::cout << "[ConnMgr] Starte erneute Partnersuche..." << std::endl;
+    DETAIL_LOG( "[ConnMgr] Starte erneute Partnersuche...");
     connectToPartner();
 }
 
@@ -90,7 +91,7 @@ void ConnectionManager::connectionTask() {
     std::string targetName = (m_pos == AnlagenPosition::VORN_ANLAGE_1) ? "Anlage_2" : "Anlage_1";
     std::string fullPath = "/dev/name/global/" + targetName;
 
-    std::cout << "[ConnMgr] Beginne Suche nach Partner '" << targetName << "' im Hintergrund..." << std::endl;
+    DETAIL_LOG( "[ConnMgr] Beginne Suche nach Partner '" << targetName << "' im Hintergrund...");
 
     // Evtl. noch laufenden (oder auf totem qnet-Link blockierten) Sender-Thread
     // sauber beenden, bevor eine neue Verbindung aufgebaut wird. Das Warten
@@ -108,7 +109,7 @@ void ConnectionManager::connectionTask() {
                 m_connectGraceTicks = kConnectGraceTicks;
                 m_missedHeartbeats = 0;
 
-                std::cout << "\n[ConnMgr] PARTNER GEFUNDEN! Verbindung steht. (Partner-COID: " << coid << ")" << std::endl;
+                DETAIL_LOG( "\n[ConnMgr] PARTNER GEFUNDEN! Verbindung steht. (Partner-COID: " << coid << ")");
 
                 if (m_localCoid != -1) {
                     MsgSendPulse(m_localCoid, 1, ipc::CONNECTION_MSG, coid);
@@ -120,7 +121,7 @@ void ConnectionManager::connectionTask() {
                 break;
             }
         } else {
-            std::cout << "." << std::flush;
+            DETAIL_LOG(".");
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(50));

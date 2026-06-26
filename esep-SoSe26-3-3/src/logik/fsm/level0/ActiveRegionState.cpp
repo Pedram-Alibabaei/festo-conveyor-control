@@ -6,6 +6,7 @@
 #include "logik/fsm/level1/L1StateRegistry.hpp"
 #include "logik/logik.hpp"
 #include "dispatcher/i_Dispatcher.hpp"
+#include "shared/detailLog.hpp"
 #include <iostream>
 
 namespace logik {
@@ -32,12 +33,12 @@ ActiveRegionState::ActiveRegionState(std::unique_ptr<BaseState> level1State)
 }
 
 void ActiveRegionState::entry() {
-    std::cout << "[ActiveRegion] Entered (Ebene 0)." << std::endl;
+    DETAIL_LOG( "[ActiveRegion] Entered (Ebene 0).");
 
     if (m_entryMode == EntryMode::RestoreHistory || m_level1 == nullptr) {
         m_level1 = L1StateRegistry::createFromHistory();
-        std::cout << "[ActiveRegion] History H* wiederhergestellt (L1="
-                  << static_cast<int>(L1StateRegistry::history()) << ")." << std::endl;
+        DETAIL_LOG( "[ActiveRegion] History H* wiederhergestellt (L1="
+                  << static_cast<int>(L1StateRegistry::history()) << ").");
     }
 
     if (m_level1 != nullptr) {
@@ -70,20 +71,20 @@ void ActiveRegionState::replaceLevel1(std::unique_ptr<BaseState> nextLevel1) {
 void ActiveRegionState::handle(Event e) {
     switch (e) {
     case Event::CONNECTION_LOST:
-        std::cout << "[ActiveRegion] CONNECTION_LOST -> ConnectionLostState" << std::endl;
+        DETAIL_LOG( "[ActiveRegion] CONNECTION_LOST -> ConnectionLostState");
         m_context->transitionTo(new ConnectionLostState());
         return;
 
     case Event::ESTOP_PRESSED:
     case Event::PARTNER_ESTOP_PRESSED:
     case Event::PARTNER_ESTOP_SAFETY_SYNC:
-        std::cout << "[ActiveRegion] ESTOP -> EStopState" << std::endl;
+        DETAIL_LOG( "[ActiveRegion] ESTOP -> EStopState");
         m_context->transitionTo(new EStopState());
         return;
 
     case Event::ERROR:
         if (m_context != nullptr) {
-            std::cout << "[ActiveRegion] ERROR -> ErrorState" << std::endl;
+            DETAIL_LOG( "[ActiveRegion] ERROR -> ErrorState");
             m_context->transitionTo(new ErrorState());
         }
         return;

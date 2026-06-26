@@ -4,13 +4,14 @@
 #include "logik/logik.hpp"
 #include "logik/fsm/level1/Level1Actions.hpp"
 #include "dispatcher/i_Dispatcher.hpp"
+#include "shared/detailLog.hpp"
 #include <iostream>
 
 namespace logik {
 
 void ReadyForServiceState::entry() {
-    std::cout << "[ReadyForService] Entered (Ebene 1). Keine Kalibrierung – START blinkt, "
-              << "langer START (>=1.5s) fuer Service." << std::endl;
+    DETAIL_LOG( "[ReadyForService] Entered (Ebene 1). Keine Kalibrierung – START blinkt, "
+              << "langer START (>=1.5s) fuer Service.");
 
     if (m_context == nullptr) {
         return;
@@ -39,29 +40,29 @@ void ReadyForServiceState::handle(Event e) {
         if (dispatcher != nullptr) {
             dispatcher->turnLEDStartOn();
         }
-        std::cout << "[ReadyForService] START gedrueckt – halten fuer Service..." << std::endl;
+        DETAIL_LOG( "[ReadyForService] START gedrueckt – halten fuer Service...");
         break;
 
     case Event::START_SHORT_PRESSED:
-        std::cout << "[ReadyForService] START zu kurz – bitte mind. 1.5 Sekunden halten."
-                  << std::endl;
+        DETAIL_LOG( "[ReadyForService] START zu kurz – bitte mind. 1.5 Sekunden halten."
+                 );
         if (dispatcher != nullptr) {
             dispatcher->turnLEDStartBlinkSlow();
         }
         break;
 
     case Event::START_LONG_PRESSED:
-        std::cout << "[ReadyForService] Langer START -> ServiceState" << std::endl;
+        DETAIL_LOG( "[ReadyForService] Langer START -> ServiceState");
         m_context->transitionTo(new ServiceState());
         break;
 
     case Event::DATA_EXIST:
-        std::cout << "[ReadyForService] Kalibrierungsdatei vorhanden -> IdleState" << std::endl;
+        DETAIL_LOG( "[ReadyForService] Kalibrierungsdatei vorhanden -> IdleState");
         m_context->transitionTo(new IdleState());
         break;
 
     case Event::STOP_RELEASED:
-        std::cout << "[ReadyForService] STOP -> IdleState" << std::endl;
+        DETAIL_LOG( "[ReadyForService] STOP -> IdleState");
         m_context->transitionTo(new IdleState());
         break;
 

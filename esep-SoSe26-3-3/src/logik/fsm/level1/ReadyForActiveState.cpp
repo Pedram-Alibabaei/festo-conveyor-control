@@ -6,6 +6,7 @@
 #include "logik/eventManager/eventManager.hpp"
 #include "logik/errorHandler/errorHandler.hpp"
 #include "dispatcher/i_Dispatcher.hpp"
+#include "shared/detailLog.hpp"
 #include <iostream>
 
 namespace logik {
@@ -27,9 +28,9 @@ void enterRunningResumed(Logik* context) {
 } // namespace
 
 void ReadyForActiveState::entry() {
-    std::cout << "[ReadyForActive] Entered (Ebene 1). Verbindung wieder da – "
+    DETAIL_LOG( "[ReadyForActive] Entered (Ebene 1). Verbindung wieder da – "
               << "START blinkt schnell, kurzer START beider Anlagen setzt Betrieb fort."
-              << std::endl;
+             );
 
     if (m_context == nullptr) {
         return;
@@ -63,8 +64,8 @@ void ReadyForActiveState::handle(Event e) {
                       << std::endl;
             break;
         }
-        std::cout << "[ReadyForActive] Kurzer START -> Running fortsetzen (beide Anlagen)"
-                  << std::endl;
+        DETAIL_LOG( "[ReadyForActive] Kurzer START -> Running fortsetzen (beide Anlagen)"
+                 );
         enterRunningResumed(m_context);
         break;
 
@@ -74,24 +75,24 @@ void ReadyForActiveState::handle(Event e) {
                       << std::endl;
             break;
         }
-        std::cout << "[ReadyForActive] Partner START_RUNNING -> Running fortsetzen" << std::endl;
+        DETAIL_LOG( "[ReadyForActive] Partner START_RUNNING -> Running fortsetzen");
         m_context->transitionTo(new RunningState());
         break;
 
     case Event::START_LONG_PRESSED:
-        std::cout << "[ReadyForActive] Langer START im pausierten Betrieb ignoriert."
-                  << std::endl;
+        DETAIL_LOG( "[ReadyForActive] Langer START im pausierten Betrieb ignoriert."
+                 );
         break;
 
     case Event::STOP_RELEASED:
-        std::cout << "[ReadyForActive] STOP -> IdleState" << std::endl;
+        DETAIL_LOG( "[ReadyForActive] STOP -> IdleState");
         m_context->transitionTo(new IdleState());
         break;
 
     case Event::PARTNER_CALIB_NOT_READY:
     case Event::DATA_NOT_EXIST:
     case Event::CONNECTION_LOST:
-        std::cout << "[ReadyForActive] Bedingungen nicht mehr erfuellt -> IdleState" << std::endl;
+        DETAIL_LOG( "[ReadyForActive] Bedingungen nicht mehr erfuellt -> IdleState");
         m_context->transitionTo(new IdleState());
         break;
 

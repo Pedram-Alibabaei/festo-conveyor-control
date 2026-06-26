@@ -8,6 +8,7 @@
 #include <hal/pal/gpio.hpp>
 #include <shared/types.hpp>
 #include <shared/ipc_definitions.hpp>
+#include "shared/detailLog.hpp"
 
 #include <thread>
 #include <iostream>
@@ -44,7 +45,7 @@ Gpio0Interrupt::Gpio0Interrupt() :
 void Gpio0Interrupt::initInterrupts(int coid)
 {
     m_coid = coid;
-    std::cout << "[GPIO] Interrupt-Thread startet mit Dispatcher-COID=" << m_coid << std::endl;
+    DETAIL_LOG( "[GPIO] Interrupt-Thread startet mit Dispatcher-COID=" << m_coid);
 
     if (m_coid == -1) {
         std::cerr << "[GPIO] FEHLER: Ungueltige COID – Taster-Events kommen nicht an!" << std::endl;
@@ -239,11 +240,11 @@ void Gpio0Interrupt::handle_interrupt() const noexcept
                 } else if (kVerboseGpioPulseLog && !pin.is_button) {
                     const char* stateLabel =
                         (state_value == ipc::State::BLOCKED) ? "BLOCKED" : "CLEARED";
-                    std::cout << "[GPIO] Sensor id=" << pin.sensor_id
-                              << " -> " << stateLabel << std::endl;
+                    DETAIL_LOG( "[GPIO] Sensor id=" << pin.sensor_id
+                              << " -> " << stateLabel);
                 } else if (kVerboseGpioPulseLog && pin.is_button) {
-                    std::cout << "[GPIO] Taster id=" << pin.sensor_id
-                              << " -> " << (pin.active ? "PRESSED" : "RELEASED") << std::endl;
+                    DETAIL_LOG( "[GPIO] Taster id=" << pin.sensor_id
+                              << " -> " << (pin.active ? "PRESSED" : "RELEASED"));
                 }
             }
         }

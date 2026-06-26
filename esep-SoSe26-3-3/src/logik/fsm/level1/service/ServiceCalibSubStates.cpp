@@ -5,6 +5,7 @@
 #include "logik/logik.hpp"
 #include "logik/eventManager/eventManager.hpp"
 #include "dispatcher/i_Dispatcher.hpp"
+#include "shared/detailLog.hpp"
 #include <iostream>
 
 namespace logik {
@@ -12,8 +13,8 @@ namespace logik {
 namespace {
 
 void logTransition(const char* from, const char* to, Event e) {
-    std::cout << "[Service/" << from << "] "
-              << static_cast<int>(e) << " -> " << to << std::endl;
+    DETAIL_LOG( "[Service/" << from << "] "
+              << static_cast<int>(e) << " -> " << to);
 }
 
 void setServiceMotorOn(Logik* context, bool on) {
@@ -61,7 +62,7 @@ void storeMeasuredTick(Logik* context, std::uint32_t& targetField, const char* l
     context->resetServiceTickCounter();
     context->syncCalibrationToWorkpieceManager();
 
-    std::cout << "[Service] Gemessen " << label << " = " << targetField << " Takte" << std::endl;
+    DETAIL_LOG( "[Service] Gemessen " << label << " = " << targetField << " Takte");
 }
 
 /** 1. Lauf (Slow): Weiche geschlossen halten, Auswerfer noch nicht ausfahren. */
@@ -77,9 +78,9 @@ void prepareSlowPathSorter(Logik* context) {
 
     if (dispatcher->isSwitch()) {
         dispatcher->closeSwitch();
-        std::cout << "[Service] Weiche geschlossen (1. Lauf -> Rutsche)." << std::endl;
+        DETAIL_LOG( "[Service] Weiche geschlossen (1. Lauf -> Rutsche).");
     } else {
-        std::cout << "[Service] Auswerfer bereit (Push bei EJECTOR_BLOCKED)." << std::endl;
+        DETAIL_LOG( "[Service] Auswerfer bereit (Push bei EJECTOR_BLOCKED).");
     }
 }
 
@@ -95,7 +96,7 @@ void actuateSlowPathOnEjectorBlocked(Logik* context) {
     }
 
     dispatcher->pushEjectorFor(1000);
-    std::cout << "[Service] Auswerfer push 1s bei EJECTOR_BLOCKED (1. Lauf)." << std::endl;
+    DETAIL_LOG( "[Service] Auswerfer push 1s bei EJECTOR_BLOCKED (1. Lauf).");
 }
 
 /** 2. Lauf (Normal): Weiche oeffnen, damit Werkstueck zum Bandende faehrt. */
@@ -111,9 +112,9 @@ void prepareNormalPathSorter(Logik* context) {
 
     if (dispatcher->isSwitch()) {
         dispatcher->openSwitch();
-        std::cout << "[Service] Weiche offen (2. Lauf -> Bandende)." << std::endl;
+        DETAIL_LOG( "[Service] Weiche offen (2. Lauf -> Bandende).");
     } else {
-        std::cout << "[Service] Auswerfer eingefahren (2. Lauf -> Bandende)." << std::endl;
+        DETAIL_LOG( "[Service] Auswerfer eingefahren (2. Lauf -> Bandende).");
     }
 }
 
@@ -130,7 +131,7 @@ void finishNormalPathSorter(Logik* context) {
 
     if (dispatcher->isSwitch()) {
         dispatcher->closeSwitch();
-        std::cout << "[Service] Weiche geschlossen (2. Lauf Bandende erreicht)." << std::endl;
+        DETAIL_LOG( "[Service] Weiche geschlossen (2. Lauf Bandende erreicht).");
     }
 }
 
@@ -157,8 +158,8 @@ std::unique_ptr<ServiceCalibSubStateBase> createInitialServiceCalibSubState() {
 
 void ServiceInitEmptySubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Init_Empty entry"
-              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
+    DETAIL_LOG( "[Service] Init_Empty entry"
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : ""));
 
     if (context == nullptr) {
         return;
@@ -181,8 +182,8 @@ void ServiceInitEmptySubState::entry(Logik* context, ServiceState& parent) {
         dispatcher->lightGreenBlinkSlow();
         dispatcher->driveStop();
 
-        std::cout << "[Service] Sortier-Hardware: "
-                  << (dispatcher->isSwitch() ? "Weiche" : "Auswerfer") << std::endl;
+        DETAIL_LOG( "[Service] Sortier-Hardware: "
+                  << (dispatcher->isSwitch() ? "Weiche" : "Auswerfer"));
         std::cout << "[Service] Messe Leerband-Referenz am Hoehensensor (~2s). "
                   << "Einlauf frei lassen – STOP erst nach 'EMPTY_BELT bereit'. "
                   << "Referenz-WP (flach) danach am Einlauf auflegen." << std::endl;
@@ -233,8 +234,8 @@ void ServiceInitEmptySubState::handle(Event e, Logik* context, ServiceState& par
 
 void ServiceMotorRightSlowSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Motor_Right_Slow entry"
-              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
+    DETAIL_LOG( "[Service] Motor_Right_Slow entry"
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : ""));
     if (!ServiceCalibRegistry::isResuming()) {
         startSlowMotor(context);
     }
@@ -249,8 +250,8 @@ void ServiceMotorRightSlowSubState::handle(Event e, Logik* context, ServiceState
 
 void ServiceSlowResetTickSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Reset_Tick (Slow) entry"
-              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
+    DETAIL_LOG( "[Service] Reset_Tick (Slow) entry"
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : ""));
 
     if (context != nullptr && !ServiceCalibRegistry::isResuming()) {
         context->resetServiceTickCounter();
@@ -272,7 +273,7 @@ void ServiceSlowResetTickSubState::handle(Event e, Logik* context, ServiceState&
 void ServiceWaitHeightClearedSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
     (void)context;
-    std::cout << "[Service] Ticks_Entry_c_To_Height_b_Slow (warte HEIGHT_CLEARED)" << std::endl;
+    DETAIL_LOG( "[Service] Ticks_Entry_c_To_Height_b_Slow (warte HEIGHT_CLEARED)");
 }
 
 void ServiceWaitHeightClearedSubState::handle(Event e, Logik* context, ServiceState& parent) {
@@ -289,8 +290,8 @@ void ServiceWaitHeightClearedSubState::handle(Event e, Logik* context, ServiceSt
 
 void ServiceWaitEjectorBlockedSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Ticks_Height_b_To_Height_c_Slow (warte EJECTOR_BLOCKED)"
-              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
+    DETAIL_LOG( "[Service] Ticks_Height_b_To_Height_c_Slow (warte EJECTOR_BLOCKED)"
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : ""));
 
     if (context != nullptr && !ServiceCalibRegistry::isResuming()) {
         prepareSlowPathSorter(context);
@@ -314,8 +315,8 @@ void ServiceWaitEjectorBlockedSubState::handle(Event e, Logik* context, ServiceS
 
 void ServiceWaitEjectorClearedSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Ticks_Height_c_To_Ejector_b_Slow (warte EJECTOR_CLEARED)"
-              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
+    DETAIL_LOG( "[Service] Ticks_Height_c_To_Ejector_b_Slow (warte EJECTOR_CLEARED)"
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : ""));
     if (!ServiceCalibRegistry::isResuming()) {
         startSlowMotor(context);
     }
@@ -335,8 +336,8 @@ void ServiceWaitEjectorClearedSubState::handle(Event e, Logik* context, ServiceS
 
 void ServiceWaitChuteBlockedSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Ticks_Ejector_b_To_Ejector_c_Slow (warte CHUTE_BLOCKED)"
-              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
+    DETAIL_LOG( "[Service] Ticks_Ejector_b_To_Ejector_c_Slow (warte CHUTE_BLOCKED)"
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : ""));
     if (!ServiceCalibRegistry::isResuming()) {
         startSlowMotor(context);
     }
@@ -381,8 +382,8 @@ void ServiceSlowCalibDoneSubState::handle(Event e, Logik* context, ServiceState&
 
 void ServiceNormalStartSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Normal_Start: driveRight(), warte ENTRY_CLEARED."
-              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
+    DETAIL_LOG( "[Service] Normal_Start: driveRight(), warte ENTRY_CLEARED."
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : ""));
 
     if (context != nullptr && !ServiceCalibRegistry::isResuming()) {
         armHeightSensorForServiceTiming(context);
@@ -405,8 +406,8 @@ void ServiceNormalStartSubState::handle(Event e, Logik* context, ServiceState& p
 
 void ServiceNormalResetTickSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Reset_Tick (Normal) entry"
-              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
+    DETAIL_LOG( "[Service] Reset_Tick (Normal) entry"
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : ""));
 
     if (context != nullptr && !ServiceCalibRegistry::isResuming()) {
         context->resetServiceTickCounter();
@@ -428,8 +429,8 @@ void ServiceNormalResetTickSubState::handle(Event e, Logik* context, ServiceStat
 
 void ServiceNormalWaitHeightClearedSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Ticks_Entry_c_To_Height_b_Normal (warte HEIGHT_CLEARED)"
-              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
+    DETAIL_LOG( "[Service] Ticks_Entry_c_To_Height_b_Normal (warte HEIGHT_CLEARED)"
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : ""));
     if (!ServiceCalibRegistry::isResuming()) {
         startNormalMotor(context);
     }
@@ -452,8 +453,8 @@ void ServiceNormalWaitHeightClearedSubState::handle(Event e, Logik* context, Ser
 
 void ServiceNormalWaitEjectorBlockedSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Ticks_Height_b_To_Height_c_Normal (warte EJECTOR_BLOCKED)"
-              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
+    DETAIL_LOG( "[Service] Ticks_Height_b_To_Height_c_Normal (warte EJECTOR_BLOCKED)"
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : ""));
     if (!ServiceCalibRegistry::isResuming()) {
         startNormalMotor(context);
     }
@@ -473,8 +474,8 @@ void ServiceNormalWaitEjectorBlockedSubState::handle(Event e, Logik* context, Se
 
 void ServiceNormalWaitEjectorClearedSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Ticks_Height_c_To_Ejector_b_Normal (warte EJECTOR_CLEARED)"
-              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
+    DETAIL_LOG( "[Service] Ticks_Height_c_To_Ejector_b_Normal (warte EJECTOR_CLEARED)"
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : ""));
     if (!ServiceCalibRegistry::isResuming()) {
         startNormalMotor(context);
     }
@@ -494,8 +495,8 @@ void ServiceNormalWaitEjectorClearedSubState::handle(Event e, Logik* context, Se
 
 void ServiceNormalWaitEndBlockedSubState::entry(Logik* context, ServiceState& parent) {
     (void)parent;
-    std::cout << "[Service] Ticks_Ejector_b_To_Ejector_c_Normal (warte END_BLOCKED)"
-              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : "") << std::endl;
+    DETAIL_LOG( "[Service] Ticks_Ejector_b_To_Ejector_c_Normal (warte END_BLOCKED)"
+              << (ServiceCalibRegistry::isResuming() ? " (Resume)" : ""));
     if (!ServiceCalibRegistry::isResuming()) {
         startNormalMotor(context);
     }

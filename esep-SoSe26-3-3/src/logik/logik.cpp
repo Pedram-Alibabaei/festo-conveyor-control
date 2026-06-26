@@ -8,8 +8,8 @@
 #include "Logik.hpp"
 #include "calibrationManager/I_CalibrationManager.hpp"
 #include "logik/fsm/common/BaseState.hpp"
-#include <iostream>
 #include <memory>
+#include "shared/detailLog.hpp"
 
 namespace logik {
 
@@ -24,13 +24,13 @@ namespace logik {
           m_isMotorSlow(false),
           m_serviceTickCount(0)
     {
-        std::cout << "[Logik] System-Instanz inklusive ErrorHandler erfolgreich konstruiert." << std::endl;
+        DETAIL_LOG( "[Logik] System-Instanz inklusive ErrorHandler erfolgreich konstruiert.");
     }
 
 void Logik::init(AnlagenPosition pos) {
     m_anlagenPosition = pos;
     m_wpManager->setAnlagenPosition(pos);
-    std::cout << "[Logik] Initialisiert auf Position: " << static_cast<int>(pos) << std::endl;
+    DETAIL_LOG( "[Logik] Initialisiert auf Position: " << static_cast<int>(pos));
 }
 
 void Logik::transitionTo(BaseState* nextState) {
@@ -55,8 +55,14 @@ bool Logik::isEstopSafetyActive() const {
 }
 
     void Logik::workpieceTypeFromHS(WpType type) {
-        std::cout << "[Logik] HEIGHT_TYPE empfangen: type="
-                  << static_cast<int>(type) << std::endl;
+        DETAIL_LOG( "[Logik] HEIGHT_TYPE empfangen: type="
+                  << static_cast<int>(type));
+
+        if (m_eventManager != nullptr && m_eventManager->isErrorActive()) {
+            DETAIL_LOG( "[Logik] HEIGHT_TYPE ignoriert – Anlage im ErrorState."
+                     );
+            return;
+        }
 
         if (m_eventManager != nullptr && m_eventManager->isServiceMode()) {
             m_eventManager->handleEvent(logik::Event::HEIGHT_CLEARED);
@@ -67,8 +73,9 @@ bool Logik::isEstopSafetyActive() const {
             m_wpManager->handleSensorSignal(logik::Event::HEIGHT_CLEARED, type);
         }
         if (m_eventManager != nullptr) {
-            std::cout << "[Logik] SEND SET_FAST: trigger=HEIGHT_TYPE/HEIGHT_CLEARED"
-                      << std::endl;
+            m_eventManager->setHeightBlocked(false);
+            DETAIL_LOG( "[Logik] SEND SET_FAST: trigger=HEIGHT_TYPE/HEIGHT_CLEARED"
+                     );
             m_eventManager->handleEvent(logik::Event::SET_FAST);
         }
     }
@@ -86,12 +93,12 @@ void Logik::workpieceInfo(int id, WpType type) {
             && m_wpManager->hasPendingNetworkWorkpiece()
             && m_wpManager->isAnlage2Ready()
             && m_wpManager->getFirstWorkpieceAt(WpLocation::AT_END) == nullptr) {
-            std::cout << "[Logik] Anlage 2: WP-Info von Anlage 1 -> MOTOR_RUN, "
-                      << "warte auf ENTRY_BLOCKED." << std::endl;
+            DETAIL_LOG( "[Logik] Anlage 2: WP-Info von Anlage 1 -> MOTOR_RUN, "
+                      << "warte auf ENTRY_BLOCKED.");
             m_eventManager->handleEvent(logik::Event::MOTOR_RUN);
         } else if (m_eventManager != nullptr && !m_eventManager->isServiceMode()) {
-            std::cout << "[Logik] Anlage 2: WP-Info gespeichert – Motor bleibt aus "
-                      << "(Bandende belegt oder nicht bereit)." << std::endl;
+            DETAIL_LOG( "[Logik] Anlage 2: WP-Info gespeichert – Motor bleibt aus "
+                      << "(Bandende belegt oder nicht bereit).");
         }
     }
 }
@@ -124,10 +131,10 @@ void Logik::setPartnerChuteStatus(bool isFull) {
     }
 
     if (isFull) {
-        std::cout << "[Logik] Partner-Rutsche voll -> WARNING." << std::endl;
+        DETAIL_LOG( "[Logik] Partner-Rutsche voll -> WARNING.");
         m_eventManager->handleEvent(logik::Event::WARNING);
     } else if (!m_eventManager->isChuteFull()) {
-        std::cout << "[Logik] Partner-Rutsche frei (lokal frei) -> WARNING_CLEARED." << std::endl;
+        DETAIL_LOG( "[Logik] Partner-Rutsche frei (lokal frei) -> WARNING_CLEARED.");
         m_eventManager->handleEvent(logik::Event::WARNING_CLEARED);
     }
 }
@@ -139,8 +146,8 @@ void Logik::loadCalibrationData() {
     }
 
     if (m_eventManager != nullptr && m_eventManager->isServiceMode()) {
-        std::cout << "[Logik] loadCalibrationData waehrend Service-Kalibrierung ignoriert."
-                  << std::endl;
+        DETAIL_LOG( "[Logik] loadCalibrationData waehrend Service-Kalibrierung ignoriert."
+                 );
         return;
     }
 
@@ -169,8 +176,8 @@ void Logik::recalculateSlowLimits() {
 
     m_wpManager->setSpeedFactor(speedFactor);
 
-    std::cout << "[Logik] Speed-Faktor aktualisiert: " << speedFactor
-              << " (Slow-Ticks ab HeightC werden gemessen)." << std::endl;
+    DETAIL_LOG( "[Logik] Speed-Faktor aktualisiert: " << speedFactor
+              << " (Slow-Ticks ab HeightC werden gemessen).");
 }
 
 void Logik::resetServiceTickCounter() {
@@ -226,11 +233,11 @@ void Logik::checkCalibrationFile() {
     if (m_calibManager == nullptr) { return; }
 
     if (m_calibManager->fileExists()) {
-        std::cout << "[Logik] Gueltige Kalibrierungsdatei gefunden! Feuere Event: DATA_EXIST." << std::endl;
+        DETAIL_LOG( "[Logik] Gueltige Kalibrierungsdatei gefunden! Feuere Event: DATA_EXIST.");
         this->processEvent(logik::Event::DATA_EXIST);
     }
     else {
-        std::cout << "[Logik] Keine gueltige Kalibrierungsdatei! Feuere Event: DATA_NOT_EXIST." << std::endl;
+        DETAIL_LOG( "[Logik] Keine gueltige Kalibrierungsdatei! Feuere Event: DATA_NOT_EXIST.");
         this->processEvent(logik::Event::DATA_NOT_EXIST);
         notifyPartnerCalibStatus();
     }

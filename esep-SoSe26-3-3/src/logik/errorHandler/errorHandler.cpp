@@ -10,9 +10,27 @@
 #include "logik/eventManager/eventManager.hpp"
 #include "logik/workpieceManager/WorkpieceManager.hpp"
 #include "dispatcher/i_Dispatcher.hpp"
+#include "shared/detailLog.hpp"
 #include <iostream>
 
 namespace {
+
+const char* wpLocationExpectedArrival(WpLocation location) {
+    switch (location) {
+    case WpLocation::AT_ENTRY:
+        return "ENTRY_BLOCKED (Teil muss am Einlauf ankommen)";
+    case WpLocation::TRANSIT_TO_HEIGHT:
+        return "HEIGHT_BLOCKED (Hoehensensor / Lichttunnel)";
+    case WpLocation::TRANSIT_TO_EJECTOR:
+        return "EJECTOR_BLOCKED (Sortierweiche)";
+    case WpLocation::TRANSIT_TO_CHUTE:
+        return "CHUTE_BLOCKED (Rutsche)";
+    case WpLocation::TRANSIT_TO_END:
+        return "END_BLOCKED (Bandende / Uebergabe)";
+    default:
+        return "Sensor-Ereignis in naechster Zone";
+    }
+}
 
 const char* wpLocationName(WpLocation location) {
     switch (location) {
@@ -116,6 +134,21 @@ void ErrorHandler::handleEscalation(ErrorType type,
                                     std::uint32_t toleranceTicks) {
     if (m_context == nullptr) return;
 
+    EventManager* em = m_context->getEventManager();
+    if (type == ErrorType::HEIGHT_ERROR
+        && em != nullptr
+        && em->isErrorActive()
+        && m_activeErrorType == ErrorType::HEIGHT_ERROR) {
+        return;
+    }
+    if (type == ErrorType::UNEXPECTED_EVENT
+        && em != nullptr
+        && em->isErrorActive()
+        && m_activeErrorType == ErrorType::UNEXPECTED_EVENT
+        && triggerEvent == m_activeErrorTrigger) {
+        return;
+    }
+
     // 1. Schieberegister einfrieren
     if (m_context->getEventManager() != nullptr) {
         m_context->getEventManager()->setErrorActive(true);
@@ -168,22 +201,36 @@ void ErrorHandler::handleEscalation(ErrorType type,
         case ErrorType::WP_LOST:
             std::cout << "\n====================================================" << std::endl;
             std::cout << "[ERROR] TRANSIT-FEHLER: WERKSTUECK VERLOREN (WP_LOST)!" << std::endl;
+            if (wpId != -1) {
+                std::cout << "-> WP-ID: " << wpId << std::endl;
+            }
             std::cout << "-> Verloren in Zone: " << wpLocationName(location) << std::endl;
+            std::cout << "-> Erwartetes Ereignis: "
+                      << wpLocationExpectedArrival(location) << std::endl;
             if (elapsedTicks > 0 && expectedLimitTicks > 0) {
                 const std::uint32_t deadline = expectedLimitTicks + toleranceTicks;
                 const std::int32_t overdue =
                     static_cast<std::int32_t>(elapsedTicks)
                     - static_cast<std::int32_t>(deadline);
-                std::cout << "-> Timing: Ist-Dauer "
+                std::cout << "-> Ist-Dauer: "
                           << elapsedTicks << " Takte (" << (elapsedTicks * 10) << " ms)"
-                          << ", Soll-Ankunft spaetestens "
-                          << expectedLimitTicks << " Takte (" << (expectedLimitTicks * 10) << " ms)"
-                          << " + " << toleranceTicks << " Toleranz"
-                          << " (= " << deadline << " Takte / " << (deadline * 10) << " ms)"
                           << std::endl;
-                std::cout << "-> Timing: Ueberfaellig um "
+                std::cout << "-> Berechnetes Limit: "
+                          << expectedLimitTicks << " Takte (" << (expectedLimitTicks * 10) << " ms)";
+                if (toleranceTicks > 0) {
+                    std::cout << " + " << toleranceTicks << " Toleranz";
+                }
+                std::cout << " = spaetestens " << deadline << " Takte ("
+                          << (deadline * 10) << " ms)"
+                          << std::endl;
+                std::cout << "-> Ueberfaellig um "
                           << overdue << " Takte (" << (overdue * 10) << " ms)"
                           << std::endl;
+                if (location == WpLocation::TRANSIT_TO_HEIGHT) {
+                    std::cout << "-> Limit-Hinweis: Kalibrierung Entry->Height (Normal/Slow-Mix)"
+                              << " + Worst-Case-Einlauf + Sicherheit (+50 Takte)"
+                              << std::endl;
+                }
             }
             if (wpId != -1) {
                 std::cout << "-> Massnahme: Loesche WP-ID " << wpId << " automatisch aus dem Schieberegister." << std::endl;
@@ -364,8 +411,8 @@ void ErrorHandler::processEvent(logik::Event e) {
             m_chuteStartTime = std::chrono::steady_clock::now();
             if (m_context->getEventManager() != nullptr) {
                 const int pos = static_cast<int>(m_context->getEventManager()->context().position);
-                std::cout << "[ErrorHandler] CHUTE_BLOCKED (Anlage " << pos
-                          << ") -> Watchdog gestartet." << std::endl;
+                DETAIL_LOG( "[ErrorHandler] CHUTE_BLOCKED (Anlage " << pos
+                          << ") -> Watchdog gestartet.");
             }
             break;
         }
@@ -380,7 +427,9 @@ void ErrorHandler::processEvent(logik::Event e) {
         default:
             break;
     }
+}
 
+void ErrorHandler::checkActiveErrorClearedByEvent(logik::Event e) {
     if (m_hasActiveError && doesEventClearActiveError(e)) {
         tryEmitErrorCleared("Sensor-/Zustandsaenderung", e);
     }
@@ -398,7 +447,10 @@ void ErrorHandler::takt() {
     if (em != nullptr && em->isErrorActive()) {
         if (m_hasActiveError && isActiveErrorConditionCleared()) {
             tryEmitErrorCleared("periodische Pruefung");
-        } else if (!m_hasActiveError && isPhysicalErrorConditionStillPresent()) {
+        } else if (!m_hasActiveError
+                   && isPhysicalErrorConditionStillPresent()
+                   && !(em->isErrorActive()
+                        && m_activeErrorType == ErrorType::HEIGHT_ERROR)) {
             m_hasActiveError = true;
             std::cout << "[ErrorHandler] Fehlerursache noch aktiv "
                       << "(Sensor blockiert) -> ERROR. Rot blinkt SCHNELL."
@@ -562,8 +614,8 @@ void ErrorHandler::reconcileChuteWarningOnOperationalEntry() {
         m_isChuteWarningActive = true;
         m_isChuteTimerRunning = false;
         notifyPartnerChuteFull(m_context);
-        std::cout << "[ErrorHandler] Betriebsstart (Anlage " << pos
-                  << "): Rutsche-LS blockiert -> WARNING (Level-Check)." << std::endl;
+        DETAIL_LOG( "[ErrorHandler] Betriebsstart (Anlage " << pos
+                  << "): Rutsche-LS blockiert -> WARNING (Level-Check).");
         return;
     }
 
@@ -571,8 +623,8 @@ void ErrorHandler::reconcileChuteWarningOnOperationalEntry() {
     if (m_isChuteWarningActive || em->isChuteFull()) {
         clearChuteWarningState();
     }
-    std::cout << "[ErrorHandler] Betriebsstart (Anlage " << pos
-              << "): Rutsche-LS frei." << std::endl;
+    DETAIL_LOG( "[ErrorHandler] Betriebsstart (Anlage " << pos
+              << "): Rutsche-LS frei.");
 }
 
 bool ErrorHandler::isTriggerSensorClear(logik::Event trigger) const {
@@ -668,7 +720,7 @@ bool ErrorHandler::doesEventClearActiveError(logik::Event e) const {
         case logik::Event::HEIGHT_ERROR:
             return e == logik::Event::HEIGHT_CLEARED;
         case logik::Event::HEIGHT_CLEARED:
-            return e == logik::Event::HEIGHT_BLOCKED;
+            return e == logik::Event::HEIGHT_CLEARED;
         case logik::Event::END_BLOCKED:
             return e == logik::Event::END_CLEARED;
         case logik::Event::END_CLEARED:

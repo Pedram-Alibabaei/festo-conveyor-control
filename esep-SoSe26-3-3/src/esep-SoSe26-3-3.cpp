@@ -20,6 +20,7 @@
 #include "calibrationManager/I_CalibrationManager.hpp"
 #include "logik/logik.hpp"
 #include "timer/timer.hpp"
+#include "shared/detailLog.hpp"
 
 int main(int argc, char *argv[]) {
 
@@ -39,7 +40,7 @@ int main(int argc, char *argv[]) {
     }
 
     try {
-        std::cout << "[System] Starte System-Initialisierung..." << std::endl;
+        DETAIL_LOG("[System] Starte System-Initialisierung...");
 
         Dispatcher dispatcher;
         dispatcher.init(pos);
@@ -82,7 +83,7 @@ int main(int argc, char *argv[]) {
         timer.init(dis_coid);
         dispatcher.setTimer(&timer);
 
-        std::cout << "[System] Starte Dispatcher-Reaktor-Thread..." << std::endl;
+        DETAIL_LOG("[System] Starte Dispatcher-Reaktor-Thread...");
         std::thread dispatcherThread(&Dispatcher::run, &dispatcher);
 
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -103,6 +104,6 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    std::cout << "[System] Anwendung sauber beendet." << std::endl;
+    DETAIL_LOG("[System] Anwendung sauber beendet.");
     return EXIT_SUCCESS;
 }

@@ -8,8 +8,9 @@
 #include "logik/fsm/level1/IdleState.hpp"
 #include "logik/logik.hpp"
 #include "logik/eventManager/eventManager.hpp"
-#include <iostream>
 #include "logik/workpieceManager/WorkpieceManager.hpp"
+#include "shared/detailLog.hpp"
+#include <iostream>
 #include "dispatcher/i_Dispatcher.hpp"
 #include <memory>
 
@@ -29,8 +30,8 @@ void applyConnectionLostEntry(I_Dispatcher* dispatcher, EventManager* eventManag
 
     const bool inService = eventManager != nullptr && eventManager->isServiceMode();
     if (inService) {
-        std::cout << "[Level0] ConnectionLost: Service-Modus – ADC-Zustand beibehalten."
-                  << std::endl;
+        DETAIL_LOG( "[Level0] ConnectionLost: Service-Modus – ADC-Zustand beibehalten."
+                 );
     } else {
         dispatcher->setAdcIdelState();
     }
@@ -67,17 +68,17 @@ void transitionAfterConnectionRestore(Logik* logik) {
 
     switch (L0RestoreRegistry::target()) {
     case L0RestoreTarget::ERROR_PENDING_UNACK:
-        std::cout << "[Level0] RESTORED -> ErrorState (anstehend unquittiert)" << std::endl;
+        DETAIL_LOG( "[Level0] RESTORED -> ErrorState (anstehend unquittiert)");
         logik->transitionTo(new ErrorState(ErrorState::SubState::PendingUnacknowledged));
         break;
 
     case L0RestoreTarget::ERROR_PENDING_ACK:
-        std::cout << "[Level0] RESTORED -> ErrorState (anstehend quittiert)" << std::endl;
+        DETAIL_LOG( "[Level0] RESTORED -> ErrorState (anstehend quittiert)");
         logik->transitionTo(new ErrorState(ErrorState::SubState::PendingAcknowledged));
         break;
 
     case L0RestoreTarget::ERROR_GONE_UNACK:
-        std::cout << "[Level0] RESTORED -> ErrorState (gegangen unquittiert)" << std::endl;
+        DETAIL_LOG( "[Level0] RESTORED -> ErrorState (gegangen unquittiert)");
         logik->transitionTo(new ErrorState(ErrorState::SubState::GoneUnacknowledged));
         break;
 
@@ -85,13 +86,13 @@ void transitionAfterConnectionRestore(Logik* logik) {
     default: {
         const L1StateId history = L1StateRegistry::history();
         if (history == L1StateId::RUNNING || history == L1StateId::READY_FOR_ACTIVE) {
-            std::cout << "[Level0] RESTORED -> ReadyForActive "
-                      << "(Running pausiert, START zum Fortsetzen)" << std::endl;
+            DETAIL_LOG( "[Level0] RESTORED -> ReadyForActive "
+                      << "(Running pausiert, START zum Fortsetzen)");
             logik->transitionTo(
                 new ActiveRegionState(std::unique_ptr<BaseState>(new ReadyForActiveState())));
         } else {
-            std::cout << "[Level0] RESTORED -> ActiveRegion (H*, L1="
-                      << static_cast<int>(history) << ")" << std::endl;
+            DETAIL_LOG( "[Level0] RESTORED -> ActiveRegion (H*, L1="
+                      << static_cast<int>(history) << ")");
             logik->transitionTo(new ActiveRegionState(ActiveRegionState::EntryMode::RestoreHistory));
         }
         break;
@@ -199,7 +200,7 @@ void finishEstopReset(Logik* logik) {
         return;
     }
 
-    std::cout << "[EStop] Beide Reset gedrueckt -> Rot aus, zurueck Active/Idle." << std::endl;
+    DETAIL_LOG( "[EStop] Beide Reset gedrueckt -> Rot aus, zurueck Active/Idle.");
 
     if (auto* dispatcher = logik->getDispatcher()) {
         dispatcher->turnLEDResetOff();

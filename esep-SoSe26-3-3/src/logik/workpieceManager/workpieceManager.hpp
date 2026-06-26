@@ -13,6 +13,7 @@
 #include "targetSequence.hpp"
 #include "shared/types.hpp"
 #include "shared/logikEvent.hpp"
+#include "shared/detailLog.hpp"
 
 namespace logik {
 
@@ -145,7 +146,7 @@ namespace logik {
 
         void setAnlage2Ready(bool ready) {
             m_isAnlage2Ready = ready;
-            std::cout << "[WP-Manager] Status Anlage 2 aktualisiert: " << (ready ? "BEREIT" : "BLOCKIERT") << std::endl;
+            DETAIL_LOG("[WP-Manager] Status Anlage 2 aktualisiert: " << (ready ? "BEREIT" : "BLOCKIERT"));
         }
 
        bool isAnlage2Ready(){
@@ -265,6 +266,9 @@ namespace logik {
         void startSorterDecisionForWp(Workpiece* wp);
         /** Rezept nach WP_LOST auf dem Weg zum Bandende wieder auf den verlorenen Typ setzen. */
         void syncSequenceAfterLostTransitToEnd(const Workpiece& wp);
+
+        /** Rezept vorruecken; auf Anlage 2 Bediener-Hinweis fuer naechstes Soll-WP. */
+        void advanceTargetSequence();
     };
 
 } // namespace logik

@@ -7,6 +7,7 @@
 
 #include "timer.hpp"
 #include "shared/ipc_definitions.hpp" // Sehr wichtig fuer die Puls-Codes!
+#include "shared/detailLog.hpp"
 #include <iostream>
 
 Timer::Timer() : m_localCoid(-1),
@@ -34,14 +35,14 @@ void Timer::init(int localCoid) {
     // 2. Heartbeat-Timer beim OS registrieren
     createQnxTimer(m_heartbeatTimerId, ipc::HEARTBEATTACKT, 0);
 
-    std::cout << "[Timer] QNX-Timer (Belt & Heartbeat) erfolgreich initialisiert." << std::endl;
+    DETAIL_LOG( "[Timer] QNX-Timer (Belt & Heartbeat) erfolgreich initialisiert.");
 }
 
 // ============================================================================
 // BELT-TIMER (Zyklischer Takt fuer das Schieberegister)
 // ============================================================================
 void Timer::startBeltTimer(int ms) {
-    std::cout << "[Timer] Starte Belt-Timer mit " << ms << "ms Intervall." << std::endl;
+    DETAIL_LOG( "[Timer] Starte Belt-Timer mit " << ms << "ms Intervall.");
     setQnxTimerInterval(m_beltTimerId, ms);
 }
 
@@ -53,7 +54,7 @@ void Timer::stopBeltTimer() {
 // HEARTBEAT-TIMER (Zyklischer Takt fuer die Watchdog-Verbindung)
 // ============================================================================
 void Timer::startHeartbeatTimer(int ms) {
-    std::cout << "[Timer] Starte Heartbeat-Timer mit " << ms << "ms Intervall." << std::endl;
+    DETAIL_LOG( "[Timer] Starte Heartbeat-Timer mit " << ms << "ms Intervall.");
     setQnxTimerInterval(m_heartbeatTimerId, ms);
 }
 

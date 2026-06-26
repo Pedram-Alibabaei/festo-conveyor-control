@@ -2,6 +2,7 @@
 #include "logik/fsm/common/BaseState.hpp"
 #include "logik/fsm/level0/ActiveRegionState.hpp"
 #include "logik/fsm/level0/ErrorState.hpp"
+#include "shared/detailLog.hpp"
 #include <iostream>
 
 namespace logik {
@@ -28,21 +29,21 @@ void L0RestoreRegistry::captureFrom(const BaseState* stateBeforeConnectionLost) 
             s_target = L0RestoreTarget::ERROR_PENDING_UNACK;
             break;
         }
-        std::cout << "[L0Restore] Snapshot vor CONNECTION_LOST: Error (SubState="
-                  << static_cast<int>(errorState->getSubState()) << ")." << std::endl;
+        DETAIL_LOG( "[L0Restore] Snapshot vor CONNECTION_LOST: Error (SubState="
+                  << static_cast<int>(errorState->getSubState()) << ").");
         return;
     }
 
     if (dynamic_cast<const ActiveRegionState*>(stateBeforeConnectionLost) != nullptr) {
         s_target = L0RestoreTarget::ACTIVE_REGION;
-        std::cout << "[L0Restore] Snapshot vor CONNECTION_LOST: ActiveRegion (L1-H*)."
-                  << std::endl;
+        DETAIL_LOG( "[L0Restore] Snapshot vor CONNECTION_LOST: ActiveRegion (L1-H*)."
+                 );
         return;
     }
 
     s_target = L0RestoreTarget::ACTIVE_REGION;
-    std::cout << "[L0Restore] Snapshot vor CONNECTION_LOST: Fallback ActiveRegion."
-              << std::endl;
+    DETAIL_LOG( "[L0Restore] Snapshot vor CONNECTION_LOST: Fallback ActiveRegion."
+             );
 }
 
 L0RestoreTarget L0RestoreRegistry::target() {

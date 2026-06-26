@@ -101,6 +101,7 @@ private:
     void updateProfileCounters(uint16_t currentRaw);
     void updateTallDrilledPattern(uint16_t currentRaw);
     void finishMeasurement();
+    bool tryRecoverHeightErrorAfterEmptyBelt(uint16_t currentRaw);
     bool handleHeightError(uint16_t currentRaw);
     void sendHeightState(uint16_t state);
     bool isCalibrated() const;
@@ -111,6 +112,7 @@ private:
     size_t tallDrilledConfirmCount() const;
     size_t runningTriggerConfirmCount() const;
     size_t runningReleaseConfirmCount() const;
+    size_t heightErrorRecoveryConfirmCount() const;
     const char* typeName(uint16_t type) const;
 
 public:

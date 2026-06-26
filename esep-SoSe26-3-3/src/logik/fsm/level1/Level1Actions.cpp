@@ -6,6 +6,7 @@
 #include "logik/workpieceManager/workpieceManager.hpp"
 #include "shared/logikEvent.hpp"
 #include "dispatcher/i_Dispatcher.hpp"
+#include "shared/detailLog.hpp"
 #include <iostream>
 
 namespace logik {
@@ -281,14 +282,14 @@ void resumeBandAfterPause(Logik* logik) {
 
     if (wpManager->hasActiveWorkpieces()) {
         const bool useSlow = wpManager->shouldUseSlowMotor();
-        std::cout << "[Level1] Aktive WPs vorhanden -> Betrieb fortsetzen, Motor "
-                  << (useSlow ? "Slow" : "Fast") << std::endl;
+        DETAIL_LOG( "[Level1] Aktive WPs vorhanden -> Betrieb fortsetzen, Motor "
+                  << (useSlow ? "Slow" : "Fast"));
         eventManager->handleEvent(Event::MOTOR_RUN);
         if (useSlow) {
             eventManager->handleEvent(Event::SET_SLOW);
         }
     } else {
-        std::cout << "[Level1] Keine aktiven WPs -> BAND_EMPTY" << std::endl;
+        DETAIL_LOG( "[Level1] Keine aktiven WPs -> BAND_EMPTY");
         eventManager->handleEvent(Event::BAND_EMPTY);
     }
 }
@@ -334,7 +335,7 @@ bool tryEnterReadyForRun(Logik* logik) {
         return false;
     }
 
-    std::cout << "[Level1] Lokal + Partner kalibriert -> ReadyForRun" << std::endl;
+    DETAIL_LOG( "[Level1] Lokal + Partner kalibriert -> ReadyForRun");
     logik->transitionTo(new ReadyForRunState());
     return true;
 }
@@ -355,7 +356,7 @@ bool tryEnterReadyForService(Logik* logik) {
         eventManager->setCalibrationDataReady(false);
     }
 
-    std::cout << "[Level1] Keine Kalibrierungsdatei -> ReadyForService" << std::endl;
+    DETAIL_LOG( "[Level1] Keine Kalibrierungsdatei -> ReadyForService");
     logik->transitionTo(new ReadyForServiceState());
     return true;
 }

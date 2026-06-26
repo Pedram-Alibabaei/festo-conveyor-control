@@ -7,6 +7,7 @@
 #include "logik/logik.hpp"
 #include "logik/eventManager/eventManager.hpp"
 #include "dispatcher/i_Dispatcher.hpp"
+#include "shared/detailLog.hpp"
 #include <iostream>
 
 namespace logik {
@@ -22,7 +23,7 @@ void EStopState::latchLocalReset(Logik* context) {
     }
 
     m_localResetLatched = true;
-    std::cout << "[EStopState] Lokaler Reset quittiert (latched)." << std::endl;
+    DETAIL_LOG( "[EStopState] Lokaler Reset quittiert (latched).");
 
     if (context != nullptr && context->getDispatcher() != nullptr) {
         context->getDispatcher()->sendPartnerResetPressed();
@@ -36,7 +37,7 @@ void EStopState::latchPartnerReset(Logik* context) {
     }
 
     m_partnerResetLatched = true;
-    std::cout << "[EStopState] Partner-Reset quittiert (latched)." << std::endl;
+    DETAIL_LOG( "[EStopState] Partner-Reset quittiert (latched).");
 }
 
 void EStopState::applyResetWaitingVisuals(Logik* context) {
@@ -55,8 +56,8 @@ void EStopState::applyResetWaitingVisuals(Logik* context) {
 
 void EStopState::tryFinishReset() {
     if (!m_localResetLatched || !m_partnerResetLatched) {
-        std::cout << "[EStopState] Reset wartet: local="
-                  << m_localResetLatched << " partner=" << m_partnerResetLatched << std::endl;
+        DETAIL_LOG( "[EStopState] Reset wartet: local="
+                  << m_localResetLatched << " partner=" << m_partnerResetLatched);
         return;
     }
 
@@ -87,7 +88,7 @@ void EStopState::completeResetAndLeave() {
 }
 
 void EStopState::entry() {
-    std::cout << "[EStopState] Entered (Ebene 0). Sicherer Zustand!" << std::endl;
+    DETAIL_LOG( "[EStopState] Entered (Ebene 0). Sicherer Zustand!");
     clearResetLatches();
 
     if (m_context == nullptr) {
@@ -129,7 +130,7 @@ void EStopState::handle(Event e) {
 
     switch (e) {
     case Event::CONNECTION_LOST:
-        std::cout << "[EStopState] CONNECTION_LOST -> ConnectionLostAndEStop" << std::endl;
+        DETAIL_LOG( "[EStopState] CONNECTION_LOST -> ConnectionLostAndEStop");
         if (dispatcher != nullptr) {
             dispatcher->lightYellowBlinkFast();
             dispatcher->lightGreenBlinkFast();
@@ -138,7 +139,7 @@ void EStopState::handle(Event e) {
         return;
 
     case Event::CONNECTION_RESTORED:
-        std::cout << "[EStopState] CONNECTION_RESTORED -> Unterzustand neu synchronisieren" << std::endl;
+        DETAIL_LOG( "[EStopState] CONNECTION_RESTORED -> Unterzustand neu synchronisieren");
         clearResetLatches();
         replaceSubState(createInitialEStopSubState(m_context));
         return;

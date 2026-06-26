@@ -4,6 +4,7 @@
 #include "logik/logik.hpp"
 #include "logik/eventManager/eventManager.hpp"
 #include "logik/fsm/level1/Level1Actions.hpp"
+#include "shared/detailLog.hpp"
 #include <iostream>
 
 namespace logik {
@@ -98,7 +99,7 @@ void ServiceState::handle(Event e) {
                       << "Abbruch: START lang erneut druecken." << std::endl;
             return;
         }
-        std::cout << "[ServiceState] STOP -> IdleState" << std::endl;
+        DETAIL_LOG( "[ServiceState] STOP -> IdleState");
         m_context->transitionTo(new IdleState());
         return;
 

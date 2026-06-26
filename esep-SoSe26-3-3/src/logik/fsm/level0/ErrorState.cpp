@@ -8,6 +8,7 @@
 #include "logik/errorHandler/errorHandler.hpp"
 #include "logik/fsm/level1/Level1Actions.hpp"
 #include "dispatcher/i_Dispatcher.hpp"
+#include "shared/detailLog.hpp"
 #include <iostream>
 
 namespace logik {
@@ -19,27 +20,27 @@ ErrorState::ErrorState(SubState restoredSubState)
 }
 
 void ErrorState::entry() {
-    std::cout << "[ErrorState] Entered (Ebene 0)." << std::endl;
+    DETAIL_LOG( "[ErrorState] Entered (Ebene 0).");
 
     if (m_restoreEntry) {
         m_restoreEntry = false;
         switch (m_subState) {
         case SubState::PendingAcknowledged:
             enterPendingAcknowledged();
-            std::cout << "[ErrorState] Wiederhergestellt nach CONNECTION_RESTORED "
-                      << "(anstehend quittiert)." << std::endl;
+            DETAIL_LOG( "[ErrorState] Wiederhergestellt nach CONNECTION_RESTORED "
+                      << "(anstehend quittiert).");
             break;
         case SubState::GoneUnacknowledged:
             m_errorCauseCleared = true;
             enterGoneUnacknowledged();
-            std::cout << "[ErrorState] Wiederhergestellt nach CONNECTION_RESTORED "
-                      << "(gegangen unquittiert)." << std::endl;
+            DETAIL_LOG( "[ErrorState] Wiederhergestellt nach CONNECTION_RESTORED "
+                      << "(gegangen unquittiert).");
             break;
         case SubState::PendingUnacknowledged:
         default:
             enterPendingUnacknowledged();
-            std::cout << "[ErrorState] Wiederhergestellt nach CONNECTION_RESTORED "
-                      << "(anstehend unquittiert)." << std::endl;
+            DETAIL_LOG( "[ErrorState] Wiederhergestellt nach CONNECTION_RESTORED "
+                      << "(anstehend unquittiert).");
             break;
         }
         return;
@@ -174,14 +175,14 @@ void ErrorState::handle(Event e) {
     if (m_context != nullptr) {
         switch (e) {
         case Event::CONNECTION_LOST:
-            std::cout << "[ErrorState] CONNECTION_LOST -> ConnectionLostState" << std::endl;
+            DETAIL_LOG( "[ErrorState] CONNECTION_LOST -> ConnectionLostState");
             m_context->transitionTo(new ConnectionLostState());
             return;
 
         case Event::ESTOP_PRESSED:
         case Event::PARTNER_ESTOP_PRESSED:
         case Event::PARTNER_ESTOP_SAFETY_SYNC:
-            std::cout << "[ErrorState] ESTOP -> EStopState" << std::endl;
+            DETAIL_LOG( "[ErrorState] ESTOP -> EStopState");
             m_context->transitionTo(new EStopState());
             return;
 

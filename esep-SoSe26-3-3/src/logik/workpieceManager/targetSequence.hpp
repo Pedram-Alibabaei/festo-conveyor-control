@@ -13,8 +13,9 @@
 #define TARGET_SEQUENCE_HPP
 
 #include <vector>
+#include "shared/types.hpp"
+#include "shared/detailLog.hpp"
 #include <iostream>
-#include "shared/types.hpp"// Enthält das global gültige WpType Enum
 
 class TargetSequence {
 private:
@@ -61,8 +62,8 @@ public:
         if (!m_sequence.empty()) {
             // Kompakter Ringpuffer-Sprung mittels Modulo-Operator
             m_currentIndex = (m_currentIndex + 1) % m_sequence.size();
-            std::cout << "[TargetSequence] Rezeptur vorgerueckt. Naechster Index: " << m_currentIndex
-                      << " (Erwarteter Typ-ID: " << static_cast<int>(getExpectedType()) << ")" << std::endl;
+            DETAIL_LOG("[TargetSequence] Rezeptur vorgerueckt. Naechster Index: " << m_currentIndex
+                      << " (Erwarteter Typ-ID: " << static_cast<int>(getExpectedType()) << ")");
         }
     }
 
@@ -75,8 +76,8 @@ public:
         for (std::size_t i = 0; i < m_sequence.size(); ++i) {
             if (m_sequence.at(i) == type) {
                 m_currentIndex = i;
-                std::cout << "[TargetSequence] Rezept per Netzwerk-Befehl synchronisiert auf Index: "
-                          << m_currentIndex << " (Typ-ID: " << static_cast<int>(type) << ")" << std::endl;
+                DETAIL_LOG("[TargetSequence] Rezept per Netzwerk-Befehl synchronisiert auf Index: "
+                          << m_currentIndex << " (Typ-ID: " << static_cast<int>(type) << ")");
                 return;
             }
         }
@@ -89,7 +90,7 @@ public:
      */
     void resetSequence() {
         m_currentIndex = 0;
-        std::cout << "[TargetSequence] Rezeptur auf Startposition zurueckgesetzt." << std::endl;
+        DETAIL_LOG("[TargetSequence] Rezeptur auf Startposition zurueckgesetzt.");
     }
 };
 

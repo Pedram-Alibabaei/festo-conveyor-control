@@ -11,6 +11,7 @@
 #include "logik/fsm/level0/ConnectionLostState.hpp"
 #include "logik/fsm/level0/ConnectionLostAndEStopState.hpp"
 #include "logik/fsm/level0/L0RestoreRegistry.hpp"
+#include "shared/detailLog.hpp"
 #include <iostream>
 
 namespace logik {
@@ -23,7 +24,7 @@ Fsm::Fsm(Logik* logik, EventManager* eventManager)
     initial->setContext(m_logik);
     initial->entry();
     m_currentState = std::move(initial);
-    std::cout << "[FSM] Initialisiert: Ebene 0 ActiveRegion + Ebene 1 Idle." << std::endl;
+    DETAIL_LOG( "[FSM] Initialisiert: Ebene 0 ActiveRegion + Ebene 1 Idle.");
 }
 
 void Fsm::processEvent(Event e) {

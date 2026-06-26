@@ -5,12 +5,13 @@
 #include "logik/fsm/level0/Level0Actions.hpp"
 #include "logik/logik.hpp"
 #include "dispatcher/i_Dispatcher.hpp"
+#include "shared/detailLog.hpp"
 #include <iostream>
 
 namespace logik {
 
 void ConnectionLostState::entry() {
-    std::cout << "[ConnectionLost] Entered (Ebene 0)." << std::endl;
+    DETAIL_LOG( "[ConnectionLost] Entered (Ebene 0).");
 
     if (m_context != nullptr) {
         level0::applyConnectionLostEntry(m_context->getDispatcher(),
@@ -28,7 +29,7 @@ void ConnectionLostState::handle(Event e) {
     switch (e) {
     case Event::CONNECTION_RESTORED:
         if (level0::isAnyEstopActive(m_context)) {
-            std::cout << "[ConnectionLost] RESTORED mit ESTOP -> EStopState" << std::endl;
+            DETAIL_LOG( "[ConnectionLost] RESTORED mit ESTOP -> EStopState");
             m_context->transitionTo(new EStopState());
         } else {
             level0::transitionAfterConnectionRestore(m_context);
@@ -38,7 +39,7 @@ void ConnectionLostState::handle(Event e) {
     case Event::ESTOP_PRESSED:
     case Event::PARTNER_ESTOP_PRESSED:
     case Event::PARTNER_ESTOP_SAFETY_SYNC:
-        std::cout << "[ConnectionLost] ESTOP -> ConnectionLostAndEStop" << std::endl;
+        DETAIL_LOG( "[ConnectionLost] ESTOP -> ConnectionLostAndEStop");
         m_context->transitionTo(new ConnectionLostAndEStopState());
         break;
 

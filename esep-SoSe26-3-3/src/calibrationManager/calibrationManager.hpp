@@ -26,7 +26,7 @@ private:
     bool readValidCalibration(CalibrationData& out);
 
 public:
-    /** Einheitlicher Dateiname pro Anlage (unabhaengig von VORN/HINTEN-Position). */
+    /** Persistenter Standardpfad auf dem QNX-Target (nicht /tmp). */
     static const char CALIBRATION_FILE_NAME[];
 
     /**

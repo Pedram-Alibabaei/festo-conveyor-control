@@ -7,6 +7,7 @@
 
 #include "dispatcher/i_Dispatcher.hpp"
 
+#include "shared/detailLog.hpp"
 #include <iostream>
 
 
@@ -63,7 +64,7 @@ void syncLocalCalibrationFile(Logik* context) {
 
 void IdleState::entry() {
 
-    std::cout << "[IdleState] Entered (Ebene 1)." << std::endl;
+    DETAIL_LOG( "[IdleState] Entered (Ebene 1).");
 
 
 
@@ -115,7 +116,7 @@ void IdleState::handle(Event e) {
 
         m_context->notifyPartnerCalibStatus();
 
-        std::cout << "[IdleState] Kalibrierungsdaten vorhanden." << std::endl;
+        DETAIL_LOG( "[IdleState] Kalibrierungsdaten vorhanden.");
 
         level1::routeFromIdle(m_context);
 
@@ -125,7 +126,7 @@ void IdleState::handle(Event e) {
 
     case Event::DATA_NOT_EXIST:
 
-        std::cout << "[IdleState] Keine lokale Kalibrierung -> ReadyForService pruefen." << std::endl;
+        DETAIL_LOG( "[IdleState] Keine lokale Kalibrierung -> ReadyForService pruefen.");
 
         if (eventManager != nullptr) {
 
@@ -140,11 +141,11 @@ void IdleState::handle(Event e) {
 
 
     case Event::PARTNER_CALIB_NOT_READY:
-        std::cout << "[IdleState] Partner-Kalibrierung nicht bereit." << std::endl;
+        DETAIL_LOG( "[IdleState] Partner-Kalibrierung nicht bereit.");
         break;
 
     case Event::PARTNER_CALIB_READY:
-        std::cout << "[IdleState] Partner kalibriert." << std::endl;
+        DETAIL_LOG( "[IdleState] Partner kalibriert.");
         level1::routeFromIdle(m_context);
         break;
 
@@ -157,11 +158,11 @@ void IdleState::handle(Event e) {
 
 
     case Event::START_SHORT_PRESSED:
-        std::cout << "[IdleState] START kurz ignoriert – zuerst ReadyForRun/ReadyForService." << std::endl;
+        DETAIL_LOG( "[IdleState] START kurz ignoriert – zuerst ReadyForRun/ReadyForService.");
         break;
 
     case Event::START_LONG_PRESSED:
-        std::cout << "[IdleState] START lang -> ServiceState" << std::endl;
+        DETAIL_LOG( "[IdleState] START lang -> ServiceState");
         dispatcher->sendPartnerStartService();
         dispatcher->sendPartnerCalibStatus(false);
         m_context->transitionTo(new ServiceState());

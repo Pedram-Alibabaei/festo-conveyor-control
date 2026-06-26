@@ -117,6 +117,9 @@ namespace logik {
         /** true = physische Fehlerursache ist behoben (Sensor frei / WP_LOST aufgeraeumt). */
         bool isErrorCauseCleared() const;
 
+        /** Nach updateContextFlags: prueft ob e die aktive Fehlerursache aufloest. */
+        void checkActiveErrorClearedByEvent(logik::Event e);
+
     private:
         bool isChutePhysicallyBlocked() const;
         void raiseChuteFullWarning();

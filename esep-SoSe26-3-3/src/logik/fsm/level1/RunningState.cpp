@@ -7,12 +7,14 @@
 #include "logik/workpieceManager/workpieceManager.hpp"
 #include "logik/errorHandler/errorHandler.hpp"
 #include "dispatcher/i_Dispatcher.hpp"
+#include "shared/detailLog.hpp"
+#include "shared/operatorLog.hpp"
 #include <iostream>
 
 namespace logik {
 
 void RunningState::entry() {
-    std::cout << "[RunningState] Entered (Ebene 1)." << std::endl;
+    DETAIL_LOG( "[RunningState] Entered (Ebene 1).");
 
     if (m_context == nullptr) {
         return;
@@ -33,6 +35,13 @@ void RunningState::entry() {
     }
 
     EventManager* eventManager = m_context->getEventManager();
+    if (eventManager != nullptr
+        && eventManager->context().position == AnlagenPosition::HINTEN_ANLAGE_2
+        && m_context->getWorkpieceManager() != nullptr) {
+        operatorLog::logNextExpectedWorkpiece(
+            m_context->getWorkpieceManager()->getSequence().getExpectedType());
+    }
+
     if (eventManager != nullptr && eventManager->isChuteFull()) {
         enterRunningWarning();
     } else {
@@ -41,8 +50,8 @@ void RunningState::entry() {
 
     if (hasActiveWorkpieces) {
         const bool useSlow = m_context->getWorkpieceManager()->shouldUseSlowMotor();
-        std::cout << "[Level1] Aktive WPs vorhanden -> Betrieb fortsetzen, Motor "
-                  << (useSlow ? "Slow" : "Fast") << std::endl;
+        DETAIL_LOG( "[Level1] Aktive WPs vorhanden -> Betrieb fortsetzen, Motor "
+                  << (useSlow ? "Slow" : "Fast"));
         if (useSlow) {
             enterMotorSlow();
         } else {
@@ -68,7 +77,7 @@ void RunningState::enterRunningNormal() {
         m_context->getDispatcher()->lightYellowOff();
     }
 
-    std::cout << "[RunningState] Running_Normal" << std::endl;
+    DETAIL_LOG( "[RunningState] Running_Normal");
 }
 
 void RunningState::enterRunningWarning() {
@@ -78,7 +87,7 @@ void RunningState::enterRunningWarning() {
         m_context->getDispatcher()->lightYellowBlinkSlow();
     }
 
-    std::cout << "[RunningState] Running_Warning (Gelb blinkt langsam)" << std::endl;
+    DETAIL_LOG( "[RunningState] Running_Warning (Gelb blinkt langsam)");
 }
 
 void RunningState::enterEntryFree() {
@@ -93,7 +102,7 @@ void RunningState::enterEntryFree() {
         m_context->getEventManager()->setEntryFrei(true);
     }
 
-    std::cout << "[RunningState] Entry_Free" << std::endl;
+    DETAIL_LOG( "[RunningState] Entry_Free");
 }
 
 void RunningState::enterEntryNotFree() {
@@ -108,7 +117,7 @@ void RunningState::enterEntryNotFree() {
         m_context->getEventManager()->setEntryFrei(false);
     }
 
-    std::cout << "[RunningState] Entry_Not_Free" << std::endl;
+    DETAIL_LOG( "[RunningState] Entry_Not_Free");
 }
 
 void RunningState::enterMotorIdle() {
@@ -121,7 +130,7 @@ void RunningState::enterMotorIdle() {
         eventManager->setMotorSlow(false);
     }
 
-    std::cout << "[RunningState] Motor_Idle" << std::endl;
+    DETAIL_LOG( "[RunningState] Motor_Idle");
 }
 
 void RunningState::enterMotorFast() {
@@ -138,7 +147,7 @@ void RunningState::enterMotorFast() {
         m_context->getWorkpieceManager()->onMotorSpeedChanged(false);
     }
 
-    std::cout << "[RunningState] Motor_Fast" << std::endl;
+    DETAIL_LOG( "[RunningState] Motor_Fast");
 }
 
 void RunningState::enterMotorSlow() {
@@ -155,7 +164,7 @@ void RunningState::enterMotorSlow() {
         m_context->getWorkpieceManager()->onMotorSpeedChanged(true);
     }
 
-    std::cout << "[RunningState] Motor_Slow" << std::endl;
+    DETAIL_LOG( "[RunningState] Motor_Slow");
 }
 
 void RunningState::handle(Event e) {
@@ -172,15 +181,15 @@ void RunningState::handle(Event e) {
                 m_context->getWorkpieceManager() != nullptr
                 && m_context->getWorkpieceManager()->hasActiveWorkpieces();
             if (hasActiveWorkpieces) {
-                std::cout << "[RunningState] STOP mit aktiven WPs -> ReadyForActive "
-                          << "(Betrieb pausiert, START zum Fortsetzen)" << std::endl;
+                DETAIL_LOG( "[RunningState] STOP mit aktiven WPs -> ReadyForActive "
+                          << "(Betrieb pausiert, START zum Fortsetzen)");
                 m_context->transitionTo(new ReadyForActiveState());
             } else {
-                std::cout << "[RunningState] STOP -> IdleState" << std::endl;
+                DETAIL_LOG( "[RunningState] STOP -> IdleState");
                 m_context->transitionTo(new IdleState());
             }
         } else {
-            std::cout << "[RunningState] STOP ignoriert – Warnung noch aktiv." << std::endl;
+            DETAIL_LOG( "[RunningState] STOP ignoriert – Warnung noch aktiv.");
         }
         break;
 

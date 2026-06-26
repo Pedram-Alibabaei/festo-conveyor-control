@@ -5,6 +5,7 @@
 #include "logik/logik.hpp"
 #include "logik/fsm/level1/Level1Actions.hpp"
 #include "dispatcher/i_Dispatcher.hpp"
+#include "shared/detailLog.hpp"
 #include <iostream>
 
 namespace logik {
@@ -39,8 +40,8 @@ void enterServiceWithPartner(Logik* context) {
 } // namespace
 
 void ReadyForRunState::entry() {
-    std::cout << "[ReadyForRun] Entered (Ebene 1). Beide Anlagen bereit – START an, kurzer START fuer Running."
-              << std::endl;
+    DETAIL_LOG( "[ReadyForRun] Entered (Ebene 1). Beide Anlagen bereit – START an, kurzer START fuer Running."
+             );
 
     if (m_context == nullptr) {
         return;
@@ -65,23 +66,23 @@ void ReadyForRunState::handle(Event e) {
 
     switch (e) {
     case Event::START_SHORT_PRESSED:
-        std::cout << "[ReadyForRun] Kurzer START -> Running (beide Anlagen)" << std::endl;
+        DETAIL_LOG( "[ReadyForRun] Kurzer START -> Running (beide Anlagen)");
         enterRunningWithPartner(m_context);
         break;
 
     case Event::START_LONG_PRESSED:
-        std::cout << "[ReadyForRun] Langer START -> Service (Partner wartet in Idle)" << std::endl;
+        DETAIL_LOG( "[ReadyForRun] Langer START -> Service (Partner wartet in Idle)");
         enterServiceWithPartner(m_context);
         break;
 
     case Event::PARTNER_START_RUNNING:
-        std::cout << "[ReadyForRun] Partner START_RUNNING -> RunningState" << std::endl;
+        DETAIL_LOG( "[ReadyForRun] Partner START_RUNNING -> RunningState");
         m_context->transitionTo(new RunningState());
         break;
 
     case Event::PARTNER_START_SERVICE:
-        std::cout << "[ReadyForRun] Partner startet Service -> Idle, Partner-Kalibrierung NICHT bereit"
-                  << std::endl;
+        DETAIL_LOG( "[ReadyForRun] Partner startet Service -> Idle, Partner-Kalibrierung NICHT bereit"
+                 );
         if (auto* eventManager = m_context->getEventManager()) {
             eventManager->setPartnerCalibrationReady(false);
         }
@@ -89,14 +90,14 @@ void ReadyForRunState::handle(Event e) {
         break;
 
     case Event::STOP_RELEASED:
-        std::cout << "[ReadyForRun] STOP -> IdleState" << std::endl;
+        DETAIL_LOG( "[ReadyForRun] STOP -> IdleState");
         m_context->transitionTo(new IdleState());
         break;
 
     case Event::PARTNER_CALIB_NOT_READY:
     case Event::DATA_NOT_EXIST:
     case Event::CONNECTION_LOST:
-        std::cout << "[ReadyForRun] Bedingungen nicht mehr erfuellt -> IdleState" << std::endl;
+        DETAIL_LOG( "[ReadyForRun] Bedingungen nicht mehr erfuellt -> IdleState");
         m_context->transitionTo(new IdleState());
         break;
 
