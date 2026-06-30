@@ -341,6 +341,14 @@ void EventManager::handleEvent(Event e) {
         && canRouteWorkpieceTracking()
         && !m_ctx.serviceMode;
 
+    // END_CLEARED-Flag vor WP-Manager setzen, damit canAcceptNetworkHandover() nach
+    // Bandende-Freigabe sofort READY an Anlage 1 senden kann.
+    const bool endClearedContextEarly =
+        e == Event::END_CLEARED && !m_ctx.serviceMode;
+    if (endClearedContextEarly) {
+        updateContextFlags(e);
+    }
+
     // Phase 1: Subsysteme — END/CHUTE auch bei errorActive (Entleeren im ErrorState)
     if (errorRecoverySensorEvent && m_errorHandler != nullptr) {
         routeToErrorHandler(e);
@@ -360,7 +368,9 @@ void EventManager::handleEvent(Event e) {
     }
 
     // Phase 2: Kontext-Flags
-    updateContextFlags(e);
+    if (!endClearedContextEarly) {
+        updateContextFlags(e);
+    }
 
     if (errorRecoverySensorEvent && m_errorHandler != nullptr) {
         m_errorHandler->checkActiveErrorClearedByEvent(e);

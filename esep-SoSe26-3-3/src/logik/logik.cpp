@@ -97,6 +97,7 @@ void Logik::workpieceInfo(int id, WpType type) {
         if (m_eventManager != nullptr
             && !m_eventManager->isServiceMode()
             && !m_eventManager->isErrorActive()
+            && m_eventManager->isRunningMode()
             && !m_eventManager->isEndBlocked()
             && m_wpManager != nullptr
             && m_wpManager->hasPendingNetworkWorkpiece()
@@ -105,6 +106,7 @@ void Logik::workpieceInfo(int id, WpType type) {
             DETAIL_LOG( "[Logik] Anlage 2: WP-Info von Anlage 1 -> MOTOR_RUN, "
                       << "warte auf ENTRY_BLOCKED.");
             m_eventManager->handleEvent(logik::Event::MOTOR_RUN);
+            m_wpManager->tryArmPendingNetworkHandover();
         } else if (m_eventManager != nullptr && !m_eventManager->isServiceMode()) {
             DETAIL_LOG( "[Logik] Anlage 2: WP-Info gespeichert – Motor bleibt aus "
                       << "(Bandende belegt oder nicht bereit).");

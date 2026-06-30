@@ -49,20 +49,48 @@ void RunningState::entry() {
     }
 
     if (hasActiveWorkpieces) {
-        const bool useSlow = m_context->getWorkpieceManager()->shouldUseSlowMotor();
-        DETAIL_LOG( "[Level1] Aktive WPs vorhanden -> Betrieb fortsetzen, Motor "
-                  << (useSlow ? "Slow" : "Fast"));
-        if (useSlow) {
-            enterMotorSlow();
+        WorkpieceManager* wpManager = m_context->getWorkpieceManager();
+        if (wpManager != nullptr && wpManager->shouldResumeMotorOnRunningEntry()) {
+            const bool useSlow = wpManager->shouldUseSlowMotor();
+            DETAIL_LOG( "[Level1] Aktive WPs -> Betrieb fortsetzen, Motor "
+                      << (useSlow ? "Slow" : "Fast"));
+            if (useSlow) {
+                enterMotorSlow();
+            } else {
+                enterMotorFast();
+            }
+        } else if (wpManager != nullptr
+                   && eventManager != nullptr
+                   && eventManager->context().position == AnlagenPosition::HINTEN_ANLAGE_2
+                   && wpManager->getFirstWorkpieceAt(WpLocation::AT_END) != nullptr) {
+            DETAIL_LOG( "[Level1] Anlage 2: Bandende belegt -> Motor bleibt aus bis END_CLEARED "
+                      << "oder Uebergabe von Anlage 1.");
+            enterMotorIdle();
+        } else if (wpManager != nullptr && wpManager->hasPendingNetworkWorkpiece()) {
+            DETAIL_LOG( "[Level1] Warte auf Uebergabe -> Motor startet bei WP-Info/Annahme.");
+            enterMotorIdle();
         } else {
-            enterMotorFast();
+            enterMotorIdle();
         }
     } else {
         enterMotorIdle();
     }
+
+    if (auto* wpManager = m_context->getWorkpieceManager()) {
+        wpManager->resumePartnerHandoverRequestOnRunning();
+        wpManager->resumePendingNetworkHandoverOnRunning();
+        wpManager->resumePendingHandoverOnRunning();
+    }
 }
 
 void RunningState::exit() {
+    if (m_context != nullptr) {
+        if (auto* wpManager = m_context->getWorkpieceManager()) {
+            wpManager->onAnlage2RunningExit();
+            wpManager->onAnlage1RunningExit();
+        }
+    }
+
     if (m_context == nullptr) {
         return;
     }

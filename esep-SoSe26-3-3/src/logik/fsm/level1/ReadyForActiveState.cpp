@@ -39,6 +39,10 @@ void ReadyForActiveState::entry() {
     level1::applyReadyForActiveEntry(
         m_context->getDispatcher(), m_context->getEventManager(), m_context);
 
+    if (auto* wpManager = m_context->getWorkpieceManager()) {
+        wpManager->pauseHandoverWhileNotRunning();
+    }
+
     if (auto* errorHandler = m_context->getErrorHandler()) {
         errorHandler->reconcileChuteWarningOnOperationalEntry();
     }

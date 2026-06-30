@@ -44,6 +44,9 @@ namespace logik {
         int m_handoverRetryTicks;                   ///< Anlage 1: Takte bis zum naechsten REQ_TO_GIVE-Retry
         int m_handoverReceiveTicks;                 ///< Anlage 2: Takte seit WP-Info bis ENTRY_BLOCKED
         bool m_handoverPausedByPartner;             ///< Anlage 1: Uebergabe pausiert, weil A2 Bandende blockiert
+        bool m_partnerReadyDeferred;                ///< Anlage 1: READY empfangen, Uebergabe bei Running starten
+        bool m_handoverPauseResumeDeferred;         ///< Anlage 1: pausierte Uebergabe bei Running fortsetzen
+        bool m_partnerHandoverRequestPending;       ///< Anlage 2: REQ waehrend Idle/ReadyForRun -> bei Running beantworten
 
         // ====================================================================
         // TAKT-BASIERTE AKTOR-ZEITSTEUERUNG
@@ -165,6 +168,9 @@ namespace logik {
        /** Noch WPs auf dem Band, die Förderband-Bewegung brauchen? */
        bool hasWorkpiecesNeedingMotor() const;
 
+       /** Running-Eintritt: Motor nur bei Transit-WPs oder ausstehender Netzwerk-Annahme (A2). */
+       bool shouldResumeMotorOnRunningEntry() const;
+
        /** Einlauf-WP wartet regulaer hinter fuehrendem WP auf dem Band? */
        bool isEntryQueuedBehindLeadingWorkpiece() const;
 
@@ -187,6 +193,30 @@ namespace logik {
 
        /** Anlage 2: REQ_TO_GIVE vom Partner – bereit antworten? */
        void onPartnerHandoverRequest();
+
+       /** Anlage 2: Running verlassen – laufende Uebergabe pausieren (kein WP_LOST). */
+       void pauseHandoverWhileNotRunning();
+
+       /** Anlage 2: Running wieder aktiv – pending WP-Uebergabe fortsetzen. */
+       void resumePendingNetworkHandoverOnRunning();
+
+       /** Anlage 2: Running verlassen – Uebergabe pausieren, ggf. A1 stoppen. */
+       void onAnlage2RunningExit();
+
+       /** Anlage 1: Running verlassen – gespeichertes READY verwerfen (Partner erneut anfragen). */
+       void onAnlage1RunningExit();
+
+       /** Anlage 2: Nach MOTOR_RUN Timeout fuer pending WP-Info starten. */
+       void tryArmPendingNetworkHandover();
+
+       /** Anlage 2: Gespeicherte REQ von Anlage 1 bei Running mit READY beantworten. */
+       void resumePartnerHandoverRequestOnRunning();
+
+       /** Anlage 2: Nach END_CLEARED Partner-READY senden (gespeicherte REQ oder freies Band). */
+       void completeHandoverAfterEndCleared();
+
+       /** Anlage 1: Gespeicherte READY bei Running mit WP-Info + Motor beantworten. */
+       void resumePendingHandoverOnRunning();
 
        /** Anlage 1: READY_TO_RECEIVE – WP-Info senden und Band an. */
        void onPartnerReadyToReceive();
@@ -254,6 +284,12 @@ namespace logik {
 
         /** Anlage 2: Bandende frei -> Anlage 1 informieren (READY_TO_RECEIVE). */
         void notifyPartnerHandoverSlotFree();
+
+        /** READY senden wenn Uebergabe moeglich; REQ-Pending-Flag loeschen. */
+        void sendPartnerHandoverReadyIfPossible();
+
+        /** Anlage 1: WP-Info senden und Uebergabe-Motor starten (Flags vor MOTOR_RUN setzen). */
+        void startAnlage1HandoverTransmission(Workpiece* wp);
 
         std::uint32_t scaleNormalToSlowTicks(std::uint32_t normalTicks) const;
         std::uint32_t scaleSlowToNormalTicks(std::uint32_t slowTicks,
