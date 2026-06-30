@@ -58,6 +58,7 @@ namespace logik {
         bool m_ejectorLsBlocked;                    ///< Sortierweichen-LS zuletzt blockiert (fuer spaete CLEARED-Flanken)
         int m_ejectorBlockedWpId;                   ///< WP, das zuletzt EJECTOR_BLOCKED ausgeloest hat (-1 = keins)
         bool m_pendingEjectorBlockedAfterHeight;    ///< LS an Weiche kam kurz vor HEIGHT_CLEARED und wird nachgezogen
+        int m_sorterEchoTicks;                      ///< Nach Weiche/Auswerfer-Bewegung: LS-Echos ignorieren (10ms-Takte)
         const int TICKS_ONE_SECOND;                 ///< Konstante: 100 Takte * 10ms = 1000ms (1 Sekunde)
 
     public:
@@ -179,6 +180,9 @@ namespace logik {
        /** Motor darf stoppen: keine aktiven Transit-/Entry-WPs mehr. */
        bool shouldAllowMotorStop() const { return !hasWorkpiecesNeedingMotor(); }
 
+       /** Weiche/Auswerfer bewegt sich oder kurze Nachlaufzeit – EJECTOR-LS kann ohne WP ausloesen. */
+       bool isSorterEchoWindowActive() const;
+
        bool hasPendingNetworkWorkpiece() const { return m_hasPendingNetworkWp; }
 
        /** Anlage 2: REQ_TO_GIVE vom Partner – bereit antworten? */
@@ -296,6 +300,11 @@ namespace logik {
         Workpiece* findWorkpieceById(int id);
         bool hasEjectorSorter() const;
         bool shouldDeferJunctionForMetal(const Workpiece* wp) const;
+        /** STUCK-Timer an Sortier-LS pausieren (Metall-Warte, Weiche/Auswerfer aktiv). */
+        bool shouldPauseEjectorOccupancyTimer(const Workpiece& wp) const;
+        /** MOTOR_RUN nur wenn kein Fehler aktiv. */
+        bool mayRequestMotorRun() const;
+        void requestMotorRunIfAllowed(const char* reason);
         void applyMetalTypeUpgrade(Workpiece* wp);
         void applyMetalIfDetected(Workpiece* wp);
         Workpiece* getLeadingWorkpieceForMetalDetection();

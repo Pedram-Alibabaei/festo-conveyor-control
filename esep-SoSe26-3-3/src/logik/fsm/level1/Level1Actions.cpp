@@ -280,6 +280,11 @@ void resumeBandAfterPause(Logik* logik) {
         return;
     }
 
+    if (eventManager->isErrorActive()) {
+        DETAIL_LOG( "[Level1] Betrieb nicht fortgesetzt – Fehler aktiv.");
+        return;
+    }
+
     if (wpManager->hasActiveWorkpieces()) {
         const bool useSlow = wpManager->shouldUseSlowMotor();
         DETAIL_LOG( "[Level1] Aktive WPs vorhanden -> Betrieb fortsetzen, Motor "

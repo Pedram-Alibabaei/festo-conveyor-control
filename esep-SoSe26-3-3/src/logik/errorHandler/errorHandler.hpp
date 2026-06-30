@@ -43,6 +43,9 @@ namespace logik {
         logik::Event m_activeErrorTrigger = logik::Event::UNKNOWN;
         WpLocation m_activeErrorLocation = WpLocation::UNKNOWN_LOCATION;
 
+        /** Nach ERROR_CLEARED: kurz kein Re-ERROR bei LS-Bounce (10ms-Takte). */
+        int m_reErrorSuppressTicks = 0;
+
         bool isActiveErrorConditionCleared() const;
         bool isPhysicalErrorConditionStillPresent() const;
         bool isTriggerSensorClear(logik::Event trigger) const;

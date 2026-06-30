@@ -181,6 +181,13 @@ TEST_F(DispatcherPulseTest, EjectorCleared_ForwardsToLogik) {
     EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::EJECTOR_CLEARED));
 }
 
+TEST_F(DispatcherPulseTest, EjectorActuatorFeedback_DoesNotForwardToLogik) {
+    sendHal(ipc::EJECTOR, ipc::State::BLOCKED);
+    sendHal(ipc::EJECTOR, ipc::State::CLEARED);
+    EXPECT_FALSE(fakeLogik->hadEvent(logik::Event::EJECTOR_BLOCKED));
+    EXPECT_FALSE(fakeLogik->hadEvent(logik::Event::EJECTOR_CLEARED));
+}
+
 TEST_F(DispatcherPulseTest, EndBlocked_ForwardsToLogik) {
     sendHal(ipc::LS_END, ipc::State::BLOCKED);
     EXPECT_TRUE(fakeLogik->hadEvent(logik::Event::END_BLOCKED));

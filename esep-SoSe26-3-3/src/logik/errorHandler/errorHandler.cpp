@@ -463,11 +463,16 @@ void ErrorHandler::takt() {
         return;
     }
 
+    if (m_reErrorSuppressTicks > 0) {
+        --m_reErrorSuppressTicks;
+    }
+
     EventManager* em = m_context->getEventManager();
     if (em != nullptr && em->isErrorActive()) {
         if (m_hasActiveError && isActiveErrorConditionCleared()) {
             tryEmitErrorCleared("periodische Pruefung");
         } else if (!m_hasActiveError
+                   && m_reErrorSuppressTicks == 0
                    && isPhysicalErrorConditionStillPresent()
                    && !(em->isErrorActive()
                         && m_activeErrorType == ErrorType::HEIGHT_ERROR)) {
@@ -815,11 +820,13 @@ void ErrorHandler::tryEmitErrorCleared(const char* reason, logik::Event clearing
               << std::endl;
 
     m_hasActiveError = false;
+    m_reErrorSuppressTicks = 50;
     em->handleEvent(logik::Event::ERROR_CLEARED);
 }
 
 void ErrorHandler::resetActiveErrorTracking() {
     m_hasActiveError = false;
+    m_reErrorSuppressTicks = 0;
     m_activeErrorType = ErrorType::WP_LOST;
     m_activeErrorTrigger = logik::Event::UNKNOWN;
     m_activeErrorLocation = WpLocation::UNKNOWN_LOCATION;

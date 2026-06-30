@@ -145,16 +145,13 @@ void Gpio0Interrupt::configure_interrupt() const noexcept
 
     {
         using namespace pal::is;
+        // Nur Input – Typ-Erkennung Weiche vs. Auswerfer (EjectorController), keine WP-Events.
         Ejector::config_as_input();
-        Ejector::enable_interrupt();
-        Ejector::config_interrupt_rising();
-        Ejector::config_interrupt_falling();
-
-       // Height::config_as_input();
-       // Height::enable_interrupt();
-       // Height::config_interrupt_rising();
-       // Height::config_interrupt_falling();
-       // Height::enable_debounce();
+        // Height::config_as_input();
+        // Height::enable_interrupt();
+        // Height::config_interrupt_rising();
+        // Height::config_interrupt_falling();
+        // Height::enable_debounce();
     }
 }
 
@@ -201,7 +198,7 @@ void Gpio0Interrupt::handle_interrupt() const noexcept
         { ipc::LS_ENTRY,      false, ip::Entry::is_data_set(),   ip::pin_mask_entry },
         { ipc::LS_END,        false, ip::End::is_data_set(),     ip::pin_mask_end },
         { ipc::SENSOR_METAL,  false, ip::Metal::is_data_set(),   ip::pin_mask_metal },
-        { ipc::EJECTOR,    false, is::Ejector::is_data_set(), is::pin_mask_ejector }
+        // is::Ejector nicht in der Interrupt-Matrix – kein WP-Tracking, nur Aktuator-Feedback.
         //{ ipc::LS_HEIGHT,     false, is::Height::is_data_set(),  is::pin_mask_height }
     };
 

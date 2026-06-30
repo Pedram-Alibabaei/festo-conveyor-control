@@ -77,6 +77,8 @@ private:
     void routeToFsm(Event e);
     std::vector<Event> preprocessForFsm(Event e);
     void resumeEntryAfterEndCleared(std::vector<Event>& fsmEvents);
+    /** Bei errorActive: Motor/Hardware stoppen, kein MOTOR_RUN bis Fehler quittiert. */
+    void enforceMotorStoppedDuringError();
 
 public:
     explicit EventManager(Logik* context);

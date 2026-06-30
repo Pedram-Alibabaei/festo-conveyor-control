@@ -81,6 +81,10 @@ bool isEntrySensorEvent(logik::Event e) {
     return e == logik::Event::ENTRY_BLOCKED || e == logik::Event::ENTRY_CLEARED;
 }
 
+bool isMetalClearedEvent(logik::Event e) {
+    return e == logik::Event::METAL_CLEARED;
+}
+
 bool shouldEscalateUnexpectedEmptyBandSensor(
     logik::Event e,
     AnlagenPosition position,
@@ -88,7 +92,7 @@ bool shouldEscalateUnexpectedEmptyBandSensor(
     bool endBlocked,
     const logik::WorkpieceManager* wpManager)
 {
-    if (!isPhysicalSensorEvent(e) || isChuteSensorEvent(e)) {
+    if (!isPhysicalSensorEvent(e) || isChuteSensorEvent(e) || isMetalClearedEvent(e)) {
         return false;
     }
 
@@ -119,6 +123,25 @@ bool isAllowedSensorWithoutWorkpieces(
 {
     return !shouldEscalateUnexpectedEmptyBandSensor(
         e, position, entryFrei, endBlocked, wpManager);
+}
+
+bool isSpuriousEmptyBandEjectorSignal(
+    logik::Event e,
+    const logik::Logik* context,
+    const logik::WorkpieceManager* wpManager)
+{
+    if (e != logik::Event::EJECTOR_BLOCKED) {
+        return false;
+    }
+    if (wpManager != nullptr && wpManager->isSorterEchoWindowActive()) {
+        return true;
+    }
+    if (context != nullptr
+        && context->getDispatcher() != nullptr
+        && context->getDispatcher()->isEjectorLightBarrierClear()) {
+        return true;
+    }
+    return false;
 }
 
 } // namespace
@@ -225,6 +248,11 @@ void EventManager::handleEvent(Event e) {
         && !m_wpManager->hasActiveWorkpieces()
         && shouldEscalateUnexpectedEmptyBandSensor(
             e, m_ctx.position, m_ctx.entryFrei, m_ctx.endBlocked, m_wpManager)) {
+        if (isSpuriousEmptyBandEjectorSignal(e, m_context, m_wpManager)) {
+            DETAIL_LOG( "[EventManager] EJECTOR_BLOCKED ohne WPs – Weiche/Auswerfer-Echo "
+                      << "oder LS bereits frei, ignoriert.");
+            return;
+        }
         if (m_ctx.position == AnlagenPosition::HINTEN_ANLAGE_2 && isEntrySensorEvent(e)) {
             DETAIL_LOG( "[EventManager] Anlage 2: Einlauf muss frei sein – "
                       << "unerwartetes Entry-Signal ohne WP-Uebergabe.");
@@ -242,7 +270,6 @@ void EventManager::handleEvent(Event e) {
         && m_ctx.runningMode
         && !m_ctx.serviceMode
         && !m_ctx.errorActive
-        && !m_ctx.endBlocked
         && m_wpManager != nullptr) {
         const bool earlyEntryA1 =
             m_ctx.position == AnlagenPosition::VORN_ANLAGE_1
@@ -347,6 +374,29 @@ void EventManager::handleEvent(Event e) {
     for (Event fsmEvent : fsmEvents) {
         routeToFsm(fsmEvent);
     }
+
+    if (m_ctx.errorActive) {
+        enforceMotorStoppedDuringError();
+    }
+}
+
+void EventManager::enforceMotorStoppedDuringError() {
+    if (!m_ctx.errorActive || m_context == nullptr) {
+        return;
+    }
+
+    const bool wasMotorOn = m_ctx.motorOn || m_ctx.motorSlow;
+    m_ctx.motorOn = false;
+    m_ctx.motorSlow = false;
+
+    if (I_Dispatcher* dispatcher = m_context->getDispatcher()) {
+        dispatcher->driveStop();
+    }
+
+    if (wasMotorOn) {
+        DETAIL_LOG( "[EventManager] Fehler aktiv: Motor aus "
+                  << "(unabhaengig von END_BLOCKED / weiteren WPs auf dem Band).");
+    }
 }
 
 void EventManager::updateContextFlags(Event e) {
@@ -430,6 +480,17 @@ void EventManager::updateContextFlags(Event e) {
 
 std::vector<Event> EventManager::preprocessForFsm(Event e) {
     std::vector<Event> fsmEvents;
+
+    if (m_ctx.errorActive) {
+        if (e == Event::MOTOR_RUN || e == Event::SET_SLOW || e == Event::SET_FAST) {
+            enforceMotorStoppedDuringError();
+            return fsmEvents;
+        }
+        if (e == Event::END_BLOCKED) {
+            enforceMotorStoppedDuringError();
+            return fsmEvents;
+        }
+    }
 
     switch (e) {
     // --- START: Roh-Event → kurz/lang (FSM sieht nie START_PRESSED/RELEASED) ---
@@ -688,6 +749,10 @@ void EventManager::resumeEntryAfterEndCleared(std::vector<Event>& fsmEvents) {
 }
 
 void EventManager::handleTakt() {
+    if (m_ctx.errorActive) {
+        enforceMotorStoppedDuringError();
+    }
+
     if (m_context != nullptr && m_ctx.serviceMode && m_ctx.motorOn) {
         m_context->incrementServiceTickCounter();
     }

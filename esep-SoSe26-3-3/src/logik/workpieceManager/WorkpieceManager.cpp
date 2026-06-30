@@ -29,9 +29,11 @@ constexpr std::uint32_t kTransitToEjectorSafetyTicks = 50;
 constexpr std::uint32_t kHeightMeasurementSafetyTicks = 20;
 constexpr std::uint32_t kEjectorOccupancySafetyTicks = 20;
 constexpr std::uint32_t kTransitToEndSafetyTicks = 30;
-constexpr std::uint32_t kTimeoutToleranceTicks = 5;
+constexpr std::uint32_t kTimeoutToleranceTicks = 15;
 /** Weiche laenger offen (10ms-Takte); 150 = 1,5 s. */
 constexpr int kSwitchOpenHoldTicks = 150;
+/** Nach Sortieraktion: kurze LS-Echos an der Weiche ohne WP im Register unterdruecken. */
+constexpr int kSorterEchoIgnoreTicks = 200;
 /** Anlage 1: REQ_TO_GIVE erneut senden, wenn Anlage 2 vorher blockiert war (1 s). */
 constexpr int kHandoverRetryIntervalTicks = 100;
 /** Anlage 2: maximale Zeit von WP_INFO bis ENTRY_BLOCKED (3 s, 10ms-Takte). */
@@ -108,6 +110,7 @@ WorkpieceManager::WorkpieceManager(Logik* context)
       m_ejectorLsBlocked(false),
       m_ejectorBlockedWpId(-1),
       m_pendingEjectorBlockedAfterHeight(false),
+      m_sorterEchoTicks(0),
       TICKS_ONE_SECOND(100)
 {}
 
@@ -186,10 +189,24 @@ bool WorkpieceManager::isExpectedNetworkEntryAtAnlage2() const {
 }
 
 bool WorkpieceManager::isEarlyEntryViolationOnBlocked() const {
+    if (!hasLeadingWorkpieceBeforeHeightSensor()) {
+        return false;
+    }
+
+    if (m_myPosition == AnlagenPosition::HINTEN_ANLAGE_2
+        && isExpectedNetworkEntryAtAnlage2()) {
+        return false;
+    }
+
     const Workpiece* atEntry = getFirstWorkpieceAt(WpLocation::AT_ENTRY);
     const Workpiece* inTransit = getFirstWorkpieceAt(WpLocation::TRANSIT_TO_HEIGHT);
 
     if (atEntry != nullptr && inTransit != nullptr) {
+        return true;
+    }
+
+    // Zweites Teil am Einlauf, waehrend fuehrendes WP schon Richtung HS unterwegs ist.
+    if (atEntry == nullptr && inTransit != nullptr) {
         return true;
     }
 
@@ -357,7 +374,7 @@ void WorkpieceManager::onPartnerReadyToReceive() {
     if (m_handoverPausedByPartner && wp != nullptr && m_handoverInfoSent && !m_handoverMotorActive) {
         DETAIL_LOG( "[WP-Manager] Anlage 1: Partner wieder bereit -> "
                   << "pausierte Uebergabe fortsetzen.");
-        m_context->processEvent(logik::Event::MOTOR_RUN);
+        requestMotorRunIfAllowed("Handover-Fortsetzung");
         m_handoverMotorActive = true;
         m_handoverPausedByPartner = false;
         return;
@@ -388,7 +405,7 @@ void WorkpieceManager::onPartnerReadyToReceive() {
     DETAIL_LOG( "[WP-Manager] Anlage 1: Partner bereit -> sende WP-Info id=" << wp->getId()
               << " und starte Band.");
     m_context->getDispatcher()->sendWorkpieceInfo(wp->getId(), wp->getType());
-    m_context->processEvent(logik::Event::MOTOR_RUN);
+    requestMotorRunIfAllowed("Handover-Start");
     m_awaitingHandoverReady = false;
     m_handoverInfoSent = true;
     m_handoverMotorActive = true;
@@ -478,8 +495,8 @@ void WorkpieceManager::onPartnerHandoverComplete() {
         if (hasWorkpiecesNeedingMotor()) {
             DETAIL_LOG( "[WP-Manager] Anlage 1: Weitere WPs auf Band -> Motor laeuft weiter."
                      );
-            m_context->processEvent(logik::Event::MOTOR_RUN);
-            if (shouldUseSlowMotor()) {
+            requestMotorRunIfAllowed("Handover abgeschlossen");
+            if (mayRequestMotorRun() && shouldUseSlowMotor()) {
                 m_context->processEvent(logik::Event::SET_SLOW);
             }
         } else {
@@ -506,8 +523,8 @@ void WorkpieceManager::onPartnerHandoverWpLost() {
         if (hasWorkpiecesNeedingMotor()) {
             DETAIL_LOG( "[WP-Manager] Anlage 1: Weitere WPs auf Band -> Motor laeuft weiter."
                      );
-            m_context->processEvent(logik::Event::MOTOR_RUN);
-            if (shouldUseSlowMotor()) {
+            requestMotorRunIfAllowed("Handover abgeschlossen");
+            if (mayRequestMotorRun() && shouldUseSlowMotor()) {
                 m_context->processEvent(logik::Event::SET_SLOW);
             }
         } else {
@@ -557,7 +574,15 @@ void WorkpieceManager::notifyPartnerSequenceSync(WpType type) {
 // ============================================================================
 // CENTRAL TIMER TICK (ZENTRALER HERZSCHLAG MIT TRANSIT-WATCHDOGS)
 // ============================================================================
+bool WorkpieceManager::isSorterEchoWindowActive() const {
+    return m_isSwitchOpen || m_isEjectorPushed || m_sorterEchoTicks > 0;
+}
+
 void WorkpieceManager::taktActuators() {
+    if (m_sorterEchoTicks > 0) {
+        --m_sorterEchoTicks;
+    }
+
     if (m_isSwitchOpen) {
         m_switchOpenTicks--;
 
@@ -667,7 +692,7 @@ void WorkpieceManager::takt(bool isMotorSlow) {
         }
 
         if (wp.getLocation() == WpLocation::AT_EJECTOR) {
-            if (motorOn) {
+            if (motorOn && !shouldPauseEjectorOccupancyTimer(wp)) {
                 wp.incrementTicks();
                 if (wp.getTargetLimit() > 0
                     && wp.getTicks() > wp.getTargetLimit() + kTimeoutToleranceTicks) {
@@ -862,7 +887,7 @@ void WorkpieceManager::handleSensorSignal(logik::Event e, WpType typeFromHal) {
                     && !m_context->getEventManager()->isMotorOn()) {
                     DETAIL_LOG( "[WP-Manager] Anlage 2: erwartetes Netzwerk-WP kam bei Motor-Idle "
                               << "-> Motor fuer Einlauf wieder starten.");
-                    m_context->processEvent(logik::Event::MOTOR_RUN);
+                    requestMotorRunIfAllowed("Netzwerk-Einlauf");
                 }
             } else if (m_myPosition == AnlagenPosition::HINTEN_ANLAGE_2) {
                 if (isEarlyEntryViolationOnBlocked()
@@ -897,7 +922,19 @@ void WorkpieceManager::handleSensorSignal(logik::Event e, WpType typeFromHal) {
                     }
                 }
             } else {
-                if (getFirstWorkpieceAt(WpLocation::TRANSIT_TO_HEIGHT) != nullptr
+                auto* eventManager = m_context ? m_context->getEventManager() : nullptr;
+                const bool entryNotFrei =
+                    eventManager != nullptr && !eventManager->context().entryFrei;
+                if (m_myPosition == AnlagenPosition::VORN_ANLAGE_1
+                    && entryNotFrei
+                    && isEarlyEntryViolationOnBlocked()) {
+                    DETAIL_LOG( "[WP-Manager] Anlage 1: ENTRY_BLOCKED – Einlauf nicht frei "
+                              << "(Q1 aus), vorderes WP hat HS noch nicht erreicht -> FEHLER.");
+                    if (m_context && m_context->getErrorHandler()) {
+                        m_context->getErrorHandler()->handleEscalation(
+                            ErrorType::EARLY_ENTRY, e, WpLocation::AT_ENTRY);
+                    }
+                } else if (getFirstWorkpieceAt(WpLocation::TRANSIT_TO_HEIGHT) != nullptr
                     && getFirstWorkpieceAt(WpLocation::AT_ENTRY) == nullptr) {
                     DETAIL_LOG( "[WP-Manager] Ignoriere ENTRY_BLOCKED-Stoerung "
                               << "waehrend WP unterwegs zum HS (kein Teil am Einlauf)."
@@ -1187,7 +1224,15 @@ void WorkpieceManager::handleSensorSignal(logik::Event e, WpType typeFromHal) {
                        || getFirstWorkpieceAt(WpLocation::TRANSIT_TO_CHUTE) != nullptr) {
                 DETAIL_LOG( "[WP-Manager] Ignoriere doppelte/spaete EJECTOR_BLOCKED-Flanke.");
             } else {
-                if (m_context && m_context->getErrorHandler()) {
+                if (m_context != nullptr
+                    && m_context->getDispatcher() != nullptr
+                    && m_context->getDispatcher()->isEjectorLightBarrierClear()) {
+                    DETAIL_LOG( "[WP-Manager] EJECTOR_BLOCKED ohne WP, LS bereits frei "
+                              << "-> Spurious flank ignoriert.");
+                } else if (isSorterEchoWindowActive()) {
+                    DETAIL_LOG( "[WP-Manager] EJECTOR_BLOCKED ohne WP waehrend "
+                              << "Weiche/Auswerfer-Nachlauf -> ignoriert.");
+                } else if (m_context && m_context->getErrorHandler()) {
                     m_context->getErrorHandler()->handleEscalation(ErrorType::UNEXPECTED_EVENT, e);
                 }
             }
@@ -1946,6 +1991,8 @@ void WorkpieceManager::resetMetalWaitState() {
 void WorkpieceManager::canNotPass() {
     if (!m_context || !m_context->getDispatcher()) return;
 
+    m_sorterEchoTicks = kSorterEchoIgnoreTicks;
+
     if (m_context->getDispatcher()->isSwitch()) {
         // Weiche: geschlossen lassen -> Werkstück in Rutsche
         m_context->getDispatcher()->closeSwitch();
@@ -1960,6 +2007,8 @@ void WorkpieceManager::canNotPass() {
 
 void WorkpieceManager::canPass() {
     if (!m_context || !m_context->getDispatcher()) return;
+
+    m_sorterEchoTicks = kSorterEchoIgnoreTicks;
 
     if (m_context->getDispatcher()->isSwitch()) {
         // Weiche: kurz oeffnen -> Werkstück geradeaus zum Bandende
@@ -2185,6 +2234,36 @@ bool WorkpieceManager::hasEjectorSorter() const {
     return m_context != nullptr
         && m_context->getDispatcher() != nullptr
         && !m_context->getDispatcher()->isSwitch();
+}
+
+bool WorkpieceManager::mayRequestMotorRun() const {
+    if (m_context == nullptr || m_context->getEventManager() == nullptr) {
+        return false;
+    }
+    return !m_context->getEventManager()->isErrorActive();
+}
+
+void WorkpieceManager::requestMotorRunIfAllowed(const char* reason) {
+    if (!mayRequestMotorRun()) {
+        DETAIL_LOG( "[WP-Manager] MOTOR_RUN unterdrueckt (Fehler aktiv)"
+                  << (reason != nullptr ? ": " : "")
+                  << (reason != nullptr ? reason : ""));
+        return;
+    }
+    if (m_context != nullptr) {
+        m_context->processEvent(logik::Event::MOTOR_RUN);
+    }
+}
+
+bool WorkpieceManager::shouldPauseEjectorOccupancyTimer(const Workpiece& wp) const {
+    const int wpId = wp.getId();
+    if (m_metalWaitWpId == wpId || m_pendingMetalDecisionWpId == wpId) {
+        return true;
+    }
+    if (m_ejectorBlockedWpId == wpId && (m_isSwitchOpen || m_isEjectorPushed)) {
+        return true;
+    }
+    return false;
 }
 
 bool WorkpieceManager::shouldDeferJunctionForMetal(const Workpiece* wp) const {

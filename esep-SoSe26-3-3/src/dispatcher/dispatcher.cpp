@@ -389,13 +389,21 @@ void Dispatcher::handleHalPulse(uint32_t payload) {
         }
         m_logik->processEvent(sensor_state == ipc::State::BLOCKED ? logik::Event::METAL_DETECTED : logik::Event::METAL_CLEARED);
     }
-    else if (sensor_id == ipc::LS_SWITCH || sensor_id == ipc::EJECTOR) {
+    else if (sensor_id == ipc::LS_SWITCH) {
         if (kVerboseHalPulseLog) {
-            DETAIL_LOG( "[Dispatcher] "
-                      << (sensor_id == ipc::LS_SWITCH ? "LS_SWITCH" : "EJECTOR") << ": "
+            DETAIL_LOG( "[Dispatcher] LS_SWITCH: "
                       << (sensor_state == ipc::State::BLOCKED ? "BLOCKED" : "CLEARED"));
         }
         m_logik->processEvent(sensor_state == ipc::State::BLOCKED ? logik::Event::EJECTOR_BLOCKED : logik::Event::EJECTOR_CLEARED);
+    }
+    else if (sensor_id == ipc::EJECTOR) {
+        // is::Ejector = Aktuator-Rueckmeldung (Weiche/Auswerfer-Position), keine WP-Lichtschranke.
+        // WP-Tracking nutzt nur LS_SWITCH (ip::Ejector). Siehe EjectorController::isSwitch().
+        if (kVerboseHalPulseLog) {
+            DETAIL_LOG( "[Dispatcher] EJECTOR (Aktuator-Feedback): "
+                      << (sensor_state == ipc::State::BLOCKED ? "BLOCKED" : "CLEARED")
+                      << " -> nicht an Logik weitergeleitet.");
+        }
     }
     else if (sensor_id == ipc::LS_END) {
         if (kVerboseHalPulseLog) {
