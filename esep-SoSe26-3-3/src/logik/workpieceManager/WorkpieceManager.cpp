@@ -29,7 +29,7 @@ constexpr std::uint32_t kTransitToEjectorSafetyTicks = 50;
 constexpr std::uint32_t kHeightMeasurementSafetyTicks = 20;
 constexpr std::uint32_t kEjectorOccupancySafetyTicks = 20;
 constexpr std::uint32_t kTransitToEndSafetyTicks = 30;
-constexpr std::uint32_t kTimeoutToleranceTicks = 15;
+constexpr std::uint32_t kTimeoutToleranceTicks = 20;
 /** Weiche laenger offen (10ms-Takte); 150 = 1,5 s. */
 constexpr int kSwitchOpenHoldTicks = 150;
 /** Nach Sortieraktion: kurze LS-Echos an der Weiche ohne WP im Register unterdruecken. */
@@ -38,6 +38,8 @@ constexpr int kSorterEchoIgnoreTicks = 200;
 constexpr int kHandoverRetryIntervalTicks = 100;
 /** Anlage 2: maximale Zeit von WP_INFO bis ENTRY_BLOCKED (3 s, 10ms-Takte). */
 constexpr int kHandoverEntryTimeoutTicks = 300;
+/** Geschaetzte Uebergabezeit A1-Bandende -> A2-Einlauf (10 ms/Takt) fuer Bediener-Log. */
+constexpr int kHandoverTransitEstimateTicks = 200;
 /** Anlage 2: maximal gleichzeitig aktive WPs (inkl. ausstehende Netzwerk-Uebergabe). */
 constexpr std::size_t kMaxActiveWorkpiecesAnlage2 = 2;
 /** Auswerfer-Anlage: Wartezeit auf Metall-Sensor nach EJECTOR_BLOCKED (10ms-Takte). */
@@ -103,6 +105,8 @@ WorkpieceManager::WorkpieceManager(Logik* context)
       m_partnerReadyDeferred(false),
       m_handoverPauseResumeDeferred(false),
       m_partnerHandoverRequestPending(false),
+      m_lastHandoverWpId(-1),
+      m_lastHandoverWpType(WpType::UNKNOWN),
       m_isSwitchOpen(false),
       m_switchOpenTicks(0),
       m_isEjectorPushed(false),
@@ -140,6 +144,26 @@ bool WorkpieceManager::hasWorkpiecesNeedingMotor() const {
     return false;
 }
 
+bool WorkpieceManager::isAnlage1BandEndHandoverPending() const {
+    if (m_myPosition != AnlagenPosition::VORN_ANLAGE_1) {
+        return false;
+    }
+    if (getFirstWorkpieceAt(WpLocation::AT_END) != nullptr) {
+        return true;
+    }
+    if (m_context != nullptr && m_context->getEventManager() != nullptr) {
+        return m_context->getEventManager()->context().endBlocked;
+    }
+    return false;
+}
+
+bool WorkpieceManager::isAnlage1MotorPausedForPartnerHandover() const {
+    return m_myPosition == AnlagenPosition::VORN_ANLAGE_1
+        && m_handoverPausedByPartner
+        && isAnlage1BandEndHandoverPending()
+        && !m_handoverMotorActive;
+}
+
 bool WorkpieceManager::shouldResumeMotorOnRunningEntry() const {
     if (m_context == nullptr || m_context->getEventManager() == nullptr) {
         return false;
@@ -153,6 +177,9 @@ bool WorkpieceManager::shouldResumeMotorOnRunningEntry() const {
             || eventManager->context().endBlocked
             || !m_isAnlage2Ready;
 
+        if (endOccupied && wpAtEnd != nullptr) {
+            return false;
+        }
         if (hasWorkpiecesNeedingMotor()) {
             return true;
         }
@@ -162,6 +189,9 @@ bool WorkpieceManager::shouldResumeMotorOnRunningEntry() const {
         return false;
     }
 
+    if (isAnlage1BandEndHandoverPending() || m_handoverPausedByPartner) {
+        return false;
+    }
     if (hasWorkpiecesNeedingMotor()) {
         return true;
     }
@@ -300,6 +330,8 @@ void WorkpieceManager::commitPendingNetworkWorkpieceAtEntry() {
     if (!m_hasPendingNetworkWp || m_pendingNetworkWpId < 0) {
         return;
     }
+    const int receivedId = m_pendingNetworkWpId;
+    const WpType receivedType = m_pendingNetworkWpType;
     addNetworkWorkpiece(m_pendingNetworkWpId, m_pendingNetworkWpType);
     m_hasPendingNetworkWp = false;
     m_pendingNetworkWpId = -1;
@@ -307,6 +339,9 @@ void WorkpieceManager::commitPendingNetworkWorkpieceAtEntry() {
     m_handoverReceiveActive = false;
     m_handoverReceiveTicks = 0;
 
+    if (m_myPosition == AnlagenPosition::HINTEN_ANLAGE_2) {
+        operatorLog::logHandoverReceivedA2(receivedId, receivedType);
+    }
     if (m_myPosition == AnlagenPosition::HINTEN_ANLAGE_2
         && m_context != nullptr && m_context->getDispatcher() != nullptr) {
         DETAIL_LOG( "[WP-Manager] Anlage 2: Uebergabe erfolgreich -> melde Anlage 1."
@@ -329,6 +364,8 @@ void WorkpieceManager::resetHandoverState() {
     m_partnerReadyDeferred = false;
     m_handoverPauseResumeDeferred = false;
     m_partnerHandoverRequestPending = false;
+    m_lastHandoverWpId = -1;
+    m_lastHandoverWpType = WpType::UNKNOWN;
 }
 
 void WorkpieceManager::recoverPartnerHandoverAfterError() {
@@ -432,6 +469,12 @@ void WorkpieceManager::startAnlage1HandoverTransmission(Workpiece* wp) {
     m_partnerReadyDeferred = false;
     m_handoverPauseResumeDeferred = false;
     m_handoverRetryTicks = 0;
+    m_lastHandoverWpId = wp->getId();
+    m_lastHandoverWpType = wp->getType();
+    operatorLog::logHandoverDepartedA1(
+        wp->getId(),
+        wp->getType(),
+        static_cast<std::uint32_t>(kHandoverTransitEstimateTicks * 10U));
     m_context->getDispatcher()->sendWorkpieceInfo(wp->getId(), wp->getType());
     requestMotorRunIfAllowed("Handover-Start");
 }
@@ -614,6 +657,9 @@ void WorkpieceManager::onPartnerHandoverComplete() {
     }
     DETAIL_LOG( "[WP-Manager] Anlage 1: Partner meldet ENTRY_BLOCKED -> Uebergabe abgeschlossen."
              );
+    if (m_lastHandoverWpId >= 0) {
+        operatorLog::logHandoverSuccessA1(m_lastHandoverWpId, m_lastHandoverWpType);
+    }
     m_handoverMotorActive = false;
     m_handoverInfoSent = false;
     m_handoverPausedByPartner = false;
@@ -669,7 +715,15 @@ void WorkpieceManager::onPartnerHandoverPause() {
     }
     m_partnerReadyDeferred = false;
     m_handoverPauseResumeDeferred = false;
+    if (isAnlage1BandEndHandoverPending()) {
+        m_handoverPausedByPartner = true;
+    }
     if (!m_handoverMotorActive) {
+        if (m_handoverPausedByPartner && m_context != nullptr) {
+            DETAIL_LOG( "[WP-Manager] Anlage 1: Partner pausiert Uebergabe "
+                      << "-> Motor bleibt aus (WP am Bandende).");
+            m_context->processEvent(logik::Event::MOTOR_STOP);
+        }
         return;
     }
     DETAIL_LOG( "[WP-Manager] Anlage 1: Partner blockiert waehrend Uebergabe "
@@ -1655,6 +1709,7 @@ void WorkpieceManager::handleSensorSignal(logik::Event e, WpType typeFromHal) {
                     m_handoverRetryTicks = 0;
 
                     if (!partnerOk) {
+                        operatorLog::logHandoverReadyAtA1End(wp->getId(), wp->getType());
                         if (wp->isCorrectInSequence()) {
                             m_sequence.forceType(wp->getType());
                         }
@@ -1664,6 +1719,7 @@ void WorkpieceManager::handleSensorSignal(logik::Event e, WpType typeFromHal) {
                         DETAIL_LOG( "[WP-Manager] Anlage 1: WP id=" << wp->getId()
                                   << " am Bandende -> frage Anlage 2 (REQ_TO_GIVE)."
                                  );
+                        operatorLog::logHandoverReadyAtA1End(wp->getId(), wp->getType());
                         m_context->getDispatcher()->RequestToReceiveWp();
                     }
                 } else if (m_myPosition == AnlagenPosition::HINTEN_ANLAGE_2) {
@@ -1721,12 +1777,14 @@ void WorkpieceManager::handleSensorSignal(logik::Event e, WpType typeFromHal) {
                     m_handoverRetryTicks = 0;
 
                     if (!partnerOk) {
+                        operatorLog::logHandoverReadyAtA1End(lateWp->getId(), lateWp->getType());
                         DETAIL_LOG( "[WP-Manager] Anlage 1: Bandende belegt, Partner nicht "
                                   << "bereit -> warte ohne Uebergabe-Anfrage.");
                     } else if (m_context && m_context->getDispatcher()) {
                         DETAIL_LOG( "[WP-Manager] Anlage 1: WP id=" << lateWp->getId()
                                   << " am Bandende -> frage Anlage 2 (REQ_TO_GIVE)."
                                  );
+                        operatorLog::logHandoverReadyAtA1End(lateWp->getId(), lateWp->getType());
                         m_context->getDispatcher()->RequestToReceiveWp();
                     }
                 } else {

@@ -47,6 +47,8 @@ namespace logik {
         bool m_partnerReadyDeferred;                ///< Anlage 1: READY empfangen, Uebergabe bei Running starten
         bool m_handoverPauseResumeDeferred;         ///< Anlage 1: pausierte Uebergabe bei Running fortsetzen
         bool m_partnerHandoverRequestPending;       ///< Anlage 2: REQ waehrend Idle/ReadyForRun -> bei Running beantworten
+        int m_lastHandoverWpId;                     ///< Anlage 1: zuletzt uebergebenes WP (fuer Bediener-Log)
+        WpType m_lastHandoverWpType;                ///< Anlage 1: Typ des zuletzt uebergebenen WPs
 
         // ====================================================================
         // TAKT-BASIERTE AKTOR-ZEITSTEUERUNG
@@ -170,6 +172,12 @@ namespace logik {
 
        /** Running-Eintritt: Motor nur bei Transit-WPs oder ausstehender Netzwerk-Annahme (A2). */
        bool shouldResumeMotorOnRunningEntry() const;
+
+       /** Anlage 1: WP am Bandende blockiert Motorstart (Uebergabe/END_BLOCKED). */
+       bool isAnlage1BandEndHandoverPending() const;
+
+       /** Anlage 1: Partner-HANDOVER_PAUSE – Motor bis READY/Fortsetzung aus. */
+       bool isAnlage1MotorPausedForPartnerHandover() const;
 
        /** Einlauf-WP wartet regulaer hinter fuehrendem WP auf dem Band? */
        bool isEntryQueuedBehindLeadingWorkpiece() const;

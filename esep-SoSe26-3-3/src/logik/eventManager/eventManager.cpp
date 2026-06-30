@@ -657,6 +657,13 @@ std::vector<Event> EventManager::preprocessForFsm(Event e) {
 
     default:
         if (e == Event::MOTOR_RUN && m_wpManager != nullptr
+            && m_ctx.position == AnlagenPosition::VORN_ANLAGE_1
+            && m_wpManager->isAnlage1MotorPausedForPartnerHandover()) {
+            DETAIL_LOG( "[EventManager] MOTOR_RUN auf Anlage 1 unterdrueckt "
+                      << "(Partner pausiert, WP am Bandende).");
+            break;
+        }
+        if (e == Event::MOTOR_RUN && m_wpManager != nullptr
             && m_ctx.position == AnlagenPosition::HINTEN_ANLAGE_2) {
             if (m_ctx.endBlocked
                 || m_wpManager->getFirstWorkpieceAt(WpLocation::AT_END) != nullptr

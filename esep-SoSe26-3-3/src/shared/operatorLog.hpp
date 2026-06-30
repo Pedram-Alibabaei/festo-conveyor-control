@@ -40,6 +40,35 @@ inline void logWorkpieceBandExit(int wpId, WpType type, const char* reason) {
               << ", Grund=" << reason << std::endl;
 }
 
+/** Anlage 1: WP am Bandende, wartet auf Uebergabe. */
+inline void logHandoverReadyAtA1End(int wpId, WpType type) {
+    std::cout << "[Uebergabe] Anlage 1: WP id=" << wpId
+              << ", Typ=" << wpTypeLabel(type)
+              << " am Bandende -> bereit fuer Abgabe an Anlage 2." << std::endl;
+}
+
+/** Anlage 1: Abgabe gestartet — WP verlaesst Bandende Richtung Anlage 2. */
+inline void logHandoverDepartedA1(int wpId, WpType type, std::uint32_t estimateMs) {
+    std::cout << "[Uebergabe] Anlage 1: WP id=" << wpId
+              << ", Typ=" << wpTypeLabel(type)
+              << " verlaesst Bandende -> erwartete Ankunft Anlage 2 Einlauf "
+              << "in ca. " << estimateMs << " ms." << std::endl;
+}
+
+/** Anlage 1: Partner meldet ENTRY_BLOCKED — Uebergabe erfolgreich. */
+inline void logHandoverSuccessA1(int wpId, WpType type) {
+    std::cout << "[Uebergabe] Anlage 1: Abgabe erfolgreich — WP id=" << wpId
+              << ", Typ=" << wpTypeLabel(type)
+              << " von Anlage 2 am Einlauf bestaetigt." << std::endl;
+}
+
+/** Anlage 2: WP physisch am Einlauf angekommen. */
+inline void logHandoverReceivedA2(int wpId, WpType type) {
+    std::cout << "[Uebergabe] Anlage 2: WP id=" << wpId
+              << ", Typ=" << wpTypeLabel(type)
+              << " am Einlauf angekommen (Uebernahme von Anlage 1)." << std::endl;
+}
+
 } // namespace operatorLog
 
 #endif // OPERATOR_LOG_HPP

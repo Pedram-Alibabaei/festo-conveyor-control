@@ -66,6 +66,13 @@ void RunningState::entry() {
             DETAIL_LOG( "[Level1] Anlage 2: Bandende belegt -> Motor bleibt aus bis END_CLEARED "
                       << "oder Uebergabe von Anlage 1.");
             enterMotorIdle();
+        } else if (wpManager != nullptr
+                   && eventManager != nullptr
+                   && eventManager->context().position == AnlagenPosition::VORN_ANLAGE_1
+                   && wpManager->isAnlage1BandEndHandoverPending()) {
+            DETAIL_LOG( "[Level1] Anlage 1: Bandende belegt -> Motor bleibt aus bis "
+                      << "Partner-READY oder END_CLEARED nach Uebergabe.");
+            enterMotorIdle();
         } else if (wpManager != nullptr && wpManager->hasPendingNetworkWorkpiece()) {
             DETAIL_LOG( "[Level1] Warte auf Uebergabe -> Motor startet bei WP-Info/Annahme.");
             enterMotorIdle();
