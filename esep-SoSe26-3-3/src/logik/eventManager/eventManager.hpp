@@ -95,6 +95,9 @@ public:
     /** 10ms-Bandtakt — WorkpieceManager nur bei freigegebenem Betrieb. */
     void handleTakt();
 
+    /** Running-Eintritt: Einlauf-LS mit Schieberegister abgleichen (nach STOP/pause). */
+    void syncEntryStateOnRunningResume();
+
     void transitionFsmState(std::unique_ptr<BaseState> nextState);
 
     const PlantContext& context() const { return m_ctx; }

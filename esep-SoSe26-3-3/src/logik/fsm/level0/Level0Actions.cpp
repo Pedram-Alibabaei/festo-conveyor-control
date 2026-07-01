@@ -10,6 +10,7 @@
 #include "logik/eventManager/eventManager.hpp"
 #include "logik/workpieceManager/WorkpieceManager.hpp"
 #include "shared/detailLog.hpp"
+#include "shared/operatorLog.hpp"
 #include <iostream>
 #include "dispatcher/i_Dispatcher.hpp"
 #include <memory>
@@ -62,6 +63,10 @@ void clearTrafficLightsForRestore(I_Dispatcher* dispatcher) {
 void transitionAfterConnectionRestore(Logik* logik) {
     if (logik == nullptr) {
         return;
+    }
+
+    if (auto* em = logik->getEventManager()) {
+        operatorLog::logConnectionRestored(em->context().position);
     }
 
     clearTrafficLightsForRestore(logik->getDispatcher());
@@ -201,6 +206,10 @@ void finishEstopReset(Logik* logik) {
     }
 
     DETAIL_LOG( "[EStop] Beide Reset gedrueckt -> Rot aus, zurueck Active/Idle.");
+
+    if (auto* em = logik->getEventManager()) {
+        operatorLog::logEstopResetComplete(em->context().position);
+    }
 
     if (auto* dispatcher = logik->getDispatcher()) {
         dispatcher->turnLEDResetOff();

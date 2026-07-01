@@ -36,8 +36,8 @@ constexpr int kSwitchOpenHoldTicks = 150;
 constexpr int kSorterEchoIgnoreTicks = 200;
 /** Anlage 1: REQ_TO_GIVE erneut senden, wenn Anlage 2 vorher blockiert war (1 s). */
 constexpr int kHandoverRetryIntervalTicks = 100;
-/** Anlage 2: maximale Zeit von WP_INFO bis ENTRY_BLOCKED (3 s, 10ms-Takte). */
-constexpr int kHandoverEntryTimeoutTicks = 300;
+/** Anlage 2: maximale Zeit von WP_INFO bis ENTRY_BLOCKED (2 s, 10 ms/Takte). */
+constexpr int kHandoverEntryTimeoutTicks = 200;
 /** Geschaetzte Uebergabezeit A1-Bandende -> A2-Einlauf (10 ms/Takt) fuer Bediener-Log. */
 constexpr int kHandoverTransitEstimateTicks = 200;
 /** Anlage 2: maximal gleichzeitig aktive WPs (inkl. ausstehende Netzwerk-Uebergabe). */
@@ -531,6 +531,35 @@ void WorkpieceManager::onPartnerReadyToReceive() {
     startAnlage1HandoverTransmission(wp);
 }
 
+bool WorkpieceManager::syncPhysicalEntryOnRunningResume() {
+    if (m_context == nullptr || m_context->getDispatcher() == nullptr) {
+        return false;
+    }
+    if (getFirstWorkpieceAt(WpLocation::AT_ENTRY) != nullptr) {
+        return false;
+    }
+    if (m_context->getDispatcher()->isEntryLightBarrierClear()) {
+        return false;
+    }
+
+    if (m_myPosition == AnlagenPosition::HINTEN_ANLAGE_2 && m_hasPendingNetworkWp) {
+        DETAIL_LOG( "[WP-Manager] Anlage 2: Einlauf-LS blockiert bei pending WP-Info "
+                  << "-> Netzwerk-WP id=" << m_pendingNetworkWpId << " nachziehen.");
+        commitPendingNetworkWorkpieceAtEntry();
+        return true;
+    }
+
+    if (m_myPosition == AnlagenPosition::VORN_ANLAGE_1) {
+        addWorkpiece();
+        DETAIL_LOG( "[WP-Manager] Anlage 1: Einlauf-LS blockiert ohne AT_ENTRY-WP "
+                  << "-> WP id=" << getFirstWorkpieceAt(WpLocation::AT_ENTRY)->getId()
+                  << " nach Running/Resume angelegt.");
+        return true;
+    }
+
+    return false;
+}
+
 void WorkpieceManager::resumePendingHandoverOnRunning() {
     if (m_myPosition != AnlagenPosition::VORN_ANLAGE_1) {
         return;
@@ -608,9 +637,6 @@ void WorkpieceManager::sendPartnerHandoverReadyIfPossible() {
         return;
     }
     m_partnerHandoverRequestPending = false;
-    if (m_handoverReceiveActive || m_hasPendingNetworkWp) {
-        m_handoverReceiveTicks = 0;
-    }
     DETAIL_LOG( "[WP-Manager] Anlage 2: Bereit fuer WP-Uebergabe -> READY_TO_RECEIVE."
              );
     m_context->getDispatcher()->readyToReceiveWp();
@@ -684,10 +710,11 @@ void WorkpieceManager::onPartnerHandoverWpLost() {
     if (m_myPosition != AnlagenPosition::VORN_ANLAGE_1) {
         return;
     }
-    if (!m_handoverMotorActive && !m_handoverPausedByPartner) {
+    if (!m_handoverMotorActive && !m_handoverInfoSent && !m_handoverPausedByPartner) {
         return;
     }
-    DETAIL_LOG( "[WP-Manager] Anlage 1: Partner meldet WP verloren bei Uebergabe."
+    operatorLog::logHandoverMotorStopA1();
+    DETAIL_LOG( "[WP-Manager] Anlage 1: Partner meldet WP verloren bei Uebergabe -> Motor aus."
              );
     m_handoverMotorActive = false;
     m_handoverInfoSent = false;
@@ -696,15 +723,14 @@ void WorkpieceManager::onPartnerHandoverWpLost() {
     m_partnerReadyDeferred = false;
     m_handoverPauseResumeDeferred = false;
     if (m_context != nullptr) {
-        if (hasWorkpiecesNeedingMotor()) {
+        m_context->processEvent(logik::Event::MOTOR_STOP);
+        if (hasWorkpiecesNeedingMotor() && mayRequestMotorRun()) {
             DETAIL_LOG( "[WP-Manager] Anlage 1: Weitere WPs auf Band -> Motor laeuft weiter."
                      );
-            requestMotorRunIfAllowed("Handover abgeschlossen");
-            if (mayRequestMotorRun() && shouldUseSlowMotor()) {
+            requestMotorRunIfAllowed("Handover abgebrochen");
+            if (shouldUseSlowMotor()) {
                 m_context->processEvent(logik::Event::SET_SLOW);
             }
-        } else {
-            m_context->processEvent(logik::Event::MOTOR_STOP);
         }
     }
 }
@@ -767,6 +793,11 @@ void WorkpieceManager::onAnlage1RunningExit() {
     if (m_myPosition != AnlagenPosition::VORN_ANLAGE_1) {
         return;
     }
+    if (getFirstWorkpieceAt(WpLocation::AT_END) != nullptr) {
+        DETAIL_LOG( "[WP-Manager] Anlage 1: Running verlassen mit WP am Bandende "
+                  << "-> Uebergabe-Flags bleiben erhalten.");
+        return;
+    }
     if (!m_partnerReadyDeferred && !m_handoverPauseResumeDeferred) {
         return;
     }
@@ -793,11 +824,36 @@ void WorkpieceManager::tryArmPendingNetworkHandover() {
         return;
     }
     if (!m_handoverReceiveActive) {
-        DETAIL_LOG( "[WP-Manager] Anlage 2: Uebergabe-Timeout gestartet "
+        DETAIL_LOG( "[WP-Manager] Anlage 2: Uebergabe-Timeout laeuft "
                   << "(Motor laeuft, warte auf ENTRY_BLOCKED).");
     }
     m_handoverReceiveActive = true;
-    m_handoverReceiveTicks = 0;
+}
+
+void WorkpieceManager::abortHandoverEntryTimeout() {
+    if (m_myPosition != AnlagenPosition::HINTEN_ANLAGE_2 || !m_hasPendingNetworkWp) {
+        return;
+    }
+    operatorLog::logHandoverFailedA2(
+        m_pendingNetworkWpId,
+        m_pendingNetworkWpType,
+        static_cast<std::uint32_t>(m_handoverReceiveTicks),
+        static_cast<std::uint32_t>(kHandoverEntryTimeoutTicks));
+    DETAIL_LOG( "[WP-Manager] Anlage 2: ENTRY_BLOCKED kam nach WP-Info nicht "
+              << "rechtzeitig (id=" << m_pendingNetworkWpId
+              << ", ticks=" << m_handoverReceiveTicks
+              << ", limit=" << kHandoverEntryTimeoutTicks
+              << ") -> Uebergabe-WP verloren, Anlage 1 anhalten.");
+    if (m_context != nullptr && m_context->getErrorHandler() != nullptr) {
+        m_context->getErrorHandler()->handleEscalation(
+            ErrorType::WP_LOST,
+            logik::Event::ENTRY_BLOCKED,
+            WpLocation::AT_ENTRY,
+            m_pendingNetworkWpId,
+            static_cast<std::uint32_t>(m_handoverReceiveTicks),
+            static_cast<std::uint32_t>(kHandoverEntryTimeoutTicks),
+            0);
+    }
 }
 
 void WorkpieceManager::resumePartnerHandoverRequestOnRunning() {
@@ -856,7 +912,7 @@ void WorkpieceManager::resumePendingNetworkHandoverOnRunning() {
 }
 
 void WorkpieceManager::notifyPartnerHandoverFailed() {
-    if (m_myPosition != AnlagenPosition::HINTEN_ANLAGE_2 || !m_handoverReceiveActive) {
+    if (m_myPosition != AnlagenPosition::HINTEN_ANLAGE_2 || !m_hasPendingNetworkWp) {
         return;
     }
     if (m_context == nullptr || m_context->getDispatcher() == nullptr) {
@@ -939,9 +995,7 @@ void WorkpieceManager::taktActuators() {
         tryArmPendingNetworkHandover();
     }
 
-    if (m_myPosition == AnlagenPosition::HINTEN_ANLAGE_2
-        && m_handoverReceiveActive
-        && m_hasPendingNetworkWp) {
+    if (m_myPosition == AnlagenPosition::HINTEN_ANLAGE_2 && m_hasPendingNetworkWp) {
         EventManager* eventManager = m_context ? m_context->getEventManager() : nullptr;
         const bool pauseTimer =
             !m_isAnlage2Ready
@@ -953,21 +1007,7 @@ void WorkpieceManager::taktActuators() {
                     || !eventManager->isRunningMode()
                     || !eventManager->isMotorOn()));
         if (!pauseTimer && ++m_handoverReceiveTicks > kHandoverEntryTimeoutTicks) {
-            DETAIL_LOG( "[WP-Manager] Anlage 2: ENTRY_BLOCKED kam nach WP-Info nicht "
-                      << "rechtzeitig (id=" << m_pendingNetworkWpId
-                      << ", ticks=" << m_handoverReceiveTicks
-                      << ", limit=" << kHandoverEntryTimeoutTicks
-                      << ") -> Uebergabe-WP verloren.");
-            if (m_context && m_context->getErrorHandler()) {
-                m_context->getErrorHandler()->handleEscalation(
-                    ErrorType::WP_LOST,
-                    logik::Event::ENTRY_BLOCKED,
-                    WpLocation::AT_ENTRY,
-                    m_pendingNetworkWpId,
-                    static_cast<std::uint32_t>(m_handoverReceiveTicks),
-                    static_cast<std::uint32_t>(kHandoverEntryTimeoutTicks),
-                    0);
-            }
+            abortHandoverEntryTimeout();
         }
     }
 }
@@ -1856,6 +1896,10 @@ void WorkpieceManager::handleSensorSignal(logik::Event e, WpType typeFromHal) {
                             ErrorType::UNEXPECTED_EVENT, e, lateWp->getLocation(), lateWp->getId());
                     }
                 }
+            } else if (m_myPosition == AnlagenPosition::HINTEN_ANLAGE_2
+                       && (m_handoverReceiveActive || m_hasPendingNetworkWp)) {
+                DETAIL_LOG( "[WP-Manager] Anlage 2: END_BLOCKED waehrend Uebergabe "
+                          << "ohne lokales WP -> ignoriert (Partner-WP unterwegs).");
             } else if (m_myPosition == AnlagenPosition::HINTEN_ANLAGE_2
                        && hasActiveWorkpieces()) {
                 DETAIL_LOG( "[WP-Manager] Anlage 2: END_BLOCKED passt nicht zum "

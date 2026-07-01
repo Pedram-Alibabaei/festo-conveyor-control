@@ -21,6 +21,9 @@ void RunningState::entry() {
     }
 
     level1::applyRunningEntry(m_context->getDispatcher(), m_context->getEventManager());
+    if (EventManager* eventManager = m_context->getEventManager()) {
+        eventManager->syncEntryStateOnRunningResume();
+    }
     const bool hasActiveWorkpieces =
         m_context->getWorkpieceManager() != nullptr
         && m_context->getWorkpieceManager()->hasActiveWorkpieces();

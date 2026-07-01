@@ -8,6 +8,7 @@
 #include "logik/eventManager/eventManager.hpp"
 #include "dispatcher/i_Dispatcher.hpp"
 #include "shared/detailLog.hpp"
+#include "shared/operatorLog.hpp"
 #include <iostream>
 
 namespace logik {
@@ -24,6 +25,9 @@ void EStopState::latchLocalReset(Logik* context) {
 
     m_localResetLatched = true;
     DETAIL_LOG( "[EStopState] Lokaler Reset quittiert (latched).");
+    if (context != nullptr && context->getEventManager() != nullptr) {
+        operatorLog::logEstopLocalResetAck(context->getEventManager()->context().position);
+    }
 
     if (context != nullptr && context->getDispatcher() != nullptr) {
         context->getDispatcher()->sendPartnerResetPressed();
@@ -38,6 +42,9 @@ void EStopState::latchPartnerReset(Logik* context) {
 
     m_partnerResetLatched = true;
     DETAIL_LOG( "[EStopState] Partner-Reset quittiert (latched).");
+    if (context != nullptr && context->getEventManager() != nullptr) {
+        operatorLog::logEstopPartnerResetAck(context->getEventManager()->context().position);
+    }
 }
 
 void EStopState::applyResetWaitingVisuals(Logik* context) {
@@ -140,6 +147,9 @@ void EStopState::handle(Event e) {
 
     case Event::CONNECTION_RESTORED:
         DETAIL_LOG( "[EStopState] CONNECTION_RESTORED -> Unterzustand neu synchronisieren");
+        if (auto* em = m_context->getEventManager()) {
+            operatorLog::logConnectionRestored(em->context().position);
+        }
         clearResetLatches();
         replaceSubState(createInitialEStopSubState(m_context));
         return;

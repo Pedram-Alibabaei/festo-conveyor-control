@@ -238,7 +238,15 @@ void EventManager::handleEvent(Event e) {
         && !m_ctx.runningMode
         && !m_ctx.serviceMode
         && !m_ctx.errorActive) {
-        return;
+        const bool allowPausedEntryOnA1 =
+            e == Event::ENTRY_BLOCKED
+            && m_ctx.position == AnlagenPosition::VORN_ANLAGE_1
+            && m_wpManager != nullptr
+            && (m_ctx.endBlocked
+                || m_wpManager->getFirstWorkpieceAt(WpLocation::AT_END) != nullptr);
+        if (!allowPausedEntryOnA1) {
+            return;
+        }
     }
 
     if (m_ctx.runningMode
@@ -322,6 +330,15 @@ void EventManager::handleEvent(Event e) {
         && !m_ctx.errorActive
         && m_ctx.endBlocked
         && m_ctx.position == AnlagenPosition::VORN_ANLAGE_1;
+    const bool pausedEntryOnA1 =
+        e == Event::ENTRY_BLOCKED
+        && !m_ctx.runningMode
+        && !m_ctx.serviceMode
+        && !m_ctx.errorActive
+        && m_ctx.position == AnlagenPosition::VORN_ANLAGE_1
+        && m_wpManager != nullptr
+        && (m_ctx.endBlocked
+            || m_wpManager->getFirstWorkpieceAt(WpLocation::AT_END) != nullptr);
     const bool bandSubsystemsAllowed =
         canRouteToBandSubsystems() && !m_ctx.serviceMode;
     const bool endAndChuteSensorsAllowed =
@@ -354,10 +371,10 @@ void EventManager::handleEvent(Event e) {
         routeToErrorHandler(e);
     }
     if (bandSubsystemsAllowed || endBandEvent || chuteFillEvent || workpieceTrackingEvent
-        || entryWhileEndBlocked) {
+        || entryWhileEndBlocked || pausedEntryOnA1) {
         routeToErrorHandler(e);
         if (bandSubsystemsAllowed || endBandEvent || chuteFillEvent || workpieceTrackingEvent
-            || entryWhileEndBlocked) {
+            || entryWhileEndBlocked || pausedEntryOnA1) {
             routeToWorkpieceManager(e);
         }
     } else if (m_ctx.serviceMode
@@ -765,6 +782,28 @@ void EventManager::resumeEntryAfterEndCleared(std::vector<Event>& fsmEvents) {
     }
 }
 
+void EventManager::syncEntryStateOnRunningResume() {
+    if (m_wpManager == nullptr || m_context == nullptr) {
+        return;
+    }
+
+    if (m_wpManager->syncPhysicalEntryOnRunningResume()) {
+        if (m_ctx.position == AnlagenPosition::VORN_ANLAGE_1
+            && m_ctx.endBlocked
+            && m_wpManager->getFirstWorkpieceAt(WpLocation::AT_ENTRY) != nullptr) {
+            m_entryDeferredWhileEndBlocked = true;
+            DETAIL_LOG( "[EventManager] Einlauf-WP nach Running-Resume bei belegtem "
+                      << "Bandende -> Motor wartet auf END_CLEARED.");
+        }
+    }
+
+    if (isEntryLightBarrierBlocked(m_context)) {
+        m_ctx.entryFrei = false;
+    } else if (!m_ctx.entryFrei && isEntryLightBarrierClear(m_context)) {
+        m_ctx.entryFrei = true;
+    }
+}
+
 void EventManager::handleTakt() {
     if (m_ctx.errorActive) {
         enforceMotorStoppedDuringError();
@@ -802,14 +841,17 @@ void EventManager::routeToWorkpieceManager(Event e) {
 
     switch (e) {
     case Event::ENTRY_BLOCKED:
-        if (m_ctx.entryFrei
-            && (m_ctx.position == AnlagenPosition::VORN_ANLAGE_1 || m_ctx.serviceMode)) {
+        if (m_ctx.position == AnlagenPosition::VORN_ANLAGE_1 || m_ctx.serviceMode) {
             if (m_wpManager->getFirstWorkpieceAt(WpLocation::AT_ENTRY) == nullptr
-                && (m_ctx.serviceMode || isEntryLightBarrierBlocked(m_context))) {
+                && (m_ctx.serviceMode || isEntryLightBarrierBlocked(m_context))
+                && (m_ctx.serviceMode || m_ctx.entryFrei || m_ctx.endBlocked)) {
                 m_wpManager->addWorkpiece();
             } else if (!m_ctx.serviceMode && isEntryLightBarrierClear(m_context)) {
                 DETAIL_LOG( "[EventManager] ENTRY_BLOCKED ignoriert: Einlauf-LS ist frei "
                           << "(kein physisches Teil).");
+            }
+            if (!m_ctx.serviceMode && m_ctx.runningMode) {
+                m_wpManager->handleSensorSignal(e);
             }
         } else if (m_ctx.position == AnlagenPosition::HINTEN_ANLAGE_2) {
             m_wpManager->handleSensorSignal(e);

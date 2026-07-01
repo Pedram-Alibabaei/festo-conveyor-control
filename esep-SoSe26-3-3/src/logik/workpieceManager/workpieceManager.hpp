@@ -226,6 +226,9 @@ namespace logik {
        /** Anlage 1: Gespeicherte READY bei Running mit WP-Info + Motor beantworten. */
        void resumePendingHandoverOnRunning();
 
+       /** Running-Eintritt: Einlauf-LS blockiert, aber kein AT_ENTRY-WP -> nachziehen. */
+       bool syncPhysicalEntryOnRunningResume();
+
        /** Anlage 1: READY_TO_RECEIVE – WP-Info senden und Band an. */
        void onPartnerReadyToReceive();
 
@@ -298,6 +301,9 @@ namespace logik {
 
         /** Anlage 1: WP-Info senden und Uebergabe-Motor starten (Flags vor MOTOR_RUN setzen). */
         void startAnlage1HandoverTransmission(Workpiece* wp);
+
+        /** Anlage 2: ENTRY_BLOCKED nach WP-Info nicht rechtzeitig -> Fehler + Partner informieren. */
+        void abortHandoverEntryTimeout();
 
         std::uint32_t scaleNormalToSlowTicks(std::uint32_t normalTicks) const;
         std::uint32_t scaleSlowToNormalTicks(std::uint32_t slowTicks,

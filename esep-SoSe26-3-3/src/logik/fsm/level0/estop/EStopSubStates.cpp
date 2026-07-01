@@ -4,11 +4,19 @@
 #include "logik/logik.hpp"
 #include "dispatcher/i_Dispatcher.hpp"
 #include "shared/detailLog.hpp"
+#include "shared/operatorLog.hpp"
 #include <iostream>
 
 namespace logik {
 
 namespace {
+
+AnlagenPosition resolveAnlagePosition(Logik* logik) {
+    if (logik == nullptr || logik->getEventManager() == nullptr) {
+        return AnlagenPosition::UNKNOWN_POSITION;
+    }
+    return logik->getEventManager()->context().position;
+}
 
 void logTransition(const char* from, const char* to, Event e) {
     DETAIL_LOG( "[EStop/" << from << "] "
@@ -41,6 +49,7 @@ std::unique_ptr<EStopSubStateBase> createInitialEStopSubState(Logik* logik) {
 void EstopLocalActiveSubState::entry(Logik* context, EStopState& parent) {
     (void)parent;
     DETAIL_LOG( "[EStop] Estop_Local_Active entry");
+    operatorLog::logEstopLocalActive(resolveAnlagePosition(context));
     level0::applyEstopLocalActiveEntry(context);
 }
 
@@ -70,6 +79,7 @@ void EstopLocalActiveSubState::handle(Event e, Logik* context, EStopState& paren
 void EstopPartnerActiveSubState::entry(Logik* context, EStopState& parent) {
     (void)parent;
     DETAIL_LOG( "[EStop] Estop_Partner_Active entry");
+    operatorLog::logEstopPartnerActive(resolveAnlagePosition(context));
     level0::applyEstopPartnerActiveEntry(context);
 }
 
@@ -101,6 +111,7 @@ void EstopPartnerActiveSubState::handle(Event e, Logik* context, EStopState& par
 void EstopBothActiveSubState::entry(Logik* context, EStopState& parent) {
     (void)parent;
     DETAIL_LOG( "[EStop] Estop_Both_Active entry");
+    operatorLog::logEstopBothActive();
     if (auto* dispatcher = context != nullptr ? context->getDispatcher() : nullptr) {
         level0::applyEstopPressedTraffic(dispatcher);
         level0::syncLocalEstopPanelLed(dispatcher);
@@ -127,6 +138,7 @@ void EstopBothActiveSubState::handle(Event e, Logik* context, EStopState& parent
 
 void EstopBothNotActiveSubState::entry(Logik* context, EStopState& parent) {
     DETAIL_LOG( "[EStop] Estop_Both_Not_Active entry");
+    operatorLog::logEstopWaitReset(resolveAnlagePosition(context));
     parent.clearResetLatches();
     if (auto* dispatcher = context != nullptr ? context->getDispatcher() : nullptr) {
         level0::applyEstopBothNotActiveEntry(dispatcher);

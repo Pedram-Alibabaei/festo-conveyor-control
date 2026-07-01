@@ -157,7 +157,7 @@ void ErrorHandler::handleEscalation(ErrorType type,
     WorkpieceManager* wpManager = m_context->getWorkpieceManager();
 
     if (wpManager != nullptr) {
-        if (wpManager->isHandoverReceiveActive()
+        if ((wpManager->isHandoverReceiveActive() || wpManager->hasPendingNetworkWorkpiece())
             && (type == ErrorType::STUCK
                 || (type == ErrorType::WP_LOST
                     && (location == WpLocation::AT_ENTRY

@@ -7,6 +7,7 @@
 #include "logik/logik.hpp"
 #include "dispatcher/i_Dispatcher.hpp"
 #include "shared/detailLog.hpp"
+#include "shared/operatorLog.hpp"
 #include <iostream>
 
 namespace logik {
@@ -16,6 +17,10 @@ void ConnectionLostAndEStopState::entry() {
 
     if (m_context == nullptr) {
         return;
+    }
+
+    if (auto* em = m_context->getEventManager()) {
+        operatorLog::logConnectionLostAndEstop(em->context().position);
     }
 
     level0::applyConnectionLostEntry(m_context->getDispatcher(), m_context->getEventManager());
@@ -46,6 +51,7 @@ void ConnectionLostAndEStopState::handle(Event e) {
         if (!level0::isAnyEstopActive(m_context) && em != nullptr && em->isConnectionLost()) {
             DETAIL_LOG( "[ConnectionLost+EStop] Beide ESTOP-Taster frei -> warte Reset (Netz weg)"
                      );
+            operatorLog::logConnectionLostWaitReset(em->context().position);
             em->setEStopActive(true);
             if (dispatcher != nullptr) {
                 level0::applyConnectionLostEstopWaitingResetEntry(dispatcher);
@@ -59,6 +65,9 @@ void ConnectionLostAndEStopState::handle(Event e) {
     case Event::CONNECTION_RESTORED:
         if (level0::isAnyEstopActive(m_context)) {
             DETAIL_LOG( "[ConnectionLost+EStop] RESTORED, ESTOP aktiv -> EStopState");
+            if (em != nullptr) {
+                operatorLog::logConnectionRestored(em->context().position);
+            }
             m_context->transitionTo(new EStopState());
         } else {
             DETAIL_LOG( "[ConnectionLost+EStop] RESTORED, alles ok -> ActiveRegion");
