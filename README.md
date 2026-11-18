@@ -23,9 +23,10 @@ architecture.
 
 ## My Contribution
 
-Pedram Alibabaei implemented height sensor calibration and tested workpiece
+I implemented height sensor calibration and the ADC, and tested workpiece
 classification on the physical conveyor. These contributions sit within the
-team's wider control software and hardware integration work.
+team's wider control software and hardware integration work. I was also 
+partially responsible for our system architecture and design.
 
 Relevant implementation:
 [height profile analysis](esep-SoSe26-3-3/src/hal/input_driver/profileAnalyzer.cpp).
